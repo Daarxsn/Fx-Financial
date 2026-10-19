@@ -1162,10 +1162,17 @@ try {
   const quotationFinanceAdmin = await seedUser("finance_admin", "quotation-" + suffix + "@example.invalid", "ACTIVE",
     "Quotation Strong Password #5!", [testLegalEntityId]);
   const quotationFinanceSession = await login(quotationFinanceAdmin);
+  const quotationCustomerName = "Phase 10 Customer " + suffix;
+  const quotationCustomer = await call("/api/v1/customers", {
+    method: "POST",
+    body: JSON.stringify({ customerCode: "Q-" + suffix, name: quotationCustomerName, email: "quote-" + suffix.toLowerCase() + "@example.invalid" }),
+  }, quotationFinanceSession.jar);
+  assert.equal(quotationCustomer.response.status, 201, "quotation lifecycle test creates a separate customer fixture");
+  const quotationCustomerId = quotationCustomer.body.data.id;
   const quotationValidUntil = new Date(Date.parse(quotationDate + "T00:00:00.000Z") + 30 * 86400000).toISOString().slice(0,10);
   const quotationKey = "q-" + randomUUID();
   const quotationPayload = {
-    legalEntityId: testLegalEntityId, brandId: null, customerId: phase7CustomerId, currency: "INR",
+    legalEntityId: testLegalEntityId, brandId: null, customerId: quotationCustomerId, currency: "INR",
     invoiceDate: quotationDate, dueDate: null, validUntil: quotationValidUntil, paymentTermsDays: 30,
     notes: "Phase 10 quotation API integration test",
     lines: [{ lineKind: "ITEM", description: "Quotation test service", unitCode: "hour", quantity: "2.0000",
@@ -1188,7 +1195,7 @@ try {
   assert.equal(quotationDetail.response.status, 200);
   assert.equal(quotationDetail.body.data.lines.length, 1);
   assert.equal(quotationDetail.body.data.lines[0].discountValue, "4.0000");
-  const quotationList = await call("/api/v1/quotations?status=DRAFT&query=" + encodeURIComponent(phase7CustomerName) + "&limit=25&offset=0", {}, quotationFinanceSession.jar);
+  const quotationList = await call("/api/v1/quotations?status=DRAFT&query=" + encodeURIComponent(quotationCustomerName) + "&limit=25&offset=0", {}, quotationFinanceSession.jar);
   assert.equal(quotationList.response.status, 200);
   assert.ok(quotationList.body.data.some(row => row.id === quotationId), "quotation list search returns the saved draft");
 
