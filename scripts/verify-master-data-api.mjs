@@ -1157,6 +1157,62 @@ try {
   assert.equal(phase7Customer.body.data.recordVersion, 1);
   const phase7CustomerId = phase7Customer.body.data.id;
 
+  // Phase 10: quotation draft creation, idempotency, read, versioned editing and cancellation.
+  const quotationDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+  const quotationValidUntil = new Date(Date.parse(quotationDate + "T00:00:00.000Z") + 30 * 86400000).toISOString().slice(0,10);
+  const quotationKey = "phase10-quotation-" + suffix;
+  const quotationPayload = {
+    legalEntityId: testLegalEntityId, brandId: null, customerId: phase7CustomerId, currency: "INR",
+    invoiceDate: quotationDate, dueDate: null, validUntil: quotationValidUntil, paymentTermsDays: 30,
+    notes: "Phase 10 quotation API integration test",
+    lines: [{ lineKind: "ITEM", description: "Quotation test service", unitCode: "hour", quantity: "2.0000",
+      unitPrice: "20.0000", discountType: "AMOUNT", discountValue: "4.0000", taxCode: null }],
+  };
+  const quotation = await call("/api/v1/quotations", {
+    method: "POST", headers: { "Idempotency-Key": quotationKey }, body: JSON.stringify(quotationPayload),
+  }, financeSession.jar);
+  assert.equal(quotation.response.status, 201, "quotation draft creation uses the quotation permission and assigned entity scope");
+  assert.equal(quotation.body.data.status, "DRAFT");
+  assert.equal(quotation.body.data.grandTotal, "36.0000", "quotation totals use exact server-side calculation");
+  const quotationId = quotation.body.data.id;
+  const quotationReplay = await call("/api/v1/quotations", {
+    method: "POST", headers: { "Idempotency-Key": quotationKey }, body: JSON.stringify(quotationPayload),
+  }, financeSession.jar);
+  assert.equal(quotationReplay.response.status, 200, "same quotation idempotency key and payload replay the existing draft");
+  assert.equal(quotationReplay.body.data.id, quotationId);
+
+  const quotationDetail = await call("/api/v1/quotations/" + quotationId, {}, financeSession.jar);
+  assert.equal(quotationDetail.response.status, 200);
+  assert.equal(quotationDetail.body.data.lines.length, 1);
+  assert.equal(quotationDetail.body.data.lines[0].discountValue, "4.0000");
+  const quotationList = await call("/api/v1/quotations?status=DRAFT&query=" + encodeURIComponent(phase7CustomerName) + "&limit=25&offset=0", {}, financeSession.jar);
+  assert.equal(quotationList.response.status, 200);
+  assert.ok(quotationList.body.data.some(row => row.id === quotationId), "quotation list search returns the saved draft");
+
+  const updatedQuotation = await call("/api/v1/quotations/" + quotationId, {
+    method: "PATCH", body: JSON.stringify({ ...quotationPayload, notes: "Updated quote API test", expectedVersion: 1 }),
+  }, financeSession.jar);
+  assert.equal(updatedQuotation.response.status, 200, "quotation draft update succeeds with its current record version");
+  assert.equal(updatedQuotation.body.data.recordVersion, 2);
+  assert.equal(updatedQuotation.body.data.grandTotal, "36.0000");
+  const staleQuotation = await call("/api/v1/quotations/" + quotationId, {
+    method: "PATCH", body: JSON.stringify({ ...quotationPayload, expectedVersion: 1 }),
+  }, financeSession.jar);
+  assert.equal(staleQuotation.response.status, 409, "stale quotation edit is rejected");
+
+  const cancelQuotation = await call("/api/v1/quotations/" + quotationId + "/status", {
+    method: "POST", body: JSON.stringify({ status: "CANCELLED", expectedVersion: 2, reason: "CI quotation lifecycle test" }),
+  }, financeSession.jar);
+  assert.equal(cancelQuotation.response.status, 200);
+  assert.equal(cancelQuotation.body.data.status, "CANCELLED");
+  const cancelledQuotation = await call("/api/v1/quotations/" + quotationId, {}, financeSession.jar);
+  assert.equal(cancelledQuotation.response.status, 200);
+  assert.equal(cancelledQuotation.body.data.status, "CANCELLED");
+  console.log("PASS: Phase 10 quotation API covers scoped draft create, exact totals, idempotent replay, detail/list, optimistic-concurrency update, stale-write rejection and reasoned cancellation.");
+
+
   const customerCodeSearch = await call("/api/v1/customers?query=" + encodeURIComponent(phase7CustomerCode) + "&status=active&limit=10&offset=0", {}, financeSession.jar);
   assert.equal(customerCodeSearch.response.status, 200);
   assert.ok(customerCodeSearch.body.data.some(row => row.id === phase7CustomerId), "customer search matches normalized customer code");

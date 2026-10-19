@@ -4,6 +4,7 @@ import { pool } from "@/lib/db/pool";
 import { requirePermission } from "@/lib/auth/authorize";
 import { assertCsrf } from "@/lib/auth/csrf";
 import { apiError, jsonNoStore } from "@/lib/http/api-response";
+import { subtractMoney } from "@/lib/finance/invoice-calculation";
 import { InvoiceDraftValidationError } from "@/lib/finance/invoice-draft-service";
 import { quotationUpdateSchema } from "@/lib/validation/quotation";
 import {
@@ -71,7 +72,7 @@ export async function GET(_request: NextRequest, context: Context) {
       customerName: row.customer_name, quotationNumber: row.quotation_number, status,
       issueDate: dateText(row.issue_date), validUntil, currency: row.currency,
       subtotal: String(row.subtotal), discountTotal: String(row.discount_total),
-      taxableValue: String((Number(row.subtotal) - Number(row.discount_total)).toFixed(4)),
+      taxableValue: subtractMoney(String(row.subtotal), String(row.discount_total)),
       taxTotal: String(row.tax_total), grandTotal: String(row.grand_total),
       notes: row.notes, paymentTermsDays: row.payment_terms_days === null ? 0 : Number(row.payment_terms_days),
       recordVersion: Number(row.record_version), convertedInvoiceId: row.converted_invoice_id,

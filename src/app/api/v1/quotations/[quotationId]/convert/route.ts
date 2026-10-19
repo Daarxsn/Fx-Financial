@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { pool } from "@/lib/db/pool";
-import { requirePermissionForEntity } from "@/lib/auth/authorize";
+import { requirePermission, requirePermissionForEntity } from "@/lib/auth/authorize";
 import { assertCsrf } from "@/lib/auth/csrf";
 import { apiError, jsonNoStore } from "@/lib/http/api-response";
 import { canonicalJson } from "@/lib/configuration/service";
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest, context: Context) {
   let conn: Awaited<ReturnType<typeof pool.getConnection>> | undefined;
   try {
     await assertCsrf(request);
-    const quotationActor = await requirePermissionForEntity("quotations:write", "");
+    const quotationActor = await requirePermission("quotations:write");
     const { quotationId } = await context.params;
     if (!/^[0-9a-f-]{36}$/i.test(quotationId)) return jsonNoStore({ error: { code: "VALIDATION_ERROR", message: "quotationId must be a UUID." } }, 400);
     const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() ?? "";

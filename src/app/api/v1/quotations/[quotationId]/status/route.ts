@@ -53,7 +53,8 @@ export async function POST(request: NextRequest, context: Context) {
     const current = row.status;
     const target = input.status;
     const allowed =
-      (current === "DRAFT" && ["SENT", "CANCELLED"].includes(target)) ||
+      (current === "DRAFT" && target === "SENT" && !expired) ||
+      (current === "DRAFT" && target === "CANCELLED") ||
       (current === "SENT" && ["ACCEPTED", "REJECTED", "CANCELLED"].includes(target) && !expired) ||
       (current === "SENT" && target === "EXPIRED" && expired);
     if (!allowed) {

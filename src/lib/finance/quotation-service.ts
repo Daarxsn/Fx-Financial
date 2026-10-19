@@ -5,7 +5,7 @@ import type { PoolConnection, RowDataPacket } from "mysql2/promise";
 import type { SessionPrincipal } from "@/lib/auth/session";
 import { requirePermissionForEntity } from "@/lib/auth/authorize";
 import { calendarDateInTimeZone, recordAudit } from "@/lib/configuration/service";
-import { resolveDraftLines, type InvoiceDraftValidationError } from "@/lib/finance/invoice-draft-service";
+import { resolveDraftLines } from "@/lib/finance/invoice-draft-service";
 import type { quotationCreateSchema } from "@/lib/validation/quotation";
 import { z } from "zod";
 
