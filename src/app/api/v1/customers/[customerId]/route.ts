@@ -12,6 +12,19 @@ export const dynamic="force-dynamic";
 type Context={params:Promise<{customerId:string}>};
 function jsonValue(value:unknown):unknown { if(typeof value!=="string")return value;try{return JSON.parse(value)}catch{return null} }
 function normalizeIdentifier(value:string):string{return value.trim().toUpperCase().replace(/[\s-]/g,"")}
+// Canonical JSON (sorted keys, empty values dropped) so stored and submitted values compare by content, not formatting.
+function canonical(value:unknown):string{
+ const walk=(v:unknown):unknown=>Array.isArray(v)?v.map(walk):v&&typeof v==="object"?Object.fromEntries(Object.entries(v as Record<string,unknown>).filter(([,x])=>x!==undefined&&x!==null&&x!=="").sort(([a],[b])=>a<b?-1:a>b?1:0).map(([k,x])=>[k,walk(x)])):v;
+ return JSON.stringify(walk(value)??null);
+}
+function addressKey(value:unknown):string{const parsed=jsonValue(value);return parsed&&typeof parsed==="object"&&Object.keys(canonicalObject(parsed)).length?canonical(parsed):"null"}
+function canonicalObject(value:object):Record<string,unknown>{return JSON.parse(canonical(value)) as Record<string,unknown>}
+function contactKey(c:{fullName:string;jobTitle?:string|null;email?:string|null;phone?:string|null;isPrimary?:boolean|number}){
+ return canonical({fullName:c.fullName.trim(),jobTitle:c.jobTitle?.trim()||null,email:c.email?.trim().toLowerCase()||null,phone:c.phone?.trim()||null,isPrimary:Boolean(c.isPrimary)});
+}
+function taxKey(t:{identifierType:string;countryCode?:string|null;jurisdiction?:string|null;identifierValue:string}){
+ return canonical({identifierType:t.identifierType.trim().toUpperCase(),countryCode:t.countryCode?.trim().toUpperCase()||null,jurisdiction:t.jurisdiction?.trim()||null,identifierValue:t.identifierValue.trim()});
+}
 function duplicateEntry(error:unknown):boolean{return typeof error==="object"&&error!==null&&"code" in error&&(error as {code?:string}).code==="ER_DUP_ENTRY"}
 
 export async function GET(_request:NextRequest,context:Context){
@@ -36,10 +49,9 @@ export async function GET(_request:NextRequest,context:Context){
   const visibleEntityIds = actor.legalEntityIds;
   const canReadInvoices = actor.permissions.includes("invoices:read") && visibleEntityIds.length > 0;
   const canReadQuotations = actor.permissions.includes("quotations:read") && visibleEntityIds.length > 0;
-  const canReadPayments = actor.permissions.includes("payments:read");
   let invoiceReferenceCount: number | null = null;
   let quotationReferenceCount: number | null = null;
-  let paymentReferenceCount: number | null = null;
+  const paymentReferenceCount: number | null = null;
   let linkedInvoices: Array<{id:string;invoiceNumber:string|null;status:string;invoiceDate:string|null;dueDate:string|null;currency:string;grandTotal:string;createdAt:string}> | undefined;
   let linkedQuotations: Array<{id:string;quotationNumber:string|null;status:string;issueDate:string|null;validUntil:string|null;currency:string;grandTotal:string;createdAt:string}> | undefined;
   if (canReadInvoices) {
@@ -80,11 +92,7 @@ export async function GET(_request:NextRequest,context:Context){
       validUntil:asDate(item.valid_until),currency:item.currency,grandTotal:String(item.grand_total),createdAt:asTimestamp(item.created_at),
     }));
   }
-  if (canReadPayments) {
-    const [[paymentReferences]] = await pool.query<(RowDataPacket & {total:number})[]>(
-      "SELECT COUNT(*) AS total FROM payments WHERE customer_id=?",[id]);
-    paymentReferenceCount = Number(paymentReferences.total);
-  }
+  // Payment counts remain hidden until every payment can be reliably entity-scoped.
   return jsonNoStore({data:{
    id:row.id,customerCode:row.customer_code,name:row.name,email:row.email,phone:row.phone,
    billingAddress:jsonValue(row.billing_address_json),shippingAddress:jsonValue(row.shipping_address_json),
@@ -106,7 +114,7 @@ export async function PATCH(request:NextRequest,context:Context){
  let conn:Awaited<ReturnType<typeof pool.getConnection>>|undefined;
  try{
   await assertCsrf(request);
-  const actor=await requirePermission("customers:write");
+  const actor=await requirePermission("customers:update");
   const {customerId}=await context.params;const id=uuidSchema.parse(customerId);
   const input=customerUpdateSchema.parse(await request.json());
   const {expectedVersion,contacts,taxIdentifiers,...patch}=input;
@@ -116,8 +124,10 @@ export async function PATCH(request:NextRequest,context:Context){
   conn=await pool.getConnection();await conn.beginTransaction();
   const [rows]=await conn.execute<(RowDataPacket & {
    id:string;customer_code:string|null;name:string;email:string|null;phone:string|null;tax_identifier:string|null;
-   is_active:number;record_version:number;notes:string|null;
-  })[]>("SELECT id,customer_code,name,email,phone,tax_identifier,is_active,record_version,notes FROM customers WHERE id=? FOR UPDATE",[id]);
+   is_active:number;record_version:number;notes:string|null;billing_address_json:unknown;shipping_address_json:unknown;
+   purchase_order_reference:string|null;payment_terms_days:number|null;
+  })[]>(`SELECT id,customer_code,name,email,phone,tax_identifier,is_active,record_version,notes,billing_address_json,shipping_address_json,
+     purchase_order_reference,payment_terms_days FROM customers WHERE id=? FOR UPDATE`,[id]);
   if(!rows.length){await conn.rollback();return jsonNoStore({error:{code:"NOT_FOUND",message:"Customer not found"}},404)}
   const row=rows[0];
   if(Number(row.record_version)!==expectedVersion){await conn.rollback();return jsonNoStore({error:{code:"VERSION_CONFLICT",message:"This customer changed since you opened it. Reload the record and review the latest values."}},409)}
@@ -150,20 +160,45 @@ export async function PATCH(request:NextRequest,context:Context){
     duplicates.push({id:match.id,name:match.name,customerCode:match.customer_code,matchOn:matchOn.length?matchOn:["otherField"]});
    }
   }
+  // Only fields whose stored value actually differs are written and audited; resubmitting unchanged
+  // contacts or tax identifiers does not delete and recreate them.
   const assignments:string[]=[];const values:(string|number|null)[]=[];const changed:string[]=[];
-  const set=(field:string,column:string,value:string|number|null)=>{assignments.push(`${column}=?`);values.push(value);changed.push(field)};
-  if(patch.customerCode!==undefined)set("customerCode","customer_code",next.customerCode);
-  if(patch.name!==undefined)set("name","name",next.name);
-  if(patch.email!==undefined)set("email","email",next.email);
-  if(patch.phone!==undefined)set("phone","phone",next.phone);
-  if(patch.billingAddress!==undefined)set("billingAddress","billing_address_json",patch.billingAddress===null?null:JSON.stringify(patch.billingAddress));
-  if(patch.shippingAddress!==undefined)set("shippingAddress","shipping_address_json",patch.shippingAddress===null?null:JSON.stringify(patch.shippingAddress));
-  if(patch.purchaseOrderReference!==undefined)set("purchaseOrderReference","purchase_order_reference",patch.purchaseOrderReference.trim()||null);
-  if(patch.paymentTermsDays!==undefined)set("paymentTermsDays","payment_terms_days",patch.paymentTermsDays);
-  if(patch.taxIdentifier!==undefined)set("taxIdentifier","tax_identifier",next.taxIdentifier);
+  const set=(field:string,column:string,value:string|number|null,current:string|number|null)=>{if(value===current)return;assignments.push(`${column}=?`);values.push(value);changed.push(field)};
+  if(patch.customerCode!==undefined)set("customerCode","customer_code",next.customerCode,row.customer_code);
+  if(patch.name!==undefined)set("name","name",next.name,row.name);
+  if(patch.email!==undefined)set("email","email",next.email,row.email);
+  if(patch.phone!==undefined)set("phone","phone",next.phone,row.phone);
+  for(const [field,column,current] of [["billingAddress","billing_address_json",row.billing_address_json],["shippingAddress","shipping_address_json",row.shipping_address_json]] as const){
+   const value=patch[field];
+   if(value===undefined)continue;
+   const nextKey=value===null?"null":addressKey(value);
+   if(nextKey!==addressKey(current)){assignments.push(`${column}=?`);values.push(nextKey==="null"?null:JSON.stringify(canonicalObject(value as object)));changed.push(field)}
+  }
+  if(patch.purchaseOrderReference!==undefined)set("purchaseOrderReference","purchase_order_reference",patch.purchaseOrderReference.trim()||null,row.purchase_order_reference);
+  if(patch.paymentTermsDays!==undefined)set("paymentTermsDays","payment_terms_days",patch.paymentTermsDays,row.payment_terms_days===null?null:Number(row.payment_terms_days));
+  if(patch.taxIdentifier!==undefined)set("taxIdentifier","tax_identifier",next.taxIdentifier,row.tax_identifier);
   if(patch.notes!==undefined){
    if(!actor.permissions.includes("settings:manage")){await conn.rollback();return jsonNoStore({error:{code:"FORBIDDEN",message:"Internal notes are restricted to finance/settings administrators."}},403)}
-   set("notes","notes",patch.notes);
+   set("notes","notes",patch.notes||null,row.notes||null);
+  }
+  let replaceContacts=false;let replaceTaxIdentifiers=false;
+  if(contacts!==undefined){
+   if(contacts.filter(c=>c.isPrimary).length>1){await conn.rollback();return jsonNoStore({error:{code:"VALIDATION_ERROR",message:"Only one primary contact can be selected."}},400)}
+   const [currentContacts]=await conn.execute<(RowDataPacket & {full_name:string;job_title:string|null;email:string|null;phone:string|null;is_primary:number})[]>(
+    "SELECT full_name,job_title,email,phone,is_primary FROM customer_contacts WHERE customer_id=?",[id]);
+   const before=currentContacts.map(c=>contactKey({fullName:c.full_name,jobTitle:c.job_title,email:c.email,phone:c.phone,isPrimary:c.is_primary})).sort();
+   replaceContacts=canonical(before)!==canonical(contacts.map(contactKey).sort());
+  }
+  if(taxIdentifiers!==undefined){
+   const [currentTax]=await conn.execute<(RowDataPacket & {identifier_type:string;country_code:string|null;jurisdiction:string|null;identifier_value:string})[]>(
+    "SELECT identifier_type,country_code,jurisdiction,identifier_value FROM customer_tax_identifiers WHERE customer_id=?",[id]);
+   const before=currentTax.map(t=>taxKey({identifierType:t.identifier_type,countryCode:t.country_code,jurisdiction:t.jurisdiction,identifierValue:t.identifier_value})).sort();
+   replaceTaxIdentifiers=canonical(before)!==canonical(taxIdentifiers.map(taxKey).sort());
+  }
+  if(!assignments.length&&!replaceContacts&&!replaceTaxIdentifiers){
+   // Nothing differs from the stored record: no write, no version bump, no audit event.
+   await conn.rollback();
+   return jsonNoStore({data:{id,...next,isActive:true,recordVersion:expectedVersion,unchanged:true},duplicateWarnings:duplicates});
   }
   if(assignments.length){
    await conn.execute(`UPDATE customers SET ${assignments.join(",")},record_version=record_version+1,updated_by=? WHERE id=? AND record_version=?`,
@@ -172,15 +207,14 @@ export async function PATCH(request:NextRequest,context:Context){
    // A contact/tax-only edit still advances the master-data version so concurrent updates conflict safely.
    await conn.execute("UPDATE customers SET record_version=record_version+1,updated_by=? WHERE id=? AND record_version=?",[actor.userId,id,expectedVersion]);
   }
-  if(contacts!==undefined){
-   if(contacts.filter(c=>c.isPrimary).length>1){await conn.rollback();return jsonNoStore({error:{code:"VALIDATION_ERROR",message:"Only one primary contact can be selected."}},400)}
+  if(contacts!==undefined&&replaceContacts){
    await conn.execute("DELETE FROM customer_contacts WHERE customer_id=?",[id]);
    for(const c of contacts)await conn.execute(
     "INSERT INTO customer_contacts (id,customer_id,full_name,job_title,email,phone,is_primary) VALUES (?,?,?,?,?,?,?)",
     [randomUUID(),id,c.fullName,c.jobTitle?.trim()||null,c.email?.trim().toLowerCase()||null,c.phone?.trim()||null,c.isPrimary?1:0]);
    changed.push("contacts");
   }
-  if(taxIdentifiers!==undefined){
+  if(taxIdentifiers!==undefined&&replaceTaxIdentifiers){
    await conn.execute("DELETE FROM customer_tax_identifiers WHERE customer_id=?",[id]);
    for(const t of taxIdentifiers){
     const val=t.identifierValue.trim();

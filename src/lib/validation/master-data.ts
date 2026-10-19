@@ -6,7 +6,16 @@ export const uuidSchema = z.string().uuid();
 export const currencySchema = z.string().regex(/^[A-Z]{3}$/, "Currency must be a three-letter uppercase code");
 export const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must use YYYY-MM-DD");
 
-const addressSchema = z.record(z.string(), z.unknown());
+const addressLine = z.string().trim().max(255).optional();
+// Customer addresses accept only the reviewed keys; unknown keys and oversized values are rejected.
+const addressSchema = z.object({
+  line1: addressLine,
+  line2: addressLine,
+  city: addressLine,
+  state: addressLine,
+  postalCode: addressLine,
+  countryCode: z.string().trim().regex(/^[A-Z]{2}$/, "Country code must be a two-letter uppercase code").optional().or(z.literal("")),
+}).strict();
 const emailSchema = z.string().trim().email().max(320).optional().or(z.literal(""));
 const phoneSchema = z.string().trim().max(50).optional().or(z.literal(""));
 const contactSchema = z.object({

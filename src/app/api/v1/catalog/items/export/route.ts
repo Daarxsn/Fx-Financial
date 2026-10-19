@@ -4,6 +4,7 @@ import type { RowDataPacket } from "mysql2";
 import { pool } from "@/lib/db/pool";
 import { requirePermission } from "@/lib/auth/authorize";
 import { apiError, jsonNoStore } from "@/lib/http/api-response";
+import { canReadCatalogInternal } from "@/lib/master-data/permissions";
 import { buildCsv } from "@/lib/master-data/csv";
 
 export const runtime="nodejs";
@@ -27,7 +28,7 @@ export async function GET(request:NextRequest){
       default_tax_code,is_active,record_version,created_at,updated_at
     FROM catalog_items ${where} ORDER BY name,id LIMIT ?`,[...params,MAX_EXPORT_ROWS+1]);
   if(rows.length>MAX_EXPORT_ROWS)return jsonNoStore({error:{code:"EXPORT_LIMIT_EXCEEDED",message:`Export contains more than ${MAX_EXPORT_ROWS} rows. Narrow the status filter or use paginated views.`}},413);
-  const canReadInternal=actor.permissions.includes("catalog:write")||actor.permissions.includes("settings:manage");
+  const canReadInternal=canReadCatalogInternal(actor.permissions);
   const headers=["itemCode","itemType","name","customerDescription",...(canReadInternal?["internalDescription"]:[]),
     "unitCode","defaultUnitPrice","currency","defaultTaxCode","isActive","recordVersion","createdAt","updatedAt"];
   const data=rows.map(row=>({

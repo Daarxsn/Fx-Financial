@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     await assertCsrf(request);
-    const actor = await requirePermission("customers:write");
+    const actor = await requirePermission("customers:create");
     const parsed = customerCreateSchema.parse(await request.json());
     if(parsed.notes!==undefined&&!actor.permissions.includes("settings:manage"))return jsonNoStore({error:{code:"FORBIDDEN",message:"Internal notes are restricted to finance/settings administrators."}},403);
     const id = randomUUID();
@@ -149,7 +149,8 @@ export async function POST(request: NextRequest) {
       await connection.execute(
         `INSERT INTO audit_events (id,actor_id,action,entity_type,entity_id,outcome,after_json)
          VALUES (?,?,'customer.created','customer',?,'SUCCESS',?)`,
-        [randomUUID(),actor.userId,id,JSON.stringify({changedFields:["customerCode","name","email","phone","billingAddress","shippingAddress","purchaseOrderReference","paymentTermsDays","taxIdentifier","contacts","taxIdentifiers","notes"]})]);
+        [randomUUID(),actor.userId,id,JSON.stringify({changedFields:(["customerCode","name","email","phone","billingAddress","shippingAddress","purchaseOrderReference","paymentTermsDays","taxIdentifier","contacts","taxIdentifiers","notes"] as const)
+          .filter(key=>{const value=parsed[key];return value!==undefined&&value!==null&&!(typeof value==="string"&&!value.trim())&&!(Array.isArray(value)&&!value.length)})})]);
       await connection.commit();
     } catch(error) {
       await connection.rollback();

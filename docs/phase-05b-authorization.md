@@ -6,7 +6,7 @@ Phase 05B hardens authorization for the **currently implemented** protected API 
 
 ## Role model and least privilege
 
-The seven baseline role templates are `system_admin`, `finance_admin`, `invoice_creator`, `invoice_issuer`, `payment_recorder`, `approver`, and `auditor`. The reviewed catalog contains 22 permission keys, defined in `scripts/seed-reference.ts`.
+The seven baseline role templates are `system_admin`, `finance_admin`, `invoice_creator`, `invoice_issuer`, `payment_recorder`, `approver`, and `auditor`. The reviewed catalog contains 24 permission keys, defined in `scripts/seed-reference.ts`.
 
 The CI suite now compares the permission catalog and every persisted role-to-permission mapping against the exact baseline. Missing, additional, or reassigned permissions fail validation rather than passing based only on the total mapping count. The test also checks that effective permissions in authenticated session responses exactly match the database grants. `system_admin` intentionally is not a finance-data superuser, and `finance_admin` receives no automatic `users:manage` grant.
 
@@ -15,9 +15,13 @@ The CI suite now compares the permission catalog and every persisted role-to-per
 | Surface | Required permission and control |
 |---|---|
 | `GET /api/v1/customers` | `customers:read` |
-| `POST /api/v1/customers` | `customers:write` and valid CSRF |
+| `POST /api/v1/customers` | `customers:create` and valid CSRF |
+| `PATCH /api/v1/customers/{customerId}` | `customers:update`, expected version and valid CSRF |
+| `POST /api/v1/customers/import` | `customers:create`, valid CSRF; commit also needs the validation token |
 | `GET /api/v1/catalog/items` | `catalog:read` |
-| `POST /api/v1/catalog/items` | `catalog:write` and valid CSRF |
+| `POST /api/v1/catalog/items` | `catalog:create` and valid CSRF |
+| `PATCH /api/v1/catalog/items/{itemId}` | `catalog:update`, expected version and valid CSRF |
+| `POST /api/v1/catalog/items/import` | `catalog:create`, valid CSRF; commit also needs the validation token |
 | `GET /api/v1/users` | `users:manage` |
 | `POST /api/v1/users/invitations` | `users:manage`, role-grant constraints and valid CSRF |
 | `PATCH /api/v1/users/{userId}` | `users:manage`, self/admin/last-admin restrictions and valid CSRF |

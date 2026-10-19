@@ -13,10 +13,12 @@ function requiredEnv(name: string): string {
 
 const permissions = [
   ["customers:read", "Read customer records"],
-  ["customers:write", "Create and update customer records"],
+  ["customers:create", "Create customer records"],
+  ["customers:update", "Update customer records"],
   ["customers:archive", "Archive customer records"],
   ["catalog:read", "Read catalog items"],
-  ["catalog:write", "Create and update catalog items"],
+  ["catalog:create", "Create catalog items"],
+  ["catalog:update", "Update catalog items"],
   ["catalog:archive", "Archive catalog items"],
   ["invoices:read", "Read invoices"],
   ["invoices:draft:create", "Create invoice drafts"],
@@ -54,15 +56,15 @@ const roles = [
 const roleGrantTemplates: Record<string, readonly string[]> = {
   system_admin: ["users:manage", "settings:manage", "audit:read"],
   finance_admin: [
-    "customers:read", "customers:write", "customers:archive",
-    "catalog:read", "catalog:write", "catalog:archive",
+    "customers:read", "customers:create", "customers:update", "customers:archive",
+    "catalog:read", "catalog:create", "catalog:update", "catalog:archive",
     "invoices:read", "invoices:draft:create", "invoices:draft:update", "invoices:issue", "invoices:cancel",
     "payments:read", "payments:record", "payments:reverse",
     "quotations:read", "quotations:write", "approvals:read", "approvals:decide",
     "reports:read", "audit:read", "settings:manage",
   ],
   invoice_creator: [
-    "customers:read", "customers:write", "catalog:read", "invoices:read",
+    "customers:read", "customers:create", "customers:update", "catalog:read", "invoices:read",
     "invoices:draft:create", "invoices:draft:update", "quotations:read", "quotations:write",
   ],
   invoice_issuer: ["customers:read", "catalog:read", "invoices:read", "invoices:issue", "quotations:read"],

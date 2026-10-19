@@ -39,4 +39,4 @@ This is the pre-Phase-07 release checklist. Do not use this page to infer busine
 
 ## Explicit phase boundary
 
-Phase 07 has **not started** on this branch. Customer/catalog CRUD, archive/import/export and connected list/detail edit screens remain the next phase and must be built after these pre-Phase-07 gates are reviewed. A sample image or a template config JSON is not an issued invoice.
+Phase 07 (customer and catalog master data) is **in progress** on `main`; see `docs/phase-07-customer-and-catalog.md` for what is implemented and what is still open. The gates above still apply and are not closed by Phase 07 work. A sample image or a template config JSON is not an issued invoice.

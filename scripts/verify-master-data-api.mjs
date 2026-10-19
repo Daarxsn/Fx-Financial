@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHmac, randomBytes, randomUUID, scrypt as scryptCallback } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID, scrypt as scryptCallback } from "node:crypto";
 import mysql from "mysql2/promise";
 
 const baseUrl = process.env.API_TEST_BASE_URL ?? "http://127.0.0.1:3002";
@@ -28,10 +28,12 @@ function hashPassword(password) {
 
 const EXPECTED_PERMISSION_KEYS = [
   "customers:read",
-  "customers:write",
+  "customers:create",
+  "customers:update",
   "customers:archive",
   "catalog:read",
-  "catalog:write",
+  "catalog:create",
+  "catalog:update",
   "catalog:archive",
   "invoices:read",
   "invoices:draft:create",
@@ -61,10 +63,12 @@ const EXPECTED_ROLE_GRANTS = {
   ],
   "finance_admin": [
     "customers:read",
-    "customers:write",
+    "customers:create",
+    "customers:update",
     "customers:archive",
     "catalog:read",
-    "catalog:write",
+    "catalog:create",
+    "catalog:update",
     "catalog:archive",
     "invoices:read",
     "invoices:draft:create",
@@ -84,7 +88,8 @@ const EXPECTED_ROLE_GRANTS = {
   ],
   "invoice_creator": [
     "customers:read",
-    "customers:write",
+    "customers:create",
+    "customers:update",
     "catalog:read",
     "invoices:read",
     "invoices:draft:create",
@@ -222,6 +227,20 @@ async function login(user) {
   assert.doesNotMatch(csrfHeader, /HttpOnly/i, "CSRF cookie needs to be readable by same-origin client code");
   return { jar, body: result.body };
 }
+async function sessionIdFor(session) {
+  const [rows] = await db.execute("SELECT id FROM auth_sessions WHERE token_hash=? LIMIT 1",
+    [createHash("sha256").update(session.jar.get("fx_session")).digest("hex")]);
+  assert.equal(rows.length, 1, "test session row exists");
+  return rows[0].id;
+}
+// Mirrors src/lib/master-data/import-token.ts so the suite can forge expired or mis-bound tokens with the CI-only secret.
+function mintImportToken({ resource, userId, sessionId, csv, expiresAt }) {
+  const key = createHmac("sha256", sessionSecret).update("fx-csv-import-validation:v1").digest();
+  const csvSha256 = createHash("sha256").update(Buffer.from(csv, "utf8")).digest("hex");
+  const mac = createHmac("sha256", key).update(["v1", resource, userId, sessionId, csvSha256, String(expiresAt)].join("\n")).digest("base64url");
+  return "v1." + expiresAt + "." + mac;
+}
+const importHeaders = (token) => ({ "Content-Type": "text/csv", ...(token ? { "X-Import-Validation-Token": token } : {}) });
 async function expectStatus(promise, status, label) {
   const result = await promise;
   assert.equal(result.response.status, status, label);
@@ -259,7 +278,7 @@ async function assertRoleGrantMatrix() {
     assert.deepEqual(actualGrants[roleKey].sort(), [...permissions].sort(),
       "least-privilege grants for " + roleKey + " must match the reviewed matrix exactly");
   }
-  console.log("PASS: all 22 permission definitions and all seven exact role-grant templates match the least-privilege baseline.");
+  console.log("PASS: all 24 permission definitions and all seven exact role-grant templates match the least-privilege baseline.");
 }
 
 async function assertRoleSurface(roleKey, session) {
@@ -283,11 +302,15 @@ async function assertRoleSurface(roleKey, session) {
   }
 
   for (const surface of [
-    { path: "/api/v1/customers", permission: "customers:write", body: { name: "RBAC regression fixture" } },
-    { path: "/api/v1/catalog/items", permission: "catalog:write", body: {} },
+    { path: "/api/v1/customers", permission: "customers:create", body: { name: "RBAC regression fixture" } },
+    { path: "/api/v1/catalog/items", permission: "catalog:create", body: {} },
+    { path: "/api/v1/customers/import?mode=validate", permission: "customers:create", body: { csv: "name" } },
+    { path: "/api/v1/catalog/items/import?mode=validate", permission: "catalog:create", body: { csv: "name" } },
+    { method: "PATCH", path: "/api/v1/customers/" + randomUUID(), permission: "customers:update", body: { expectedVersion: 1, name: "RBAC regression fixture" } },
+    { method: "PATCH", path: "/api/v1/catalog/items/" + randomUUID(), permission: "catalog:update", body: { expectedVersion: 1, name: "RBAC regression fixture" } },
   ]) {
     if (expected.includes(surface.permission)) continue;
-    const result = await call(surface.path, { method: "POST", body: JSON.stringify(surface.body) }, session.jar);
+    const result = await call(surface.path, { method: surface.method ?? "POST", body: JSON.stringify(surface.body) }, session.jar);
     assert.equal(result.response.status, 403, roleKey + " must be denied " + surface.permission);
     assert.equal(result.body.error.code, "FORBIDDEN");
   }
@@ -328,7 +351,7 @@ try {
     assert.ok(redirectTarget && new URL(redirectTarget, baseUrl).pathname === "/login", `anonymous workspace page ${path} redirects to /login`);
   }
   const forgedPayload = Buffer.from(JSON.stringify({
-    userId: staff.userId, email: staff.email, permissions: ["users:manage", "customers:write"],
+    userId: staff.userId, email: staff.email, permissions: ["users:manage", "customers:create", "customers:update"],
     legalEntityIds: ["all"], expiresAt: Math.floor(Date.now() / 1000) + 3600,
   })).toString("base64url");
   const forgedSignature = createHmac("sha256", sessionSecret).update(forgedPayload).digest("base64url");
@@ -1046,6 +1069,74 @@ try {
   }, financeSession.jar);
   assert.equal(item.response.status, 201);
   assert.equal(item.body.data.defaultUnitPrice, "12.3400");
+  // Regression: catalog:create without catalog:update/settings:manage must not reveal internal descriptions.
+  const [creatorRoleRows] = await db.execute(
+    "SELECT id FROM app_roles WHERE role_key='invoice_creator' LIMIT 1"
+  );
+  const [catalogCreateRows] = await db.execute(
+    "SELECT id FROM app_permissions WHERE permission_key='catalog:create' LIMIT 1"
+  );
+  assert.equal(creatorRoleRows.length, 1, "invoice_creator role exists");
+  assert.equal(catalogCreateRows.length, 1, "catalog:create permission exists");
+
+  const creatorRoleId = creatorRoleRows[0].id;
+  const catalogCreatePermissionId = catalogCreateRows[0].id;
+  const [existingCreateGrant] = await db.execute(
+    "SELECT role_id FROM role_permissions WHERE role_id=? AND permission_id=?",
+    [creatorRoleId, catalogCreatePermissionId]
+  );
+  assert.equal(existingCreateGrant.length, 0,
+    "invoice_creator starts without catalog:create in the reviewed baseline");
+
+  await db.execute(
+    "INSERT INTO role_permissions (role_id,permission_id) VALUES (?,?)",
+    [creatorRoleId, catalogCreatePermissionId]
+  );
+
+  try {
+    const [storedInternalRows] = await db.execute(
+      "SELECT internal_description FROM catalog_items WHERE id=?",
+      [item.body.data.id]
+    );
+    assert.equal(storedInternalRows[0]?.internal_description, "Not production data",
+      "fixture contains a real stored internal description");
+
+    const createOnlyDetail = await call(
+      "/api/v1/catalog/items/" + item.body.data.id,
+      {},
+      staffSession.jar
+    );
+    assert.equal(createOnlyDetail.response.status, 200);
+    assert.equal(
+      Object.hasOwn(createOnlyDetail.body.data, "internalDescription"),
+      false,
+      "catalog:create without catalog:update must not expose internal description in detail"
+    );
+
+    const createOnlyExport = await fetch(
+      new URL("/api/v1/catalog/items/export?status=all", baseUrl),
+      { headers: { Cookie: cookieHeader(staffSession.jar) }, cache: "no-store" }
+    );
+    assert.equal(createOnlyExport.status, 200);
+    const createOnlyCsv = await createOnlyExport.text();
+    const csvHeader = createOnlyCsv.split(/\r?\n/, 1)[0];
+    assert.equal(
+      csvHeader.split(",").includes("internalDescription"),
+      false,
+      "catalog:create without catalog:update must not export the internalDescription column"
+    );
+    assert.equal(
+      createOnlyCsv.includes("Not production data"),
+      false,
+      "catalog export must not reveal the stored internal description value"
+    );
+    console.log("PASS: create-only catalog permission cannot read or export internal descriptions.");
+  } finally {
+    await db.execute(
+      "DELETE FROM role_permissions WHERE role_id=? AND permission_id=?",
+      [creatorRoleId, catalogCreatePermissionId]
+    );
+  }
 
   // Phase 7: customer CRUD, duplicate warnings, optimistic concurrency, child records and safe archive.
   const phase7CustomerName = "Phase 07 Customer " + suffix;
@@ -1129,6 +1220,18 @@ try {
   assert.ok(duplicateCustomer.body.duplicateWarnings?.some((warning) => warning.id === phase7CustomerId),
     "customer create returns duplicate candidates for an explicit user decision");
 
+  for (const [label, billingAddress] of [
+    ["unknown address keys", { line1: "Strict address", county: "Not a reviewed key" }],
+    ["address lines over 255 characters", { line1: "X".repeat(256) }],
+    ["lower-case or three-letter country codes", { line1: "Strict address", countryCode: "in" }],
+    ["non-string address values", { line1: { nested: true } }],
+  ]) {
+    const rejected = await call("/api/v1/customers", {
+      method: "POST", body: JSON.stringify({ name: "Strict address " + suffix, billingAddress }),
+    }, financeSession.jar);
+    assert.equal(rejected.response.status, 422, "customer address rejects " + label);
+  }
+
   const phase7Detail = await call("/api/v1/customers/" + phase7CustomerId, {}, financeSession.jar);
   assert.equal(phase7Detail.response.status, 200);
   assert.equal(phase7Detail.body.data.contacts[0].fullName, "Phase 7 Contact");
@@ -1139,11 +1242,13 @@ try {
 
   assert.equal(phase7Detail.body.data.referenceCounts.invoices, null, "invoice counts remain hidden without legal-entity scope");
   assert.equal(phase7Detail.body.data.referenceCounts.quotations, null, "quotation counts remain hidden without legal-entity scope");
+  assert.equal(phase7Detail.body.data.referenceCounts.payments, null, "payment counts remain hidden when legal-entity attribution cannot be established");
   assert.equal("linkedInvoices" in phase7Detail.body.data, false, "linked invoice metadata is not exposed without legal-entity scope");
   const scopedCustomerDetail = await call("/api/v1/customers/" + phase7CustomerId, {}, scopedFinanceSession.jar);
   assert.equal(scopedCustomerDetail.response.status, 200);
   assert.equal(scopedCustomerDetail.body.data.referenceCounts.invoices, 1);
   assert.equal(scopedCustomerDetail.body.data.referenceCounts.quotations, 1);
+  assert.equal(scopedCustomerDetail.body.data.referenceCounts.payments, null, "entity scope alone cannot scope payments without payment-level entity attribution");
   assert.ok(scopedCustomerDetail.body.data.linkedInvoices.some(invoice => invoice.id === linkedInvoiceId),
     "authorized users see linked invoices only within their legal-entity scope");
   assert.ok(scopedCustomerDetail.body.data.linkedQuotations.some(quotation => quotation.id === linkedQuotationId),
@@ -1162,6 +1267,32 @@ try {
   assert.equal(updatedCustomer.body.data.recordVersion, 2);
   assert.equal(updatedCustomer.body.data.name, phase7CustomerName + " Updated");
   assert.ok(updatedCustomer.body.duplicateWarnings);
+  const [customerUpdateAudit] = await db.execute(
+    "SELECT after_json FROM audit_events WHERE entity_type='customer' AND entity_id=? AND action='customer.updated' ORDER BY created_at DESC LIMIT 1",
+    [phase7CustomerId]);
+  const customerUpdateAfter = typeof customerUpdateAudit[0].after_json === "string" ? JSON.parse(customerUpdateAudit[0].after_json) : customerUpdateAudit[0].after_json;
+  assert.deepEqual([...customerUpdateAfter.changedFields].sort(), ["billingAddress", "contacts", "name", "purchaseOrderReference", "taxIdentifiers"],
+    "customer update audit lists exactly the fields that changed");
+  const [contactRowsBefore] = await db.execute("SELECT id FROM customer_contacts WHERE customer_id=? ORDER BY id", [phase7CustomerId]);
+  const [taxRowsBefore] = await db.execute("SELECT id FROM customer_tax_identifiers WHERE customer_id=? ORDER BY id", [phase7CustomerId]);
+  const [[auditCountBefore]] = await db.execute("SELECT COUNT(*) AS n FROM audit_events WHERE entity_type='customer' AND entity_id=?", [phase7CustomerId]);
+  const unchangedCustomer = await call("/api/v1/customers/" + phase7CustomerId, {
+    method: "PATCH",
+    body: JSON.stringify({
+      expectedVersion: 2, name: phase7CustomerName + " Updated", purchaseOrderReference: "CI-PO-UPDATED-" + suffix, billingAddress: null,
+      contacts: [{ fullName: "Updated CI Contact", email: "UPDATED-" + suffix + "@example.invalid", isPrimary: true }],
+      taxIdentifiers: [{ identifierType: "other", countryCode: "IN", jurisdiction: "CI only", identifierValue: "TAX-UPDATED-" + suffix }],
+    }),
+  }, financeSession.jar);
+  assert.equal(unchangedCustomer.response.status, 200, "resubmitting identical customer values succeeds");
+  assert.equal(unchangedCustomer.body.data.unchanged, true);
+  assert.equal(unchangedCustomer.body.data.recordVersion, 2, "an unchanged customer does not advance its version");
+  const [contactRowsAfter] = await db.execute("SELECT id FROM customer_contacts WHERE customer_id=? ORDER BY id", [phase7CustomerId]);
+  const [taxRowsAfter] = await db.execute("SELECT id FROM customer_tax_identifiers WHERE customer_id=? ORDER BY id", [phase7CustomerId]);
+  assert.deepEqual(contactRowsAfter, contactRowsBefore, "unchanged contacts are not deleted and recreated");
+  assert.deepEqual(taxRowsAfter, taxRowsBefore, "unchanged tax identifiers are not deleted and recreated");
+  const [[auditCountAfter]] = await db.execute("SELECT COUNT(*) AS n FROM audit_events WHERE entity_type='customer' AND entity_id=?", [phase7CustomerId]);
+  assert.equal(Number(auditCountAfter.n), Number(auditCountBefore.n), "an unchanged customer update writes no audit event");
   const staleCustomerUpdate = await call("/api/v1/customers/" + phase7CustomerId, {
     method: "PATCH", body: JSON.stringify({ expectedVersion: 1, name: "Stale customer overwrite" }),
   }, financeSession.jar);
@@ -1172,12 +1303,13 @@ try {
     "INSERT INTO payments (id,customer_id,amount,currency,payment_date,method,status,recorded_by) VALUES (?,?,?, ?,CURDATE(),'OTHER','RECORDED',?)",
     [randomUUID(), phase7CustomerId, "10.0000", "INR", financeAdmin.userId],
   );
+  // Archive counts follow the customer-detail rule: only a caller with read permission and legal-entity scope sees them.
   const archivedCustomer = await call("/api/v1/customers/" + phase7CustomerId + "/archive", {
     method: "POST", body: JSON.stringify({ expectedVersion: 2, reason: "Phase 7 CI archive acceptance" }),
-  }, financeSession.jar);
+  }, scopedFinanceSession.jar);
   assert.equal(archivedCustomer.response.status, 200, "archive is a soft archive and preserves linked historic records");
   assert.equal(archivedCustomer.body.data.isActive, false);
-  assert.equal(archivedCustomer.body.data.referenceCounts.payments, 1);
+  assert.equal(archivedCustomer.body.data.referenceCounts.payments, null, "archive response never exposes an unscoped payment total");
   assert.equal(archivedCustomer.body.data.referenceCounts.invoices, 1);
   assert.equal(archivedCustomer.body.data.referenceCounts.quotations, 1);
   const archivedCustomerDetail = await call("/api/v1/customers/" + phase7CustomerId, {}, financeSession.jar);
@@ -1195,12 +1327,33 @@ try {
   const itemDetail = await call("/api/v1/catalog/items/" + item.body.data.id, {}, financeSession.jar);
   assert.equal(itemDetail.response.status, 200);
   assert.equal(itemDetail.body.data.recordVersion, 1);
+  assert.equal(itemDetail.body.data.referenceCounts.invoiceLines, null, "catalog invoice-line counts are hidden without legal-entity scope");
+  assert.equal(itemDetail.body.data.referenceCounts.quotationLines, null, "catalog quotation-line counts are hidden without legal-entity scope");
+  const scopedItemDetail = await call("/api/v1/catalog/items/" + item.body.data.id, {}, scopedFinanceSession.jar);
+  assert.equal(scopedItemDetail.body.data.referenceCounts.invoiceLines, 1, "scoped readers see invoice lines in their legal entities");
+  assert.equal(scopedItemDetail.body.data.referenceCounts.quotationLines, 0);
   const itemUpdated = await call("/api/v1/catalog/items/" + item.body.data.id, {
     method: "PATCH", body: JSON.stringify({ expectedVersion: 1, name: "Phase 07 Updated Service " + suffix, defaultUnitPrice: "12.3401" }),
   }, financeSession.jar);
   assert.equal(itemUpdated.response.status, 200);
   assert.equal(itemUpdated.body.data.recordVersion, 2);
   assert.equal(itemUpdated.body.data.defaultUnitPrice, "12.3401");
+  const [itemUpdateAudit] = await db.execute(
+    "SELECT before_json,after_json FROM audit_events WHERE entity_type='catalog_item' AND entity_id=? AND action='catalog_item.updated' ORDER BY created_at DESC LIMIT 1",
+    [item.body.data.id]);
+  const parseJsonColumn = (value) => typeof value === "string" ? JSON.parse(value) : value;
+  const itemAuditBefore = parseJsonColumn(itemUpdateAudit[0].before_json);
+  const itemAuditAfter = parseJsonColumn(itemUpdateAudit[0].after_json);
+  assert.deepEqual([...itemAuditAfter.changedFields].sort(), ["defaultUnitPrice", "name"], "catalog audit lists only changed fields");
+  assert.equal(itemAuditBefore.defaultUnitPrice, "12.3400", "catalog price change records the previous price");
+  assert.equal(itemAuditAfter.defaultUnitPrice, "12.3401", "catalog price change records the new price");
+  assert.equal("currency" in itemAuditAfter, false, "unchanged commercial fields are not recorded as changed");
+  const unchangedItem = await call("/api/v1/catalog/items/" + item.body.data.id, {
+    method: "PATCH", body: JSON.stringify({ expectedVersion: 2, defaultUnitPrice: "12.3401", currency: "INR" }),
+  }, financeSession.jar);
+  assert.equal(unchangedItem.response.status, 200);
+  assert.equal(unchangedItem.body.data.unchanged, true, "resubmitting identical catalog values is a no-op");
+  assert.equal(unchangedItem.body.data.recordVersion, 2);
   const [unchangedInvoiceLine] = await db.execute(
     "SELECT description,unit_price,line_total FROM invoice_lines WHERE id=?",
     [linkedInvoiceLineId],
@@ -1225,6 +1378,10 @@ try {
   }, financeSession.jar);
   assert.equal(archivedItem.response.status, 200);
   assert.equal(archivedItem.body.data.isActive, false);
+  assert.equal(archivedItem.body.data.referenceCounts.invoiceLines, null, "archive response hides counts from an unscoped caller");
+  const [itemArchiveAudit] = await db.execute(
+    "SELECT after_json FROM audit_events WHERE entity_type='catalog_item' AND entity_id=? AND action='catalog_item.archived' LIMIT 1", [item.body.data.id]);
+  assert.equal(parseJsonColumn(itemArchiveAudit[0].after_json).referenceCounts.invoiceLines, 1, "archive audit keeps the true reference totals");
   const archivedItemDetail = await call("/api/v1/catalog/items/" + item.body.data.id, {}, financeSession.jar);
   assert.equal(archivedItemDetail.response.status, 200, "archived catalog items stay readable for history");
   assert.equal(archivedItemDetail.body.data.isActive, false);
@@ -1241,9 +1398,12 @@ try {
   // Phase 7 CSV import/export: dry run never writes; commit is explicit and atomic; exports are permission-aware.
   const csvCell = (value) => `"${String(value).replaceAll('"','""')}"`;
   const csvCustomerCode = "CSV-" + suffix.toUpperCase();
+  const csvCustomerPhone = "+91-9" + String(BigInt("0x" + suffix) % 1000000000n).padStart(9, "0");
+  const [csvPhoneMatches] = await db.execute("SELECT id FROM customers WHERE phone=? LIMIT 1", [csvCustomerPhone]);
+  assert.equal(csvPhoneMatches.length, 0, "CSV fixture phone number is unique for this run");
   const customerCsv = [
     "customerCode,name,email,phone,billingAddressJson,shippingAddressJson,purchaseOrderReference,paymentTermsDays,taxIdentifier",
-    [csvCustomerCode, "CSV Import Customer " + suffix, "csv-" + suffix + "@example.invalid", "+91-9222222222",
+    [csvCustomerCode, "CSV Import Customer " + suffix, "csv-" + suffix + "@example.invalid", csvCustomerPhone,
       JSON.stringify({line1:"CSV Address",city:"Pune",countryCode:"IN"}), "", "CSV-PO-" + suffix, "15", ""].map(csvCell).join(","),
   ].join("\r\n");
   const csvPreview = await call("/api/v1/customers/import?mode=validate", {
@@ -1253,8 +1413,33 @@ try {
   assert.equal(csvPreview.body.data.valid, true);
   const csvBeforeCommit = await call("/api/v1/customers?query=" + encodeURIComponent(csvCustomerCode), {}, financeSession.jar);
   assert.equal(csvBeforeCommit.body.meta.pagination.total, 0, "validation-only CSV preview does not create rows");
+  assert.match(csvPreview.body.data.validationToken, /^v1\.\d+\.[A-Za-z0-9_-]{43}$/, "validation returns a signed, short-lived commit token");
+  const customerToken = csvPreview.body.data.validationToken;
+  const financeSessionId = await sessionIdFor(financeSession);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const tokenRejections = [
+    ["direct commit without a validation token", "/api/v1/customers/import?mode=commit", null, 422, "VALIDATION_TOKEN_REQUIRED", financeSession],
+    ["confirmDuplicates=true without a validation token", "/api/v1/customers/import?mode=commit&confirmDuplicates=true", null, 422, "VALIDATION_TOKEN_REQUIRED", financeSession],
+    ["a token issued to another user and session", "/api/v1/customers/import?mode=commit", customerToken, 409, "VALIDATION_TOKEN_INVALID", staffSession],
+    ["a token issued for the customer resource used on catalog import", "/api/v1/catalog/items/import?mode=commit", customerToken, 409, "VALIDATION_TOKEN_INVALID", financeSession],
+    ["an expired token", "/api/v1/customers/import?mode=commit", mintImportToken({ resource: "customers", userId: financeAdmin.userId, sessionId: financeSessionId, csv: customerCsv, expiresAt: nowSeconds - 1 }), 409, "VALIDATION_TOKEN_EXPIRED", financeSession],
+    ["a token whose expiry was edited", "/api/v1/customers/import?mode=commit", customerToken.replace(/^v1\.(\d+)\./, (_, exp) => "v1." + (Number(exp) + 3600) + "."), 409, "VALIDATION_TOKEN_INVALID", financeSession],
+    ["a token signed with another secret", "/api/v1/customers/import?mode=commit", "v1." + (nowSeconds + 600) + "." + createHmac("sha256", "not-the-server-secret").update("x").digest("base64url"), 409, "VALIDATION_TOKEN_INVALID", financeSession],
+  ];
+  for (const [label, path, token, status, code, session] of tokenRejections) {
+    const rejected = await call(path, { method: "POST", headers: importHeaders(token), body: customerCsv }, session.jar);
+    assert.equal(rejected.response.status, status, "CSV commit rejects " + label);
+    assert.equal(rejected.body.error.code, code, "CSV commit error code for " + label);
+  }
+  const tokenForOtherCsv = await call("/api/v1/customers/import?mode=commit", {
+    method: "POST", headers: importHeaders(customerToken), body: customerCsv + "\r\n",
+  }, financeSession.jar);
+  assert.equal(tokenForOtherCsv.response.status, 409, "CSV commit rejects a token issued for different CSV bytes");
+  assert.equal(tokenForOtherCsv.body.error.code, "VALIDATION_TOKEN_INVALID");
+  const csvAfterRejections = await call("/api/v1/customers?query=" + encodeURIComponent(csvCustomerCode) + "&status=all", {}, financeSession.jar);
+  assert.equal(csvAfterRejections.body.meta.pagination.total, 0, "rejected CSV commits write no rows");
   const csvCommitted = await call("/api/v1/customers/import?mode=commit", {
-    method: "POST", headers: { "Content-Type": "text/csv" }, body: customerCsv,
+    method: "POST", headers: importHeaders(customerToken), body: customerCsv,
   }, financeSession.jar);
   assert.equal(csvCommitted.response.status, 201, "a separately requested valid CSV commit creates the records atomically");
   assert.equal(csvCommitted.body.data.createdCount, 1);
@@ -1267,8 +1452,14 @@ try {
   }, financeSession.jar);
   assert.equal(duplicateCustomerPreview.response.status, 200);
   assert.ok(duplicateCustomerPreview.body.data.duplicateWarnings.length, "customer import reports possible duplicate names");
+  assert.equal(duplicateCustomerPreview.body.data.requiresDuplicateConfirmation, true);
+  const duplicateCustomerToken = duplicateCustomerPreview.body.data.validationToken;
+  const duplicateConfirmWithoutToken = await call("/api/v1/customers/import?mode=commit&confirmDuplicates=true", {
+    method: "POST", headers: importHeaders(null), body: duplicateCustomerCsv,
+  }, financeSession.jar);
+  assert.equal(duplicateConfirmWithoutToken.response.status, 422, "duplicate confirmation alone cannot bypass validation");
   const duplicateCustomerBlocked = await call("/api/v1/customers/import?mode=commit", {
-    method: "POST", headers: { "Content-Type": "text/csv" }, body: duplicateCustomerCsv,
+    method: "POST", headers: importHeaders(duplicateCustomerToken), body: duplicateCustomerCsv,
   }, financeSession.jar);
   assert.equal(duplicateCustomerBlocked.response.status, 409, "server blocks duplicate customer import until explicit confirmation");
   assert.equal(duplicateCustomerBlocked.body.error.code, "DUPLICATE_CONFIRMATION_REQUIRED");
@@ -1276,7 +1467,7 @@ try {
   const duplicateCustomerNotCreated = await call("/api/v1/customers?query=CSV-DUP-" + suffix.toUpperCase() + "&status=all", {}, financeSession.jar);
   assert.equal(duplicateCustomerNotCreated.body.meta.pagination.total, 0, "blocked duplicate import writes no rows");
   const duplicateCustomerConfirmed = await call("/api/v1/customers/import?mode=commit&confirmDuplicates=true", {
-    method: "POST", headers: { "Content-Type": "text/csv" }, body: duplicateCustomerCsv,
+    method: "POST", headers: importHeaders(duplicateCustomerToken), body: duplicateCustomerCsv,
   }, financeSession.jar);
   assert.equal(duplicateCustomerConfirmed.response.status, 201, "explicitly confirmed duplicate customer import can commit atomically");
 
@@ -1302,6 +1493,35 @@ try {
   assert.doesNotMatch(ordinaryExportText.split("\r\n")[0], /internalNotes|taxIdentifier|contactsJson|taxIdentifiersJson/,
     "customer CSV does not include privileged notes or tax identifier columns for ordinary customer readers");
 
+  // Formula escaping must keep spreadsheets inert and still round-trip exactly (phone numbers start with "+").
+  const formulaName = "=Formula Co " + suffix;
+  const formulaPhone = "+44 20 7946 " + suffix.slice(0, 4);
+  const formulaCustomer = await call("/api/v1/customers", {
+    method: "POST", body: JSON.stringify({ name: formulaName, phone: formulaPhone, purchaseOrderReference: "'=already quoted" }),
+  }, financeSession.jar);
+  assert.equal(formulaCustomer.response.status, 201);
+  const formulaExport = await fetch(new URL("/api/v1/customers/export?status=all", baseUrl), {
+    headers: { Cookie: cookieHeader(financeSession.jar) }, cache: "no-store",
+  });
+  const formulaExportLines = (await formulaExport.text()).split("\r\n");
+  const formulaLine = formulaExportLines.find((line) => line.includes("'" + formulaName));
+  assert.ok(formulaLine, "formula-like names are exported with a neutralising apostrophe");
+  assert.ok(formulaLine.includes("'" + formulaPhone), "phone numbers starting with + are exported inert");
+  assert.ok(formulaLine.includes("''=already quoted"), "values already starting with an apostrophe keep it after the escape");
+  const roundTripCsv = formulaExportLines[0] + "\r\n" + formulaLine + "\r\n";
+  const roundTripPreview = await call("/api/v1/customers/import?mode=validate", {
+    method: "POST", headers: importHeaders(null), body: roundTripCsv,
+  }, financeSession.jar);
+  assert.equal(roundTripPreview.response.status, 200, "an exported row validates for re-import");
+  const roundTripCommit = await call("/api/v1/customers/import?mode=commit&confirmDuplicates=true", {
+    method: "POST", headers: importHeaders(roundTripPreview.body.data.validationToken), body: roundTripCsv,
+  }, financeSession.jar);
+  assert.equal(roundTripCommit.response.status, 201);
+  const roundTripDetail = await call("/api/v1/customers/" + roundTripCommit.body.data.createdIds[0], {}, financeSession.jar);
+  assert.equal(roundTripDetail.body.data.name, formulaName, "formula escape is removed on re-import");
+  assert.equal(roundTripDetail.body.data.phone, formulaPhone, "phone numbers round-trip unchanged");
+  assert.equal(roundTripDetail.body.data.purchaseOrderReference, "'=already quoted", "a leading apostrophe in the data survives the round trip");
+
   const csvItemCode = "CSV-ITEM-" + suffix.toUpperCase();
   const catalogCsv = [
     "itemCode,itemType,name,customerDescription,internalDescription,unitCode,defaultUnitPrice,currency,defaultTaxCode",
@@ -1313,8 +1533,17 @@ try {
   }, financeSession.jar);
   assert.equal(catalogPreview.response.status, 200);
   assert.equal(catalogPreview.body.data.valid, true);
+  const catalogWithoutToken = await call("/api/v1/catalog/items/import?mode=commit", {
+    method: "POST", headers: importHeaders(null), body: catalogCsv,
+  }, financeSession.jar);
+  assert.equal(catalogWithoutToken.response.status, 422, "catalog commit without a validation token is rejected");
+  const catalogExpired = await call("/api/v1/catalog/items/import?mode=commit", {
+    method: "POST", headers: importHeaders(mintImportToken({ resource: "catalog", userId: financeAdmin.userId, sessionId: financeSessionId, csv: catalogCsv, expiresAt: Math.floor(Date.now() / 1000) - 1 })), body: catalogCsv,
+  }, financeSession.jar);
+  assert.equal(catalogExpired.response.status, 409, "catalog commit with an expired token is rejected");
+  assert.equal(catalogExpired.body.error.code, "VALIDATION_TOKEN_EXPIRED");
   const catalogCommitted = await call("/api/v1/catalog/items/import?mode=commit", {
-    method: "POST", headers: { "Content-Type": "text/csv" }, body: catalogCsv,
+    method: "POST", headers: importHeaders(catalogPreview.body.data.validationToken), body: catalogCsv,
   }, financeSession.jar);
   assert.equal(catalogCommitted.response.status, 201);
   assert.equal(catalogCommitted.body.data.createdCount, 1);
@@ -1327,13 +1556,18 @@ try {
   }, financeSession.jar);
   assert.equal(duplicateCatalogPreview.response.status, 200);
   assert.ok(duplicateCatalogPreview.body.data.duplicateWarnings.length, "catalog import reports possible duplicate names");
+  const duplicateCatalogToken = duplicateCatalogPreview.body.data.validationToken;
+  const duplicateCatalogConfirmWithoutToken = await call("/api/v1/catalog/items/import?mode=commit&confirmDuplicates=true", {
+    method: "POST", headers: importHeaders(null), body: duplicateCatalogCsv,
+  }, financeSession.jar);
+  assert.equal(duplicateCatalogConfirmWithoutToken.response.status, 422, "catalog duplicate confirmation alone cannot bypass validation");
   const duplicateCatalogBlocked = await call("/api/v1/catalog/items/import?mode=commit", {
-    method: "POST", headers: { "Content-Type": "text/csv" }, body: duplicateCatalogCsv,
+    method: "POST", headers: importHeaders(duplicateCatalogToken), body: duplicateCatalogCsv,
   }, financeSession.jar);
   assert.equal(duplicateCatalogBlocked.response.status, 409, "server blocks duplicate catalog import until explicit confirmation");
   assert.equal(duplicateCatalogBlocked.body.error.code, "DUPLICATE_CONFIRMATION_REQUIRED");
   const duplicateCatalogConfirmed = await call("/api/v1/catalog/items/import?mode=commit&confirmDuplicates=true", {
-    method: "POST", headers: { "Content-Type": "text/csv" }, body: duplicateCatalogCsv,
+    method: "POST", headers: importHeaders(duplicateCatalogToken), body: duplicateCatalogCsv,
   }, financeSession.jar);
   assert.equal(duplicateCatalogConfirmed.response.status, 201, "explicitly confirmed duplicate catalog import can commit atomically");
 
@@ -1344,7 +1578,7 @@ try {
   const catalogExportText = await catalogExport.text();
   assert.ok(catalogExportText.includes(csvItemCode));
   assert.ok(catalogExportText.includes("7.2500"), "catalog export retains exact decimal text");
-  console.log("PASS: Phase 7 CSV tests cover validation-only preview, atomic commit, row-numbered errors, customer/catalog exports, exact decimal values and permission-aware sensitive columns.");
+  console.log("PASS: Phase 7 CSV tests cover validation-only preview, signed validation tokens bound to user/session/resource/CSV bytes with expiry, lossless formula-escape round trip, atomic commit, row-numbered errors, customer/catalog exports, exact decimal values and permission-aware sensitive columns.");
 
   const invalid = await call("/api/v1/customers", {
     method: "POST", body: JSON.stringify({ name: "   ", unexpected: "rejected" }),
@@ -1474,7 +1708,8 @@ try {
 
   const inviteeSession = await login(invitee);
   assert.ok(inviteeSession.body.data.user.permissions.includes("customers:read"));
-  assert.ok(!inviteeSession.body.data.user.permissions.includes("customers:write"), "auditor role has no customer write permission");
+  assert.ok(!inviteeSession.body.data.user.permissions.includes("customers:create"), "auditor role has no customer create permission");
+  assert.ok(!inviteeSession.body.data.user.permissions.includes("customers:update"), "auditor role has no customer update permission");
   const roleChange = await call("/api/v1/users/" + invitation.body.data.userId, {
     method: "PATCH", body: JSON.stringify({ roleKeys: ["invoice_creator"] }),
   }, adminSession.jar);

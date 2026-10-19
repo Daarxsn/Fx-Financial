@@ -56,7 +56,7 @@ Security events record action, outcome and optional actor/subject/network metada
 
 ## 5. Roles and permission templates
 
-Reference seed supplies 22 permission keys and seven role definitions. On first seed only, when `role_permissions` is empty, it assigns a baseline least-privilege permission template to each role. It never creates users, assigns roles to users, or grants legal-entity scopes. If role-permission mappings already exist, the seed does not overwrite them.
+Reference seed supplies 24 permission keys and seven role definitions (Phase 07 migration 016 split `customers:write`/`catalog:write` into `:create` and `:update`). On first seed only, when `role_permissions` is empty, it assigns a baseline least-privilege permission template to each role. It never creates users, assigns roles to users, or grants legal-entity scopes. If role-permission mappings already exist, the seed does not overwrite them.
 
 | Role key | Baseline responsibility | Important boundary |
 |---|---|---|

@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     await assertCsrf(request);
-    const actor = await requirePermission("catalog:write");
+    const actor = await requirePermission("catalog:create");
     const parsed = catalogItemCreateSchema.parse(await request.json());
     const id = randomUUID();
     const itemCode = parsed.itemCode?.trim() || null;

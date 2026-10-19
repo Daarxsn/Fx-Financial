@@ -64,7 +64,7 @@ The Library contains `FX Brand Guidelines(2).pdf`, `myfx pos logo.zip`, `FX Digi
 2. Complete the Phase 02 sign-off packet with authorized people and actual evidence, or explicitly record decisions as blocked/not applicable with owner and rationale.
 3. Verify the Aiven plan's backup policy and complete the provider-level recovery drill; review DB grants and production deployment secrets/origin/proxy settings.
 4. Populate actual, approved legal entity/brand/tax/numbering/template configuration in the intended environment and re-check readiness; do not use CI/sample placeholders as actual values.
-5. Keep later-phase functionality honestly labeled until it has its own protected API, persistence, tests and UI. Phase 07 remains **not started**; customer/catalog CRUD/import/export implementation must not be mixed into this closure branch.
+5. Keep later-phase functionality honestly labeled until it has its own protected API, persistence, tests and UI. Phase 07 customer/catalog work is now **in progress** on `main` and is tracked in `docs/phase-07-customer-and-catalog.md`, separately from these Phase 00–06 closure items.
 
 ## Sign-off rule
 

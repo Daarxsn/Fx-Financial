@@ -72,16 +72,24 @@ export function parseCsv(source: string): CsvParseResult {
       continue;
     }
     const values: Record<string, string> = {};
-    normalized.forEach((key, i) => { if (key) values[key] = cells[i].trim(); });
+    normalized.forEach((key, i) => { if (key) values[key] = unescapeCsvCell(cells[i].trim()); });
     rows.push({ rowNumber, values });
   }
   return { headers, rows, errors };
 }
 
+// A cell that a spreadsheet could read as a formula (after any leading spaces or apostrophes) is exported
+// with one extra leading apostrophe; import removes exactly that one apostrophe. Values such as phone
+// numbers ("+91 …") therefore stay inert in a spreadsheet and still round-trip unchanged.
+const FORMULA_LEAD = /^[\s']*[=+\-@]/;
+
+export function unescapeCsvCell(value: string): string {
+  return value.startsWith("'") && FORMULA_LEAD.test(value.slice(1)) ? value.slice(1) : value;
+}
+
 export function csvEscape(value: unknown): string {
   let text = value === null || value === undefined ? "" : typeof value === "string" ? value : String(value);
-  // Prefix formula-capable strings to prevent spreadsheet formula execution when a file is opened.
-  if (/^[\s]*[=+@]/.test(text) || /^[\s]*-/.test(text)) text = "'" + text;
+  if (FORMULA_LEAD.test(text)) text = "'" + text;
   if (/[",\r\n]/.test(text)) return '"' + text.replace(/"/g, '""') + '"';
   return text;
 }
