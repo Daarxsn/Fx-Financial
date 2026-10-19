@@ -1162,7 +1162,7 @@ try {
     timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit",
   }).format(new Date());
   const quotationValidUntil = new Date(Date.parse(quotationDate + "T00:00:00.000Z") + 30 * 86400000).toISOString().slice(0,10);
-  const quotationKey = "phase10-quotation-" + suffix;
+  const quotationKey = "q-" + randomUUID();
   const quotationPayload = {
     legalEntityId: testLegalEntityId, brandId: null, customerId: phase7CustomerId, currency: "INR",
     invoiceDate: quotationDate, dueDate: null, validUntil: quotationValidUntil, paymentTermsDays: 30,
