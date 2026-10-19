@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { MasterDataWorkspace } from "@/components/master-data-workspace";
 import { InvoiceWorkspace } from "@/components/invoice-workspace";
+import { QuotationWorkspace } from "@/components/quotation-workspace";
 import { Breadcrumbs, Card, EmptyState, InlineAlert, PageHeader, StatusBadge } from "@/components/ui";
 
 const sections = {
@@ -19,13 +20,13 @@ const sections = {
   quotations: {
     title: "Quotations",
     eyebrow: "COMMERCIAL DOCUMENTS",
-    description: "Keep proposals organized, with their own lifecycle and numbering separate from issued invoices.",
+    description: "Create, manage and track quotations separately from invoices, then convert accepted quotes into invoice drafts.",
     icon: "quote" as const,
-    status: "Planned",
-    emptyTitle: "Quotations will appear here",
-    emptyDescription: "Quotation creation, approval, expiry and conversion to an invoice draft are planned. This page will use verified API data when those workflows are available.",
-    note: "Converting a quotation must revalidate the current customer, entity and approved tax policy.",
-    details: ["Proposal lifecycle", "Validity and status tracking", "Controlled invoice conversion"],
+    status: "Live draft workflow",
+    emptyTitle: "Quotation workflow",
+    emptyDescription: "Create drafts, edit their lines, record a customer decision, and convert accepted quotations to invoice drafts.",
+    note: "Marking a quotation as sent reserves its approved number and snapshots configuration. PDF generation and email delivery are not yet enabled.",
+    details: ["Create and edit quotation drafts", "Track validity and customer decisions", "Convert accepted quotations to invoice drafts"],
   },
   customers: {
     title: "Customers",
@@ -123,27 +124,30 @@ export default async function SectionPage({ params }: { params: Promise<{ sectio
         <StatusBadge tone={data.status.includes("available") ? "info" : data.status === "Planned" ? "warning" : "success"}>{data.status}</StatusBadge>
       </div>
 
-      {section === "invoices" ? <InvoiceWorkspace /> : section === "customers" || section === "catalog" ? <MasterDataWorkspace resource={section} /> : <div className="section-workspace-grid">
-        <Card className="section-data-card">
-          <div className="card-heading">
-            <div><h2>{section === "settings" ? "Configuration areas" : section === "reports" ? "Available views" : "Workspace records"}</h2><p>Honest state, ready for implementation.</p></div>
-            <span className="card-heading__icon"><Icon name="file" size={19} /></span>
+      {section === "invoices" ? <InvoiceWorkspace />
+        : section === "quotations" ? <QuotationWorkspace />
+        : section === "customers" || section === "catalog" ? <MasterDataWorkspace resource={section} />
+        : <div className="section-workspace-grid">
+          <Card className="section-data-card">
+            <div className="card-heading">
+              <div><h2>{section === "settings" ? "Configuration areas" : section === "reports" ? "Available views" : "Workspace records"}</h2><p>Honest state, ready for implementation.</p></div>
+              <span className="card-heading__icon"><Icon name="file" size={19} /></span>
+            </div>
+            <EmptyState icon={data.icon} title={data.emptyTitle} description={data.emptyDescription} />
+          </Card>
+          <Card className="section-guide-card">
+            <div className="card-heading">
+              <div><h2>What belongs here</h2><p>Scope of this workspace</p></div>
+              <span className="card-heading__icon"><Icon name="sparkles" size={19} /></span>
+            </div>
+            <ul className="feature-list">
+              {data.details.map((item) => <li key={item}><span><Icon name="check" size={15} /></span>{item}</li>)}
+            </ul>
+            <InlineAlert tone="info" title="Data integrity first">
+              This screen does not bypass permissions or treat browser-side calculations as authoritative.
+            </InlineAlert>
           </div>
-          <EmptyState icon={data.icon} title={data.emptyTitle} description={data.emptyDescription} />
-        </Card>
-        <Card className="section-guide-card">
-          <div className="card-heading">
-            <div><h2>What belongs here</h2><p>Scope of this workspace</p></div>
-            <span className="card-heading__icon"><Icon name="sparkles" size={19} /></span>
-          </div>
-          <ul className="feature-list">
-            {data.details.map((item) => <li key={item}><span><Icon name="check" size={15} /></span>{item}</li>)}
-          </ul>
-          <InlineAlert tone="info" title="Data integrity first">
-            This screen does not bypass permissions or treat browser-side calculations as authoritative.
-          </InlineAlert>
-        </Card>
-      </div>}
+        </div>}
     </div>
   );
 }
