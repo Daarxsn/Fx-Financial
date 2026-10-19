@@ -180,6 +180,49 @@ jobs:
         run: npm run ui:validate
       - name: Validate Phase 7 customer/catalog UI foundation
         run: npm run phase7:ui-test
+      - name: Install Playwright Chromium for Phase 7 browser acceptance
+        run: |
+          npm install --no-save --no-audit playwright@1.64.1
+          npx playwright install --with-deps chromium
+      - name: Run Phase 7 browser acceptance against disposable MySQL
+        env:
+          DATABASE_HOST: 127.0.0.1
+          DATABASE_PORT: 3306
+          DATABASE_NAME: falchion_ci
+          DATABASE_USER: root
+          DATABASE_PASSWORD: ci_root_password
+          DATABASE_SSL: "false"
+          SESSION_SECRET: "ci-only-session-secret-value-not-for-production-000000"
+          PHASE7_BROWSER_BASE_URL: http://127.0.0.1:3003
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/phase7-browser"
+          setsid ./node_modules/.bin/next dev --hostname 127.0.0.1 --port 3003 > "$RUNNER_TEMP/phase7-browser/next.log" 2>&1 &
+          server_pid=$!
+          cleanup_server() {
+            kill -- "-$server_pid" 2>/dev/null || kill "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+          }
+          trap cleanup_server EXIT
+          ready="false"
+          for attempt in $(seq 1 30); do
+            status="$(curl -sS -o "$RUNNER_TEMP/phase7-browser/health.json" -w '%{http_code}' http://127.0.0.1:3003/api/health || true)"
+            if [ "$status" = "200" ]; then ready="true"; break; fi
+            sleep 2
+          done
+          if [ "$ready" != "true" ]; then
+            cat "$RUNNER_TEMP/phase7-browser/next.log"
+            exit 1
+          fi
+          npm run phase7:browser-test
+      - name: Upload browser diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase7-browser-diagnostics
+          path: ${{ runner.temp }}/phase7-browser/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Lint
         run: npm run lint
       - name: TypeScript
