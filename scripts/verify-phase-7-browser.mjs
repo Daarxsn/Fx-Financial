@@ -94,7 +94,7 @@ try {
   await page.waitForURL(url => url.pathname === "/login");
   await page.getByRole("heading", { name: "Welcome back." }).waitFor();
   await page.getByLabel("Work email").fill(email);
-  await page.getByLabel("Password").fill(password);
+  await page.locator("#login-password").fill(password);
   await page.getByRole("button", { name: /Sign in/i }).click();
   await page.waitForURL(url => url.pathname === "/");
   await page.locator(".app-shell").waitFor({ state: "visible" });
