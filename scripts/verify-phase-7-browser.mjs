@@ -109,8 +109,11 @@ try {
   await page.getByLabel(/Customer \/ legal name/).fill(customerName);
   await page.locator("#email").fill(`customer-${suffix.toLowerCase()}@example.invalid`);
   await page.getByRole("button", { name: "Create record", exact: true }).click();
+  await page.waitForTimeout(500);
+  console.log("DEBUG: customer-create URL=" + page.url());
+  console.log("DEBUG: customer-create visible page text:\\n" + (await page.locator("body").innerText()).slice(-6000));
+  await page.getByText("Record created.", { exact: true }).waitFor({ timeout: 15000 });
   await page.getByRole("heading", { name: customerName, exact: true }).waitFor();
-  await page.getByText("Record created.", { exact: true }).waitFor();
   pass("Customer create workflow persists data through the real UI and API.");
 
   await page.getByRole("button", { name: "Edit record", exact: true }).click();
@@ -186,8 +189,12 @@ try {
 } catch (error) {
   if (page) {
     try {
+      console.error("DEBUG: failing browser URL=" + page.url());
+      console.error("DEBUG: failing browser visible page text:\\n" + (await page.locator("body").innerText()).slice(-8000));
       await page.screenshot({ path: `${artifactDirectory}/failure.png`, fullPage: true });
-    } catch { /* Preserve the original assertion or browser error. */ }
+    } catch (diagnosticError) {
+      console.error("DEBUG: browser diagnostics failed: " + String(diagnosticError));
+    }
   }
   throw error;
 } finally {
