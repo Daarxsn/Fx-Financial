@@ -33,9 +33,9 @@ export async function POST(request: NextRequest, context: Context) {
     const [rows] = await conn.execute<(RowDataPacket & {
       id: string; legal_entity_id: string; brand_id: string | null; customer_id: string; status: string;
       record_version: number; issue_date: Date | string | null; valid_until: Date | string | null;
-      quotation_number: string | null; currency: string;
+      quotation_number: string | null; currency: string; time_zone: string | null;
     })[]>(
-      "SELECT id,legal_entity_id,brand_id,customer_id,status,record_version,issue_date,valid_until,quotation_number,currency FROM quotations WHERE id=? LIMIT 1 FOR UPDATE",
+      "SELECT q.id,q.legal_entity_id,q.brand_id,q.customer_id,q.status,q.record_version,q.issue_date,q.valid_until,q.quotation_number,q.currency,le.time_zone FROM quotations q JOIN legal_entities le ON le.id=q.legal_entity_id WHERE q.id=? LIMIT 1 FOR UPDATE",
       [quotationId],
     );
     if (!rows.length || !actor.legalEntityIds.includes(rows[0].legal_entity_id)) {
@@ -47,7 +47,11 @@ export async function POST(request: NextRequest, context: Context) {
       await conn.rollback();
       return jsonNoStore({ error: { code: "VERSION_CONFLICT", message: "This quotation changed. Reload it before changing status." } }, 409);
     }
-    const today = calendarDateInTimeZone("Asia/Kolkata") ?? new Date().toISOString().slice(0, 10);
+    const today = calendarDateInTimeZone(row.time_zone);
+    if (today === null) {
+      await conn.rollback();
+      return jsonNoStore({ error: { code: "CONFIGURATION_NOT_READY", message: "The legal entity timezone is invalid; quotation validity cannot be evaluated safely." } }, 409);
+    }
     const validUntil = dateText(row.valid_until);
     const expired = validUntil !== null && validUntil < today;
     const current = row.status;
@@ -66,11 +70,13 @@ export async function POST(request: NextRequest, context: Context) {
     let customerSnapshot: unknown = null;
     let supplierSnapshot: unknown = null;
     if (target === "SENT") {
-      const [entities] = await conn.execute<(RowDataPacket & { time_zone: string | null })[]>(
-        "SELECT time_zone FROM legal_entities WHERE id=? AND is_active=TRUE LIMIT 1 FOR UPDATE", [row.legal_entity_id],
+      const [entities] = await conn.execute<(RowDataPacket & { id: string })[]>(
+        "SELECT id FROM legal_entities WHERE id=? AND is_active=TRUE LIMIT 1 FOR UPDATE", [row.legal_entity_id],
       );
       if (!entities.length) throw new QuotationValidationError("An active legal entity is required before sending a quotation.");
-      issueDate = calendarDateInTimeZone(entities[0].time_zone) ?? today;
+      // Reuse the business date computed from the locked entity row so a midnight boundary
+      // cannot produce a different date halfway through this transition.
+      issueDate = today;
       const [customerRows] = await conn.execute<(RowDataPacket & {
         id: string; name: string; email: string | null; phone: string | null; billing_address_json: unknown; tax_identifier: string | null;
       })[]>(

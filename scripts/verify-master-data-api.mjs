@@ -1267,6 +1267,50 @@ try {
   const cancelledQuotation = await call("/api/v1/quotations/" + quotationId, {}, quotationFinanceSession.jar);
   assert.equal(cancelledQuotation.response.status, 200);
   assert.equal(cancelledQuotation.body.data.status, "CANCELLED");
+
+  // Pack 2: list, detail and status transitions must agree on the legal entity's business date.
+  const businessDateParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const quotationBusinessToday = businessDateParts.find(part => part.type === "year")?.value + "-" +
+    businessDateParts.find(part => part.type === "month")?.value + "-" +
+    businessDateParts.find(part => part.type === "day")?.value;
+  const quotationYesterdayDate = new Date(quotationBusinessToday + "T00:00:00.000Z");
+  quotationYesterdayDate.setUTCDate(quotationYesterdayDate.getUTCDate() - 1);
+  const quotationYesterday = quotationYesterdayDate.toISOString().slice(0, 10);
+  const expiredFixture = await call("/api/v1/quotations", {
+    method: "POST", headers: { "Idempotency-Key": "q-expiry-" + randomUUID() },
+    body: JSON.stringify({ ...quotationPayload, notes: "Pack 2 quotation expiry fixture" }),
+  }, quotationFinanceSession.jar);
+  assert.equal(expiredFixture.response.status, 201, "expiry fixture quotation can be created");
+  const expiredQuotationId = expiredFixture.body.data.id;
+  await db.execute(
+    "UPDATE quotations SET status='SENT',valid_until=? WHERE id=? AND status='DRAFT'",
+    [quotationYesterday, expiredQuotationId],
+  );
+  const expiredDetail = await call("/api/v1/quotations/" + expiredQuotationId, {}, quotationFinanceSession.jar);
+  assert.equal(expiredDetail.response.status, 200);
+  assert.equal(expiredDetail.body.data.status, "EXPIRED",
+    "quotation detail labels a sent quotation expired after the entity business date passes validUntil");
+  const expiredList = await call(
+    "/api/v1/quotations?status=EXPIRED&query=" + encodeURIComponent(quotationCustomerName) + "&limit=25&offset=0",
+    {}, quotationFinanceSession.jar,
+  );
+  assert.equal(expiredList.response.status, 200);
+  assert.ok(expiredList.body.data.some(row => row.id === expiredQuotationId),
+    "quotation list expiry filter agrees with quotation detail");
+  const sentList = await call(
+    "/api/v1/quotations?status=SENT&query=" + encodeURIComponent(quotationCustomerName) + "&limit=25&offset=0",
+    {}, quotationFinanceSession.jar,
+  );
+  assert.equal(sentList.response.status, 200);
+  assert.equal(sentList.body.data.some(row => row.id === expiredQuotationId), false,
+    "expired quotations no longer appear under the SENT status filter");
+  const acceptExpired = await call("/api/v1/quotations/" + expiredQuotationId + "/status", {
+    method: "POST", body: JSON.stringify({ status: "ACCEPTED", expectedVersion: 1 }),
+  }, quotationFinanceSession.jar);
+  assert.equal(acceptExpired.response.status, 409, "an expired quotation cannot be accepted");
+  assert.equal(acceptExpired.body.error.code, "INVALID_STATUS_TRANSITION");
   // Pack 2: conversion must be atomic and idempotent even when two retries race.
   // This is a CI-only accepted-quotation state fixture: quote status transition gates are
   // separately tested by the quotation status route; this test isolates conversion behavior.

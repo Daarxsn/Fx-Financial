@@ -6,7 +6,7 @@ import { requirePermission } from "@/lib/auth/authorize";
 import { assertCsrf } from "@/lib/auth/csrf";
 import { apiError, jsonNoStore } from "@/lib/http/api-response";
 import { subtractMoney } from "@/lib/finance/invoice-calculation";
-import { canonicalJson } from "@/lib/configuration/service";
+import { calendarDateInTimeZone, canonicalJson } from "@/lib/configuration/service";
 import { InvoiceDraftValidationError } from "@/lib/finance/invoice-draft-service";
 import { quotationCreateSchema } from "@/lib/validation/quotation";
 import {
@@ -45,10 +45,27 @@ export async function GET(request: NextRequest) {
       return jsonNoStore({ error: { code: "VALIDATION_ERROR", message: "limit must be 1–100 and offset must be between 0 and 1000000." } }, 400);
     }
     if (!scope.length) return jsonNoStore({ data: [], pagination: { limit, offset, total: 0, hasMore: false } });
-    const effectiveStatus = "CASE WHEN q.status='SENT' AND q.valid_until IS NOT NULL AND q.valid_until<CURRENT_DATE() THEN 'EXPIRED' ELSE q.status END";
+    const [entityRows] = await pool.query<(RowDataPacket & { id: string; time_zone: string | null })[]>(
+      "SELECT id,time_zone FROM legal_entities WHERE id IN (" + scope.map(() => "?").join(",") + ")",
+      scope,
+    );
+    const expiryParams: unknown[] = [];
+    const expiryConditions: string[] = [];
+    for (const entity of entityRows) {
+      const businessDate = calendarDateInTimeZone(entity.time_zone);
+      if (businessDate === null) continue;
+      expiryConditions.push("(q.legal_entity_id=? AND q.valid_until < ?)");
+      expiryParams.push(entity.id, businessDate);
+    }
+    const expiryPredicate = expiryConditions.length ? expiryConditions.join(" OR ") : "1=0";
+    const effectiveStatus = "CASE WHEN q.status='SENT' AND q.valid_until IS NOT NULL AND (" +
+      expiryPredicate + ") THEN 'EXPIRED' ELSE q.status END";
     const clauses = [`q.legal_entity_id IN (${scope.map(() => "?").join(",")})`];
     const params: unknown[] = [...scope];
-    if (status !== "all") { clauses.push(`${effectiveStatus}=?`); params.push(status); }
+    if (status !== "all") {
+      clauses.push(`${effectiveStatus}=?`);
+      params.push(...expiryParams, status);
+    }
     const query = (request.nextUrl.searchParams.get("query") ?? "").trim().slice(0, 100);
     if (query) {
       const escaped = query.replace(/[\\%_]/g, "\\$&");
@@ -67,7 +84,7 @@ export async function GET(request: NextRequest) {
         q.record_version,q.converted_invoice_id,q.created_at,q.updated_at
        FROM quotations q JOIN customers c ON c.id=q.customer_id ${where}
        ORDER BY COALESCE(q.issue_date,DATE(q.created_at)) DESC,q.created_at DESC,q.id DESC LIMIT ? OFFSET ?`,
-      [...params, limit, offset],
+      [...expiryParams, ...params, limit, offset],
     );
     const [[count]] = await pool.query<(RowDataPacket & { total: number })[]>(
       `SELECT COUNT(*) AS total FROM quotations q JOIN customers c ON c.id=q.customer_id ${where}`, params,

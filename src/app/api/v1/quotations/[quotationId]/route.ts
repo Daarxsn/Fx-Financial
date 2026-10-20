@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/auth/authorize";
 import { assertCsrf } from "@/lib/auth/csrf";
 import { apiError, jsonNoStore } from "@/lib/http/api-response";
 import { subtractMoney } from "@/lib/finance/invoice-calculation";
+import { isQuotationExpired } from "@/lib/finance/quotation-expiry";
 import { InvoiceDraftValidationError } from "@/lib/finance/invoice-draft-service";
 import { quotationUpdateSchema } from "@/lib/validation/quotation";
 import {
@@ -41,13 +42,14 @@ export async function GET(_request: NextRequest, context: Context) {
       id: string; legal_entity_id: string; brand_id: string | null; customer_id: string; customer_name: string;
       quotation_number: string | null; status: string; record_version: number; issue_date: Date | string | null;
       valid_until: Date | string | null; currency: string; subtotal: string; discount_total: string; tax_total: string;
-      grand_total: string; notes: string | null; payment_terms_days: number | null; customer_snapshot: unknown;
+      grand_total: string; notes: string | null; payment_terms_days: number | null; time_zone: string | null; customer_snapshot: unknown;
       supplier_snapshot: unknown; converted_invoice_id: string | null; created_at: Date | string; updated_at: Date | string;
     })[]>(
       `SELECT q.id,q.legal_entity_id,q.brand_id,q.customer_id,c.name AS customer_name,q.quotation_number,q.status,
         q.record_version,q.issue_date,q.valid_until,q.currency,q.subtotal,q.discount_total,q.tax_total,q.grand_total,
-        q.notes,q.payment_terms_days,q.customer_snapshot,q.supplier_snapshot,q.converted_invoice_id,q.created_at,q.updated_at
-       FROM quotations q JOIN customers c ON c.id=q.customer_id WHERE q.id=? LIMIT 1`,
+        q.notes,q.payment_terms_days,le.time_zone,q.customer_snapshot,q.supplier_snapshot,q.converted_invoice_id,q.created_at,q.updated_at
+       FROM quotations q JOIN customers c ON c.id=q.customer_id
+       JOIN legal_entities le ON le.id=q.legal_entity_id WHERE q.id=? LIMIT 1`,
       [quotationId],
     );
     if (!rows.length || !actor.legalEntityIds.includes(rows[0].legal_entity_id)) {
@@ -66,7 +68,8 @@ export async function GET(_request: NextRequest, context: Context) {
     );
     const row = rows[0];
     const validUntil = dateText(row.valid_until);
-    const status = row.status === "SENT" && validUntil !== null && validUntil < new Date().toISOString().slice(0, 10) ? "EXPIRED" : row.status;
+    const expired = isQuotationExpired(validUntil, row.time_zone);
+    const status = row.status === "SENT" && expired === true ? "EXPIRED" : row.status;
     return jsonNoStore({ data: {
       id: row.id, legalEntityId: row.legal_entity_id, brandId: row.brand_id, customerId: row.customer_id,
       customerName: row.customer_name, quotationNumber: row.quotation_number, status,

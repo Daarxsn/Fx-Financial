@@ -7,6 +7,7 @@ import {
   loadEntity, readinessForEntity, reserveDocumentNumber, sha256,
 } from "@/lib/configuration/service";
 import { ConfigurationConflictError, ConfigurationNotReadyError } from "@/lib/configuration/errors";
+import { isQuotationExpired } from "@/lib/finance/quotation-expiry";
 import {
   numberingCreateSchema, taxRegistrationCreateSchema, taxRuleCreateSchema, templateCreateSchema,
 } from "@/lib/validation/configuration";
@@ -23,6 +24,14 @@ function verifyConfigurationDateValidation() {
     "entities without a timezone use the Asia/Kolkata product default");
   assert.equal(calendarDateInTimeZone("Invalid/Timezone", boundaryInstant), null,
     "invalid configured timezones fail closed");
+  assert.equal(isQuotationExpired("2026-10-15", "UTC", boundaryInstant), false,
+    "a quotation remains valid through its validUntil date in UTC");
+  assert.equal(isQuotationExpired("2026-10-15", "Asia/Kolkata", boundaryInstant), true,
+    "quotation expiry uses the entity's business date when it differs from UTC");
+  assert.equal(isQuotationExpired("2026-10-16", "Asia/Kolkata", boundaryInstant), false,
+    "quotation validUntil remains inclusive through the entity's business calendar day");
+  assert.equal(isQuotationExpired("2026-10-15", "Invalid/Timezone", boundaryInstant), null,
+    "invalid timezones leave quotation expiry indeterminate instead of falling back to UTC");
   const legalEntityId = randomUUID();
   const taxRule = {
     legalEntityId, taxCode: "CI_DATE_TEST", displayName: "CI date test",
