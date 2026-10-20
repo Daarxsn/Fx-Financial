@@ -6,9 +6,10 @@ import { Icon } from "@/components/icon";
 import { Breadcrumbs, Card, EmptyState, PageHeader, StatusBadge } from "@/components/ui";
 
 const modules = [
-  { number: "01", title: "Invoices", description: "A clear path from draft to issue-ready records.", href: "/invoices", icon: "invoice" as const, status: "Foundation ready" },
-  { number: "02", title: "Customers", description: "Organize the customer information future documents rely on.", href: "/customers", icon: "users" as const, status: "Master data" },
-  { number: "03", title: "Items & services", description: "Prepare reusable descriptions, units and exact-decimal price defaults.", href: "/catalog", icon: "box" as const, status: "Master data" },
+  { number: "01", title: "Invoices", description: "Create drafts, review server-calculated totals and issue after required finance checks.", href: "/invoices", icon: "invoice" as const, status: "Document workflow" },
+  { number: "02", title: "Quotations", description: "Create drafts, track customer decisions and convert accepted quotes into invoice drafts.", href: "/quotations", icon: "quote" as const, status: "Document workflow" },
+  { number: "03", title: "Customers", description: "Manage customer records that can be reused across invoices and quotations.", href: "/customers", icon: "users" as const, status: "Master data" },
+  { number: "04", title: "Items & services", description: "Manage reusable products and services, units and exact-decimal price defaults.", href: "/catalog", icon: "box" as const, status: "Master data" },
 ];
 
 export default function HomePage() {
@@ -24,7 +25,7 @@ export default function HomePage() {
         <div className="welcome-panel__content">
           <StatusBadge tone="info" icon="sparkles">Workspace foundation</StatusBadge>
           <h2 id="welcome-title">A better way to keep business moving.</h2>
-          <p>The shared interface is ready. Business workflows will become available as their secured APIs and company rules are completed.</p>
+          <p>Use Invoices to create drafts and issue financial documents, or Quotations to prepare quotes, record customer decisions and convert accepted quotes into invoice drafts. Your role, legal-entity access and approved company setup determine which actions are available. PDF generation and email delivery are not enabled yet.</p>
           <div className="welcome-panel__foot">
             <span className="welcome-panel__live"><span aria-hidden="true" /> UI foundation active</span>
             <span className="welcome-panel__separator" aria-hidden="true" />
