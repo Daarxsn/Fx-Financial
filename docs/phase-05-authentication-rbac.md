@@ -56,11 +56,11 @@ Security events record action, outcome and optional actor/subject/network metada
 
 ## 5. Roles and permission templates
 
-Reference seed supplies 24 permission keys and seven role definitions (Phase 07 migration 016 split `customers:write`/`catalog:write` into `:create` and `:update`). On first seed only, when `role_permissions` is empty, it assigns a baseline least-privilege permission template to each role. It never creates users, assigns roles to users, or grants legal-entity scopes. If role-permission mappings already exist, the seed does not overwrite them.
+Reference seed supplies 24 permission keys and seven role definitions (Phase 07 migration 016 split `customers:write`/`catalog:write` into `:create` and `:update`). On first seed only, when `role_permissions` is empty, it assigns the reviewed role templates. The `system_admin` role is displayed as **Super Administrator** and receives all 24 registered permission keys. Migration 018 applies the same grant to already-seeded databases. The other six roles retain least-privilege mappings. The seed never creates users, assigns roles to users, or grants user-level legal-entity scopes. If role-permission mappings already exist, the seed does not overwrite them.
 
 | Role key | Baseline responsibility | Important boundary |
 |---|---|---|
-| `system_admin` | User access, application settings and audit read | No automatic invoice issue, payment reversal or other financial mutation grant |
+| `system_admin` | **Super Administrator**: all implemented modules, all finance permissions, user access and configuration approvals across all legal entities | Highest-trust role; reserve for the CEO or a specifically approved test administrator |
 | `finance_admin` | Approved finance master data and finance workflows | No automatic user administration grant |
 | `invoice_creator` | Customer/catalog read and write; invoice draft and quotation work | Cannot issue/cancel invoices or reverse receipts under the baseline |
 | `invoice_issuer` | Read customer/catalog/invoices and issue within assigned scope | Does not get payment reversal or user administration |
@@ -68,7 +68,7 @@ Reference seed supplies 24 permission keys and seven role definitions (Phase 07 
 | `approver` | Read and decide approval requests | Assignment thresholds/self-approval rules still require business workflow implementation |
 | `auditor` | Read-only access to the explicitly granted read surfaces and audit | No customer/catalog/finance mutation grants |
 
-Access still requires both the specific permission and legal-entity scope where applicable. These are starter templates, not approval to assign any actual staff member or issuer entity.
+Ordinary roles require their assigned permissions and legal-entity scope. Super Administrator is the deliberate root-role exception: its current permissions are resolved from the permission catalog and it receives global scope over all existing legal entities without individual scope rows. Keep this role limited to the CEO or a specifically approved test administrator; it is not an ordinary staff role.
 
 ## 6. User and privilege lifecycle
 
@@ -77,7 +77,7 @@ Access still requires both the specific permission and legal-entity scope where 
 - User administration supports `ACTIVE`, `SUSPENDED` and `DEACTIVATED`; invitation activation transitions from `INVITED` to `ACTIVE`.
 - A status, role or scope change is audited and revokes active sessions immediately.
 - A user cannot change their own administrative record through the current user-admin route; this avoids accidental lockout.
-- Only an existing `system_admin` may grant/change a `system_admin` assignment. The final active system administrator cannot be demoted or suspended.
+- Only an existing `system_admin` (Super Administrator) may grant/change a Super Administrator assignment. The final active Super Administrator cannot be demoted or suspended.
 - Passwordless invitation records cannot be changed directly to `ACTIVE`; activation through the single-use flow must set a password first.
 - A one-time bootstrap script creates the first system administrator when no user has the `system_admin` role. It requires explicit confirmation and environment-provided values; no account or password is committed to source code.
 
@@ -96,7 +96,7 @@ Do not store these in a tracked `.env` file, paste them into chat, or include th
 
 ## 7. Server-side authorization boundaries
 
-- The default is deny. API handlers call `requirePermission` against the current session's permission set.
+- The default is deny. API handlers call `requirePermission` against the current session's permission set. `system_admin` is the explicit Super Administrator exception and has every registered permission; session resolution provides its global legal-entity scope.
 - Client-provided permission, role, actor ID and legal-entity scope are not trusted.
 - Customer/catalog create routes require write permissions and CSRF; list routes require read permission.
 - User directory, invitation creation and user privilege changes require `users:manage`, with additional system-admin and last-admin checks.

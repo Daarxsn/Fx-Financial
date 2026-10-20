@@ -22,7 +22,7 @@ const checks = [
   ["mobile topbar hides redundant environment decorations below 520px", css.includes("@media (max-width: 520px)") && css.includes(".topbar .environment-pill, .topbar .topbar__divider { display: none; }")],
   ["invitation UI requires an explicit finance role and entity scope", access.includes("roleKeys: [roleKey], legalEntityIds: entityIds") && access.includes("Select at least one active legal entity")],
   ["activation link is treated as a one-time bearer secret", access.includes("single-use, 24-hour") && access.includes("Copy activation link") && access.includes("expiresInHours")],
-  ["finance access is not silently elevated for system administrators", access.includes("System Administrator is intentionally not a finance superuser") && !access.includes('roleKeys.includes("finance_admin")')],
+  ["Super Administrator is explicitly labeled and explains global finance access", access.includes('label: "Super Administrator"') && access.includes("Full access to every implemented module") && access.includes('roleKeys: [roleKey], legalEntityIds: entityIds')],
   ["team directory shows account state, role and legal-entity scope count", access.includes("Team access") && access.includes("legalEntityCount") && access.includes("accountStatus")],
 ];
 for (const [name, pass] of checks) {

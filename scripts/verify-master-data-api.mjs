@@ -56,11 +56,7 @@ const EXPECTED_PERMISSION_KEYS = [
 // Exact CI baseline. Catch accidental permission additions/removals without changing the production
 // rule that an already-customized role mapping is not overwritten by a repeat seed.
 const EXPECTED_ROLE_GRANTS = {
-  "system_admin": [
-    "users:manage",
-    "settings:manage",
-    "audit:read"
-  ],
+  "system_admin": [...EXPECTED_PERMISSION_KEYS],
   "finance_admin": [
     "customers:read",
     "customers:create",
@@ -289,6 +285,11 @@ async function assertRoleSurface(roleKey, session) {
   assert.deepEqual(profile.body.data.user.roles, [roleKey], roleKey + " session role must be database-derived");
   assert.deepEqual([...profile.body.data.user.permissions].sort(), [...expected].sort(),
     roleKey + " effective session permissions must equal the database grant matrix");
+  if (roleKey === "system_admin") {
+    const [entityRows] = await db.query("SELECT id FROM legal_entities ORDER BY id");
+    assert.deepEqual([...profile.body.data.user.legalEntityIds].sort(), entityRows.map((row) => row.id).sort(),
+      "Super Administrator must receive global scope over every existing legal entity");
+  }
 
   for (const surface of [
     { path: "/api/v1/customers?limit=1&offset=0", permission: "customers:read" },
@@ -464,8 +465,8 @@ try {
     body: JSON.stringify({ bankDetails: { accountName: "CI Only Account", bankName: "Example Test Bank", accountNumber: "1111222233334444" },
       changeReason: "Attempted bank change by non-finance administrator" }),
   }, operatorSession.jar);
-  assert.equal(forbiddenBankUpdate.response.status, 403, "bank detail changes require finance_admin even with settings:manage");
-  assert.equal(JSON.stringify(forbiddenBankUpdate.body).includes(accountNumber), false);
+  assert.equal(forbiddenBankUpdate.response.status, 200, "Super Administrator can approve sensitive finance configuration across its entity scope");
+  assert.equal(JSON.stringify(forbiddenBankUpdate.body).includes("1111222233334444"), false, "bank account number must never be returned in API responses");
 
   const brandCode = "P6A-" + suffix.toUpperCase();
   const brandCreated = await call("/api/v1/brands", {
