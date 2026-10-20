@@ -182,6 +182,21 @@ jobs:
         run: npm run phase7:ui-test
       - name: Validate invoice/quotation access and onboarding UX
         run: npm run invoice:access-ui-test
+      - name: Lint
+        run: npm run lint
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Production build
+        run: npm run build
+        env:
+          DATABASE_HOST: 127.0.0.1
+          DATABASE_PORT: 3306
+          DATABASE_NAME: ci_placeholder
+          DATABASE_USER: ci_placeholder
+          DATABASE_PASSWORD: ci_placeholder
+          DATABASE_SSL: "true"
+          SESSION_SECRET: "ci-only-session-secret-value-not-for-production-000000"
+
       - name: Install Playwright Chromium for Phase 7 browser acceptance
         run: |
           npm install --no-save --no-audit playwright@1.64.1
@@ -231,17 +246,3 @@ jobs:
           path: ${{ runner.temp }}/phase7-browser/
           if-no-files-found: ignore
           retention-days: 7
-      - name: Lint
-        run: npm run lint
-      - name: TypeScript
-        run: npm run typecheck
-      - name: Production build
-        run: npm run build
-        env:
-          DATABASE_HOST: 127.0.0.1
-          DATABASE_PORT: 3306
-          DATABASE_NAME: ci_placeholder
-          DATABASE_USER: ci_placeholder
-          DATABASE_PASSWORD: ci_placeholder
-          DATABASE_SSL: "true"
-          SESSION_SECRET: "ci-only-session-secret-value-not-for-production-000000"
