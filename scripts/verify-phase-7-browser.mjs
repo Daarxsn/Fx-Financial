@@ -88,7 +88,19 @@ try {
   const context = await browser.newContext({ viewport: { width: 1365, height: 900 } });
   page = await context.newPage();
   page.setDefaultTimeout(15000);
-  page.on("pageerror", error => runtimeErrors.push(error.message));
+  page.on("pageerror", error => {
+    runtimeErrors.push(error.message);
+    console.error("BROWSER PAGE ERROR: " + error.message);
+  });
+  page.on("console", message => {
+    if (message.type() === "error") console.error("BROWSER CONSOLE ERROR: " + message.text());
+  });
+  page.on("requestfailed", request => {
+    console.error("BROWSER REQUEST FAILED: " + request.method() + " " + request.url() + " :: " + (request.failure()?.errorText ?? "unknown"));
+  });
+  page.on("response", response => {
+    if (response.status() >= 500) console.error("BROWSER HTTP 5XX: " + response.status() + " " + response.url());
+  });
 
   await page.goto(`${baseUrl}/customers`);
   await page.waitForURL(url => url.pathname === "/login");
@@ -190,6 +202,7 @@ try {
   if (page) {
     try {
       console.error("DEBUG: failing browser URL=" + page.url());
+      console.error("DEBUG: page errors so far: " + JSON.stringify(runtimeErrors));
       console.error("DEBUG: failing browser visible page text:\\n" + (await page.locator("body").innerText()).slice(-8000));
       await page.screenshot({ path: `${artifactDirectory}/failure.png`, fullPage: true });
     } catch (diagnosticError) {

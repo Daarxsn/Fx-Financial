@@ -216,7 +216,13 @@ jobs:
             cat "$RUNNER_TEMP/phase7-browser/next.log"
             exit 1
           fi
-          npm run phase7:browser-test
+          if npm run phase7:browser-test; then
+            true
+          else
+            echo "===== Next.js server log (browser test failed) ====="
+            cat "$RUNNER_TEMP/phase7-browser/next.log"
+            exit 1
+          fi
       - name: Upload browser diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
