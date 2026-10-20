@@ -307,9 +307,9 @@ To move quickly without building defects into the next phase:
 
 ## 8. Immediate next actions (updated 2026-10-20)
 
-**Latest verified engineering baseline:** `ea0803f57efe81114e8ee82325fca62a3f0aacbc`. The full CI run [39393296661](https://github.com/Daarxsn/Fx-Financial/actions/runs/39393296661) passed, including MySQL-backed authorization/invoice/quotation integration tests, Phase 6B configuration and snapshot checks, exact-decimal calculation tests, lint, TypeScript, production build and Playwright browser acceptance.
+**Latest verified engineering baseline:** `0026defdf6da109a8379e945b7c3a144ba8d07d6`. The full CI run [39394369865](https://github.com/Daarxsn/Fx-Financial/actions/runs/39394369865) passed, including MySQL-backed authorization/invoice/quotation integration tests, Phase 6B configuration and snapshot checks, exact-decimal calculation tests, lint, TypeScript, production build and Playwright browser acceptance.
 
-**Pack 2 regression fixes verified on this baseline:** issued invoice list and detail use the issue-time customer name snapshot instead of a later mutable customer record; quotation conversion fails closed when an entity timezone is invalid; concurrent same-key invoice issue requests are verified to return one original result and one replay with the same allocated number and snapshot hash.
+**Pack 2 regression fixes verified on this baseline:** issued invoice list and detail use the issue-time customer name snapshot instead of a later mutable customer record; quotation conversion fails closed when an entity timezone is invalid; concurrent same-key invoice issue requests are verified to return one original result and one replay with the same allocated number and snapshot hash; reusing the consumed issue key on a different draft is rejected without issuing the second invoice, advancing the sequence, or creating a snapshot.
 
 Perform in this order:
 

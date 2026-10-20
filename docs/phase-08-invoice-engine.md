@@ -1,6 +1,6 @@
 # Phase 08 — Invoice Engine & Financial Calculations
 
-**Status:** Invoice-engine core and Pack 2 lifecycle regression hardening are committed directly to `main`. Latest verified code revision: `ea0803f57efe81114e8ee82325fca62a3f0aacbc`; full CI passed in [run 39393296661](https://github.com/Daarxsn/Fx-Financial/actions/runs/39393296661). The workflow verifies the current MySQL 8 migrations/seed/restore, authorization and invoice/quotation API contracts, Phase 6B issue/configuration snapshots, calculations, lint, TypeScript, production build and Playwright browser acceptance. Earlier implementation-baseline CI: https://github.com/Daarxsn/Fx-Financial/actions/runs/39005607553.
+**Status:** Invoice-engine core and Pack 2 lifecycle regression hardening are committed directly to `main`. Latest verified code revision: `0026defdf6da109a8379e945b7c3a144ba8d07d6`; full CI passed in [run 39394369865](https://github.com/Daarxsn/Fx-Financial/actions/runs/39394369865). The workflow verifies the current MySQL 8 migrations/seed/restore, authorization and invoice/quotation API contracts, Phase 6B issue/configuration snapshots, calculations, lint, TypeScript, production build and Playwright browser acceptance. Earlier implementation-baseline CI: https://github.com/Daarxsn/Fx-Financial/actions/runs/39005607553.
 
 ## Delivered
 
@@ -57,7 +57,7 @@ The full CI run on `ea0803f57efe81114e8ee82325fca62a3f0aacbc` passed with these 
 
 - **Issue-time customer identity:** invoice detail and list use the frozen `customer_snapshot` name when available. The MySQL-backed API test renames the live customer after issuance and verifies the issued invoice continues to show its issue-time name in both detail and list.
 - **Quotation conversion date safety:** conversion derives the invoice date from the legal entity's configured timezone and fails closed if the timezone is invalid. The regression test verifies the accepted quotation stays accepted and no invoice draft is created.
-- **Concurrent invoice issuance:** simultaneous same-key, same-document-date requests return one original result and one idempotent replay. Both responses share the same official invoice number and immutable configuration snapshot hash; existing checks verify a single issue snapshot.
+- **Concurrent invoice issuance:** simultaneous same-key, same-document-date requests return one original result and one idempotent replay. Both responses share the same official invoice number and immutable configuration snapshot hash; existing checks verify a single issue snapshot A separate test reuses the consumed key on a different draft and verifies a conflict with no second number allocation or snapshot.
 
 These checks do not replace configured Aiven integration evidence, finance/legal policy approvals, or manual production-like browser acceptance. Invoice cancellation/correction behavior remains a policy gate until finance/legal approves how issued documents are corrected and numbered.
 
