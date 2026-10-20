@@ -1,6 +1,6 @@
 # Phase 07 — Customer and Item/Service Catalog
 
-**Status:** Phase 07 implementation is in progress on `main` (2026-10-17). Customer/catalog CRUD, scoped customer document references, permission enforcement, bounded search/pagination, exact-decimal validation, safe archive, CSV import/export and server-enforced duplicate confirmation are implemented. CI and lockfile/bootstrap passed on `2d8d680f8bff827c70cc73ac302c7ba48d9f8369` ([CI](https://github.com/Daarxsn/Fx-Fanancial/actions/runs/39001874484), [bootstrap](https://github.com/Daarxsn/Fx-Fanancial/actions/runs/39001874467)). Do not mark the phase complete until local configured-MySQL migration evidence and manual responsive/accessibility acceptance are captured.
+**Status:** Phase 07's automated engineering gate is green on `main` at `3acb7d78d0fead79d85e7cad93d6afb413202451` ([full CI run](https://github.com/Daarxsn/Fx-Financial/actions/runs/39384552352), passed 2026-10-20). It covers customer/catalog API and CSV integration tests, OpenAPI/security checks, lint, TypeScript, production build, and Playwright workflows against disposable MySQL at desktop, tablet and mobile widths. Added CSV regressions cover malformed/duplicate headers, unmatched quotes, over-500-row and over-1 MB files, rejected mixed-validity files with no partial write, formula-safe customer/catalog export-import round trips, and exact catalogue price text. **Pack 1 remains operationally open** until migrations 011–012 and CRUD/import/export are verified against the configured Aiven development/testing database and manual browser/accessibility checks are captured.
 **Scope:** Reusable customer records and billable item/service records used by quotations and invoices.
 
 ## Goals
@@ -103,14 +103,16 @@ The server must enforce permissions regardless of whether a UI control is hidden
 - [x] Schema migration extends customer/catalog records and normalizes contacts and tax identifiers (migrations 011–012; current CI must pass before claiming verified).
 - [x] Required-field, length, enum, identifier, email, currency and exact-decimal validation is covered by automated tests.
 - [x] Duplicate warnings do not silently merge records; duplicate codes are hard conflicts. Server-side CSV commit also requires explicit `confirmDuplicates=true` when possible duplicate matches were reported.
+- [x] CSV edge coverage verifies malformed/duplicate headers, unmatched quoted fields, more than 500 rows, files over 1 MB, all-or-nothing validation for mixed-validity files, validation-token binding, and formula-safe round trips for both customer and catalogue exports/imports. The catalogue round trip preserves exact four-place unit-price strings.
 - [x] Archive endpoints are soft archives, version checked, reasoned and audited; historical references are counted by the Phase 7 MySQL integration suite.
 - [x] Permission-denied requests fail on the server and are tested, including customer tax identifiers/internal notes and read-only writes.
 - [x] Pagination and search are bounded and tested, including query/code matches, maximum limit/offset and restricted tax-ID search.
 - [x] Integration test confirms editing a catalog item does not rewrite an already-saved invoice line description, unit price or line total. Issued invoice snapshot immutability remains separately covered by Phase 06B tests.
 - [x] Create/update/archive/import actions emit audit events with changed field names and without copying customer tax values into the audit payload.
-- [ ] UI works at desktop and mobile widths and has accessible validation/error states.
+- [x] Automated Playwright acceptance verifies create/edit/archive workflows, field focus, Escape and focus restoration, native required-field validation, search/no-results behavior, CSV validate-then-commit, and no horizontal page overflow at desktop (1365 px), tablet (768 px), and mobile (390 px) widths.
+- [ ] Manual real-browser acceptance of keyboard/screen-reader behavior, contrast, light/dark theme, visual layout and full accessible error announcements remains open.
 - [ ] Apply and verify migrations 011–012 against the configured Aiven development/testing database. CI has tested these migrations against MySQL 8; local Aiven application in this pass has not been verified.
-- [x] Clean-checkout lint, typecheck, production build and relevant MySQL integration tests pass on `2d8d680f8bff827c70cc73ac302c7ba48d9f8369`: [CI](https://github.com/Daarxsn/Fx-Fanancial/actions/runs/39001874484), [lockfile/bootstrap](https://github.com/Daarxsn/Fx-Fanancial/actions/runs/39001874467).
+- [x] Clean-checkout lint, typecheck, production build, current 18-migration/seed/dump-restore checks, authentication/master-data API contracts, financial calculations and Phase 7 browser acceptance pass on `3acb7d78d0fead79d85e7cad93d6afb413202451`: [full CI](https://github.com/Daarxsn/Fx-Financial/actions/runs/39384552352).
 
 ## Current implementation decisions and remaining business decisions
 
