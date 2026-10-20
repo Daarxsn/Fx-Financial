@@ -1569,6 +1569,47 @@ try {
   }, financeSession.jar);
   assert.equal(invalidCsvPreview.response.status, 422, "invalid CSV rows produce row-level validation reports");
   assert.equal(invalidCsvPreview.body.report.errors[0].rowNumber, 2);
+
+  const duplicateHeaderCsv = await call("/api/v1/customers/import?mode=validate", {
+    method: "POST", headers: { "Content-Type": "text/csv" }, body: "name,name\\r\\nFirst,Second",
+  }, financeSession.jar);
+  assert.equal(duplicateHeaderCsv.response.status, 422, "duplicate CSV headers must be rejected");
+  assert.equal(duplicateHeaderCsv.body.error.code, "CSV_PARSE_ERROR");
+  const unterminatedQuoteCsv = await call("/api/v1/catalog/items/import?mode=validate", {
+    method: "POST", headers: { "Content-Type": "text/csv" },
+    body: "itemType,name,customerDescription,unitCode,defaultUnitPrice,currency\\r\\nSERVICE,\\"Unclosed,Description,unit,1.0000,INR",
+  }, financeSession.jar);
+  assert.equal(unterminatedQuoteCsv.response.status, 422, "unterminated quoted CSV fields must be rejected");
+  assert.equal(unterminatedQuoteCsv.body.error.code, "CSV_PARSE_ERROR");
+
+  const excessiveRowsCsv = "name,email\\r\\n" + Array.from({ length: 501 }, (_, index) =>
+    "CSV row " + index + ",csv-row-" + index + "@example.invalid").join("\\r\\n");
+  const excessiveRows = await call("/api/v1/customers/import?mode=validate", {
+    method: "POST", headers: { "Content-Type": "text/csv" }, body: excessiveRowsCsv,
+  }, financeSession.jar);
+  assert.equal(excessiveRows.response.status, 422, "CSV imports reject more than 500 data rows");
+  assert.equal(excessiveRows.body.error.code, "CSV_PARSE_ERROR");
+
+  const oversizedCsv = await call("/api/v1/customers/import?mode=validate", {
+    method: "POST", headers: { "Content-Type": "text/csv" }, body: "name\\r\\n" + "X".repeat(1_000_001),
+  }, financeSession.jar);
+  assert.equal(oversizedCsv.response.status, 413, "CSV imports reject files larger than one megabyte");
+  assert.equal(oversizedCsv.body.error.code, "UPLOAD_TOO_LARGE");
+
+  const atomicCodeA = "CSV-ATOMIC-A-" + suffix.toUpperCase();
+  const atomicCodeB = "CSV-ATOMIC-B-" + suffix.toUpperCase();
+  const invalidMultiRowCsv = [
+    "customerCode,name,email",
+    [atomicCodeA, "Valid row that must not be partially imported", "atomic-a-" + suffix + "@example.invalid"].map(csvCell).join(","),
+    [atomicCodeB, "Invalid email row", "not-an-email"].map(csvCell).join(","),
+  ].join("\\r\\n");
+  const invalidMultiRowImport = await call("/api/v1/customers/import?mode=validate", {
+    method: "POST", headers: { "Content-Type": "text/csv" }, body: invalidMultiRowCsv,
+  }, financeSession.jar);
+  assert.equal(invalidMultiRowImport.response.status, 422, "a multi-row file with any invalid row is rejected as a whole");
+  const atomicCodeSearch = await call("/api/v1/customers?query=" + encodeURIComponent(atomicCodeA) + "&status=all", {}, financeSession.jar);
+  assert.equal(atomicCodeSearch.body.meta.pagination.total, 0, "the valid row in a rejected multi-row import is not partially created");
+
   const customerExport = await fetch(new URL("/api/v1/customers/export?status=all", baseUrl), {
     headers: { Cookie: cookieHeader(financeSession.jar) }, cache: "no-store",
   });
@@ -1670,7 +1711,42 @@ try {
   const catalogExportText = await catalogExport.text();
   assert.ok(catalogExportText.includes(csvItemCode));
   assert.ok(catalogExportText.includes("7.2500"), "catalog export retains exact decimal text");
-  console.log("PASS: Phase 7 CSV tests cover validation-only preview, signed validation tokens bound to user/session/resource/CSV bytes with expiry, lossless formula-escape round trip, atomic commit, row-numbered errors, customer/catalog exports, exact decimal values and permission-aware sensitive columns.");
+
+  const formulaCatalogName = "=Catalog Formula " + suffix;
+  const formulaCatalogDescription = "+Catalog description " + suffix;
+  const formulaCatalogInternal = "@Internal catalog note " + suffix;
+  const formulaCatalog = await call("/api/v1/catalog/items", {
+    method: "POST",
+    body: JSON.stringify({ itemType: "SERVICE", name: formulaCatalogName,
+      customerDescription: formulaCatalogDescription, internalDescription: formulaCatalogInternal,
+      unitCode: "unit", defaultUnitPrice: "9.1250", currency: "INR" }),
+  }, financeSession.jar);
+  assert.equal(formulaCatalog.response.status, 201, "catalog record with formula-leading text can be created");
+  const formulaCatalogExport = await fetch(new URL("/api/v1/catalog/items/export?status=all", baseUrl), {
+    headers: { Cookie: cookieHeader(financeSession.jar) }, cache: "no-store",
+  });
+  assert.equal(formulaCatalogExport.status, 200);
+  const formulaCatalogLines = (await formulaCatalogExport.text()).split("\\r\\n");
+  const formulaCatalogLine = formulaCatalogLines.find(line => line.includes("'" + formulaCatalogName));
+  assert.ok(formulaCatalogLine, "catalog item names that resemble spreadsheet formulas are neutralized");
+  assert.ok(formulaCatalogLine.includes("'" + formulaCatalogDescription), "catalog descriptions that begin with + are neutralized");
+  assert.ok(formulaCatalogLine.includes("'" + formulaCatalogInternal), "privileged internal descriptions that begin with @ are neutralized");
+  const formulaCatalogRoundTripCsv = formulaCatalogLines[0] + "\\r\\n" + formulaCatalogLine + "\\r\\n";
+  const formulaCatalogPreview = await call("/api/v1/catalog/items/import?mode=validate", {
+    method: "POST", headers: importHeaders(null), body: formulaCatalogRoundTripCsv,
+  }, financeSession.jar);
+  assert.equal(formulaCatalogPreview.response.status, 200, "formula-safe catalog export can be revalidated for import");
+  const formulaCatalogCommit = await call("/api/v1/catalog/items/import?mode=commit&confirmDuplicates=true", {
+    method: "POST", headers: importHeaders(formulaCatalogPreview.body.data.validationToken), body: formulaCatalogRoundTripCsv,
+  }, financeSession.jar);
+  assert.equal(formulaCatalogCommit.response.status, 201, "confirmed exported catalog row can be round-tripped");
+  const formulaCatalogDetail = await call("/api/v1/catalog/items/" + formulaCatalogCommit.body.data.createdIds[0], {}, financeSession.jar);
+  assert.equal(formulaCatalogDetail.body.data.name, formulaCatalogName, "catalog name round-trips without formula escape");
+  assert.equal(formulaCatalogDetail.body.data.customerDescription, formulaCatalogDescription, "catalog description round-trips unchanged");
+  assert.equal(formulaCatalogDetail.body.data.internalDescription, formulaCatalogInternal, "privileged internal description round-trips unchanged");
+  assert.equal(formulaCatalogDetail.body.data.defaultUnitPrice, "9.1250", "catalog price keeps exact four-place decimal formatting");
+
+  console.log("PASS: Phase 7 CSV tests cover validation-only preview, signed validation tokens bound to user/session/resource/CSV bytes with expiry, customer and catalog formula-safe round trips, malformed/oversized/over-row-limit files, whole-file validation, row-numbered errors, atomic commit, exact decimal values and permission-aware sensitive columns.");
 
   const invalid = await call("/api/v1/customers", {
     method: "POST", body: JSON.stringify({ name: "   ", unexpected: "rejected" }),
