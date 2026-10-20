@@ -81,7 +81,7 @@ export function AccessWorkspace() {
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { Promise.resolve().then(() => load()); }, [load]);
 
   async function getCsrfToken() {
     const cookieToken = document.cookie.split(";").map(part => part.trim()).find(part => part.startsWith("fx_csrf="))?.slice("fx_csrf=".length);

@@ -1,4 +1,3 @@
-import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const [invoice, quotation, shell, access, accessPage, home] = await Promise.all([

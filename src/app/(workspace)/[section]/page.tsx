@@ -146,7 +146,7 @@ export default async function SectionPage({ params }: { params: Promise<{ sectio
             <InlineAlert tone="info" title="Data integrity first">
               This screen does not bypass permissions or treat browser-side calculations as authoritative.
             </InlineAlert>
-          </div>
+          </Card>
         </div>}
     </div>
   );
