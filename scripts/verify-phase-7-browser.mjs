@@ -213,8 +213,8 @@ try {
   const importedCustomerCode = "UI-CSV-" + suffix.toUpperCase();
   const customerCsvPath = `${artifactDirectory}/customers-import.csv`;
   await writeFile(customerCsvPath,
-    "customerCode,name,email\\r\\n" + importedCustomerCode + ",Browser CSV Import " + suffix +
-      ",browser-csv-" + suffix.toLowerCase() + "@example.invalid\\r\\n",
+    "customerCode,name,email\r\n" + importedCustomerCode + ",Browser CSV Import " + suffix +
+      ",browser-csv-" + suffix.toLowerCase() + "@example.invalid\r\n",
     "utf8");
   await page.goto(`${baseUrl}/customers`);
   await page.getByRole("heading", { name: "Customers", exact: true }).waitFor();
