@@ -857,10 +857,19 @@ try {
     assert.equal(issuedDetailAfterCustomerRename.response.status, 200);
     assert.equal(issuedDetailAfterCustomerRename.body.data.customerName, frozenCustomerName,
       "renaming a customer cannot rewrite the identity shown for an issued invoice");
+    const issuedInvoiceListAfterCustomerRename = await call(
+      "/api/v1/invoices?status=ISSUED&legalEntityId=" + entityA.id + "&customerId=" + created.body.data.id + "&limit=100&offset=0",
+      {}, phase6aSession.jar,
+    );
+    assert.equal(issuedInvoiceListAfterCustomerRename.response.status, 200);
+    const issuedInvoiceListRow = issuedInvoiceListAfterCustomerRename.body.data.find(row => row.id === issuedInvoiceId);
+    assert.ok(issuedInvoiceListRow, "issued invoice remains in the entity/customer filtered list");
+    assert.equal(issuedInvoiceListRow.customerName, frozenCustomerName,
+      "invoice list must also display the customer name frozen at issue time");
   } finally {
     await db.execute("UPDATE customers SET name=? WHERE id=?", [originalLiveCustomerName, created.body.data.id]);
   }
-  console.log("PASS: issued invoice detail preserves the issue-time customer name after later customer master-data edits.");
+  console.log("PASS: issued invoice detail and list preserve the issue-time customer name after later customer master-data edits.");
 
   const phase8PaymentId=randomUUID();
   await db.execute(

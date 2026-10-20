@@ -7,6 +7,7 @@ import { assertCsrf } from "@/lib/auth/csrf";
 import { apiError, jsonNoStore } from "@/lib/http/api-response";
 import { canonicalJson } from "@/lib/configuration/service";
 import { outstandingBalance, subtractMoney } from "@/lib/finance/invoice-calculation";
+import { customerNameFromSnapshot } from "@/lib/finance/document-snapshot";
 import { invoiceCalendarDateSchema, invoiceDraftCreateSchema } from "@/lib/validation/invoice";
 import { validateDraftContext, resolveDraftLines, persistDraftLines, auditDraftChange, InvoiceDraftValidationError } from "@/lib/finance/invoice-draft-service";
 
@@ -41,17 +42,18 @@ export async function GET(request:NextRequest){
   const query=(request.nextUrl.searchParams.get("query")??"").trim().slice(0,100);
   if(query){const escaped=query.replace(/[\\%_]/g,"\\$&");clauses.push("(i.invoice_number LIKE ? OR c.name LIKE ?)");params.push(`%${escaped}%`,`%${escaped}%`);}
   const where="WHERE "+clauses.join(" AND ");
-  const [rows]=await pool.query<(RowDataPacket & {id:string;legal_entity_id:string;brand_id:string|null;customer_id:string;document_type:string;related_invoice_id:string|null;invoice_number:string|null;lifecycle_status:string;currency:string;subtotal:string;discount_total:string;tax_total:string;grand_total:string;invoice_date:Date|string|null;due_date:Date|string|null;payment_terms_days:number;record_version:number;customer_name:string;created_at:Date|string;updated_at:Date|string;paid_total:string})[]>(
+  const [rows]=await pool.query<(RowDataPacket & {id:string;legal_entity_id:string;brand_id:string|null;customer_id:string;document_type:string;related_invoice_id:string|null;invoice_number:string|null;lifecycle_status:string;currency:string;subtotal:string;discount_total:string;tax_total:string;grand_total:string;invoice_date:Date|string|null;due_date:Date|string|null;payment_terms_days:number;record_version:number;customer_name:string;customer_snapshot:unknown;created_at:Date|string;updated_at:Date|string;paid_total:string})[]>(
    `SELECT i.id,i.legal_entity_id,i.brand_id,i.customer_id,i.document_type,i.related_invoice_id,i.invoice_number,i.lifecycle_status,i.currency,
       i.subtotal,i.discount_total,i.tax_total,i.grand_total,i.invoice_date,i.due_date,i.payment_terms_days,i.record_version,
-      c.name AS customer_name,i.created_at,i.updated_at,
+      c.name AS customer_name,i.customer_snapshot,i.created_at,i.updated_at,
       COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa JOIN payments p ON p.id=pa.payment_id WHERE pa.invoice_id=i.id AND p.status='RECORDED'),0) AS paid_total
     FROM invoices i JOIN customers c ON c.id=i.customer_id ${where}
     ORDER BY COALESCE(i.invoice_date,DATE(i.created_at)) DESC,i.created_at DESC,i.id DESC LIMIT ? OFFSET ?`,
    [...params,limit,offset]);
   const [[count]] = await pool.query<(RowDataPacket & {total:number})[]>(`SELECT COUNT(*) AS total FROM invoices i JOIN customers c ON c.id=i.customer_id ${where}`,params);
   return jsonNoStore({data:rows.map(r=>{const total=money(r.grand_total),paid=money(r.paid_total);return {
-   id:r.id,legalEntityId:r.legal_entity_id,brandId:r.brand_id,customerId:r.customer_id,customerName:r.customer_name,
+   id:r.id,legalEntityId:r.legal_entity_id,brandId:r.brand_id,customerId:r.customer_id,
+   customerName:customerNameFromSnapshot(r.customer_snapshot)??r.customer_name,
    documentType:r.document_type,relatedInvoiceId:r.related_invoice_id,invoiceNumber:r.invoice_number,lifecycleStatus:r.lifecycle_status,
    paymentStatus:paymentState(total,paid),currency:r.currency,subtotal:money(r.subtotal),discountTotal:money(r.discount_total),
    taxableValue:subtractMoney(money(r.subtotal),money(r.discount_total)),taxTotal:money(r.tax_total),grandTotal:total,paidAmount:paid,
