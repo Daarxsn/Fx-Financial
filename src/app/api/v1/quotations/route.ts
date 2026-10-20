@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
         customerName: q.customer_name, quotationNumber: q.quotation_number, status: q.status,
         issueDate: dateText(q.issue_date), validUntil: dateText(q.valid_until), currency: q.currency,
         subtotal: String(q.subtotal), discountTotal: String(q.discount_total),
-        taxableValue: (Number(q.subtotal) - Number(q.discount_total)).toFixed(4),
+        taxableValue: subtractMoney(q.subtotal, q.discount_total),
         taxTotal: String(q.tax_total), grandTotal: String(q.grand_total), recordVersion: Number(q.record_version),
         convertedInvoiceId: q.converted_invoice_id, createdAt: q.created_at, updatedAt: q.updated_at,
       })),
