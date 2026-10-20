@@ -1200,6 +1200,33 @@ try {
   assert.equal(quotationList.response.status, 200);
   assert.ok(quotationList.body.data.some(row => row.id === quotationId), "quotation list search returns the saved draft");
 
+  // Regression: DECIMAL(19,4) values must never pass through JS floating-point subtraction.
+  const highValueQuotationKey = "q-high-" + randomUUID();
+  const highValueQuotation = await call("/api/v1/quotations", {
+    method: "POST", headers: { "Idempotency-Key": highValueQuotationKey },
+    body: JSON.stringify({
+      ...quotationPayload,
+      notes: "Phase 10 exact-decimal precision regression",
+      lines: [{ lineKind: "ITEM", description: "High-value precision regression", unitCode: "unit",
+        quantity: "1.0000", unitPrice: "999999999999999.9999",
+        discountType: "AMOUNT", discountValue: "0.0001", taxCode: null }],
+    }),
+  }, quotationFinanceSession.jar);
+  assert.equal(highValueQuotation.response.status, 201,
+    "high-value quotation fixture must fit DECIMAL(19,4); response=" + JSON.stringify(highValueQuotation.body.error ?? highValueQuotation.body));
+  assert.equal(highValueQuotation.body.data.grandTotal, "999999999999999.9998",
+    "large quotation totals retain exact decimal precision");
+  const highValueQuotationId = highValueQuotation.body.data.id;
+  const highValueQuotationList = await call(
+    "/api/v1/quotations?status=DRAFT&query=" + encodeURIComponent(quotationCustomerName) + "&limit=25&offset=0",
+    {}, quotationFinanceSession.jar,
+  );
+  assert.equal(highValueQuotationList.response.status, 200);
+  const highValueQuotationRow = highValueQuotationList.body.data.find(row => row.id === highValueQuotationId);
+  assert.ok(highValueQuotationRow, "quotation list includes the high-value precision fixture");
+  assert.equal(highValueQuotationRow.taxableValue, "999999999999999.9998",
+    "quotation-list taxable value uses exact decimal subtraction without IEEE-754 precision loss");
+
   const updatedQuotation = await call("/api/v1/quotations/" + quotationId, {
     method: "PATCH", body: JSON.stringify({ ...quotationPayload, notes: "Updated quote API test", expectedVersion: 1 }),
   }, quotationFinanceSession.jar);
