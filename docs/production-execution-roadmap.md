@@ -305,16 +305,16 @@ To move quickly without building defects into the next phase:
 - Keep a single defect ledger with severity: **P0** data loss/unauthorized finance access/invalid issue; **P1** broken issue, amount, payment, PDF or delivery path; **P2** significant workflow/UX impairment; **P3** non-blocking polish.
 - Do not sacrifice authorization, decimal correctness, transactionality, privacy, migrations, test evidence or restore readiness for speed. Defer optional polish instead.
 
-## 8. Immediate next actions
+## 8. Immediate next actions (updated 2026-10-20)
+
+**Latest verified engineering baseline:** `3acb7d78d0fead79d85e7cad93d6afb413202451`. The full CI run [39384552352](https://github.com/Daarxsn/Fx-Financial/actions/runs/39384552352) passed, including the customer/catalog API integration suite, CSV edge tests, lint, TypeScript, production build, and Playwright Phase 7 browser acceptance.
 
 Perform in this order:
 
-1. Check the current CI result for `df758b6`; if green, record it. If red, fix the failure before adding features.
-2. Validate the payment recording endpoint and add focused integration tests for payment success, idempotency, scope, permissions, invalid states, overpayment and concurrency.
-3. Complete payment reversal API with preserved allocation history and audit reason.
-4. Add the payment UI and history/reversal states; integrate end-to-end tests.
-5. Close Packs 1–2 acceptance gaps and reconcile docs with the current 18-migration baseline.
-6. Obtain the critical financial-policy decisions in Pack 4 while developing noncontroversial features.
-7. Proceed to private PDFs, email/reminders, reporting, hardening, deployment and UAT in the specified dependency order.
+1. Close the remaining Pack 1 operator gates: verify migrations 011–012, idempotent migration rerun, and customer/catalog CRUD plus CSV import/export against the dedicated Aiven development/testing database with verified TLS. Separately complete manual desktop/tablet/mobile, light/dark, keyboard, screen-reader and contrast review. Do not substitute CI MySQL for these checks.
+2. Audit the invoice/quotation lifecycle (Pack 2) against the real UI, server routes, OpenAPI and existing integration tests. Fix only demonstrated gaps, particularly issue-time snapshot completeness, concurrent numbering, stale edits, and safe/idempotent quotation conversion.
+3. Finish the manual payment workflow in Pack 3: expand the new recording endpoint's integration coverage, implement reasoned payment reversal while preserving allocations/audit history, then add payment UI/history and receipt source records. Require green CI before expanding further.
+4. Close the finance/business/tax decisions in Pack 4. Keep issue/correction paths blocked where actual issuer, tax, numbering, terms or statutory settings are not approved.
+5. Build deterministic snapshot-derived PDFs and private storage, then email/outbox/reminders, reporting/exports, hardening, deployment, recovery verification and UAT in the listed dependency order.
 
-**Current completion rule:** Do not call the product production-ready until every required pack gate is either passed or has an explicitly approved exception, and all legal/finance/runtime gates relevant to actual issuing are signed and evidenced.
+**Current completion rule:** Pack 1 is automated-tested in CI, but not operationally closed until the configured Aiven and manual acceptance evidence is captured. Do not call the product production-ready until every required pack gate is either passed or has an explicitly approved exception, and all legal/finance/runtime gates relevant to actual issuing are signed and evidenced.
