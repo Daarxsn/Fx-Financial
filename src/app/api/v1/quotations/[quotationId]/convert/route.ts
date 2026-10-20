@@ -64,7 +64,16 @@ export async function POST(request: NextRequest, context: Context) {
       "SELECT time_zone FROM legal_entities WHERE id=? AND is_active=TRUE LIMIT 1 FOR UPDATE", [quote.legal_entity_id],
     );
     if (!entities.length) throw new QuotationValidationError("An active legal entity is required to convert this quotation.");
-    const invoiceDate = calendarDateInTimeZone(entities[0].time_zone) ?? new Date().toISOString().slice(0, 10);
+    const invoiceDate = calendarDateInTimeZone(entities[0].time_zone);
+    if (invoiceDate === null) {
+      await conn.rollback();
+      return jsonNoStore({
+        error: {
+          code: "CONFIGURATION_NOT_READY",
+          message: "The legal entity timezone is invalid; an invoice date cannot be assigned safely for conversion.",
+        },
+      }, 409);
+    }
     const [lines] = await conn.execute<(RowDataPacket & {
       catalog_item_id: string | null; line_kind: string; description: string; unit_code: string;
       quantity: string; unit_price: string; discount_type: string; discount_value: string; tax_code: string | null;

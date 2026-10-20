@@ -829,6 +829,39 @@ try {
   assert.equal(issueResult.body.data.taxableValue,"100.0000");
   assert.equal(issueResult.body.data.taxTotal,"18.0000");
   assert.equal(issueResult.body.data.grandTotal,"118.0000","issuance recalculates document totals instead of trusting stored totals");
+
+  const issuedDetailBeforeCustomerRename = await call("/api/v1/invoices/" + issuedInvoiceId, {}, phase6aSession.jar);
+  assert.equal(issuedDetailBeforeCustomerRename.response.status, 200);
+  const [issueCustomerSnapshotRows] = await db.execute(
+    "SELECT customer_snapshot FROM invoices WHERE id=?", [issuedInvoiceId],
+  );
+  assert.equal(issueCustomerSnapshotRows.length, 1);
+  const issueCustomerSnapshot = typeof issueCustomerSnapshotRows[0].customer_snapshot === "string"
+    ? JSON.parse(issueCustomerSnapshotRows[0].customer_snapshot)
+    : issueCustomerSnapshotRows[0].customer_snapshot;
+  const frozenCustomerName = String(issueCustomerSnapshot.name);
+  assert.ok(frozenCustomerName.length > 0, "issuance stores the customer identity snapshot");
+  assert.equal(issuedDetailBeforeCustomerRename.body.data.customerName, frozenCustomerName,
+    "issued invoice detail uses the frozen customer snapshot");
+
+  const [customerBeforeRenameRows] = await db.execute(
+    "SELECT name FROM customers WHERE id=?", [created.body.data.id],
+  );
+  assert.equal(customerBeforeRenameRows.length, 1);
+  const originalLiveCustomerName = String(customerBeforeRenameRows[0].name);
+  try {
+    await db.execute("UPDATE customers SET name=? WHERE id=?", [
+      originalLiveCustomerName + " updated after issue", created.body.data.id,
+    ]);
+    const issuedDetailAfterCustomerRename = await call("/api/v1/invoices/" + issuedInvoiceId, {}, phase6aSession.jar);
+    assert.equal(issuedDetailAfterCustomerRename.response.status, 200);
+    assert.equal(issuedDetailAfterCustomerRename.body.data.customerName, frozenCustomerName,
+      "renaming a customer cannot rewrite the identity shown for an issued invoice");
+  } finally {
+    await db.execute("UPDATE customers SET name=? WHERE id=?", [originalLiveCustomerName, created.body.data.id]);
+  }
+  console.log("PASS: issued invoice detail preserves the issue-time customer name after later customer master-data edits.");
+
   const phase8PaymentId=randomUUID();
   await db.execute(
     "INSERT INTO payments (id,customer_id,amount,currency,payment_date,method,status,recorded_by) VALUES (?,?,?,'INR',CURDATE(),'OTHER','RECORDED',?)",
@@ -1385,7 +1418,47 @@ try {
   );
   assert.equal(Number(invoiceCountAfterDifferentKey[0].total), 1,
     "a conflicting conversion retry does not create a second invoice");
-  console.log("PASS: Pack 2 quotation conversion tests cover concurrent retries, one-draft invariant, same-key replay, different-key conflict, preserved totals and creation audit evidence.");
+
+  // Invalid entity timezones must block conversion rather than silently use the server's UTC date.
+  const invalidZoneQuote = await call("/api/v1/quotations", {
+    method: "POST",
+    headers: { "Idempotency-Key": "q-invalid-zone-source-" + randomUUID() },
+    body: JSON.stringify({ ...quotationPayload, notes: "Pack 2 invalid timezone conversion regression" }),
+  }, quotationFinanceSession.jar);
+  assert.equal(invalidZoneQuote.response.status, 201, "invalid-timezone conversion fixture is created");
+  const invalidZoneQuoteId = invalidZoneQuote.body.data.id;
+  const [acceptedInvalidZoneRows] = await db.execute(
+    "UPDATE quotations SET status='ACCEPTED' WHERE id=? AND status='DRAFT'", [invalidZoneQuoteId],
+  );
+  assert.equal(acceptedInvalidZoneRows.affectedRows, 1);
+  const [priorTimeZoneRows] = await db.execute(
+    "SELECT time_zone FROM legal_entities WHERE id=?", [testLegalEntityId],
+  );
+  assert.equal(priorTimeZoneRows.length, 1);
+  const priorTimeZone = priorTimeZoneRows[0].time_zone ?? null;
+  const invalidZoneConversionKey = "q-convert-invalid-zone-" + randomUUID();
+  try {
+    await db.execute("UPDATE legal_entities SET time_zone='Invalid/Timezone' WHERE id=?", [testLegalEntityId]);
+    const invalidZoneConversion = await call("/api/v1/quotations/" + invalidZoneQuoteId + "/convert", {
+      method: "POST", headers: { "Idempotency-Key": invalidZoneConversionKey }, body: "{}",
+    }, quotationFinanceSession.jar);
+    assert.equal(invalidZoneConversion.response.status, 409,
+      "quotation conversion must fail closed when the legal entity timezone is invalid");
+    assert.equal(invalidZoneConversion.body.error.code, "CONFIGURATION_NOT_READY");
+    const [invalidZoneQuoteState] = await db.execute(
+      "SELECT status,converted_invoice_id FROM quotations WHERE id=?", [invalidZoneQuoteId],
+    );
+    assert.equal(invalidZoneQuoteState[0].status, "ACCEPTED", "failed timezone validation preserves the accepted quotation");
+    assert.equal(invalidZoneQuoteState[0].converted_invoice_id, null, "failed timezone validation does not mark the quotation converted");
+    const [[invalidZoneInvoiceCount]] = await db.execute(
+      "SELECT COUNT(*) AS total FROM invoices WHERE idempotency_key=?", [invalidZoneConversionKey],
+    );
+    assert.equal(Number(invalidZoneInvoiceCount.total), 0, "invalid timezone creates no invoice draft");
+  } finally {
+    await db.execute("UPDATE legal_entities SET time_zone=? WHERE id=?", [priorTimeZone, testLegalEntityId]);
+  }
+  console.log("PASS: Pack 2 quotation conversion fails closed on an invalid entity timezone and leaves no draft behind.");
+  console.log("PASS: Pack 2 quotation conversion tests cover concurrent retries, one-draft invariant, same-key replay, different-key conflict, timezone readiness, preserved totals and creation audit evidence.");
 
   console.log("PASS: Phase 10 quotation API covers scoped draft create, exact totals, idempotent replay, detail/list, optimistic-concurrency update, stale-write rejection and reasoned cancellation.");
 
