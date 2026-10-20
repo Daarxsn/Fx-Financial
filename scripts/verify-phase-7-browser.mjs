@@ -224,7 +224,7 @@ try {
   await page.getByRole("button", { name: "Validate CSV", exact: true }).click();
   await page.getByText("Validated 1 rows", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Commit 1 rows", exact: true }).click();
-  await page.getByText("Committed 1 rows", { exact: true }).waitFor();
+  await page.getByText(/Imported 1 customer records/).waitFor();
   await page.locator("#customers-search").fill(importedCustomerCode);
   await page.locator("tbody tr").filter({ hasText: importedCustomerCode }).waitFor();
   pass("Customer CSV import validates before explicit commit and the imported record is searchable.");
