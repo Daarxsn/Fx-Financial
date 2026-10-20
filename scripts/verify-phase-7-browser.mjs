@@ -161,7 +161,7 @@ try {
   await page.getByRole("button", { name: "Create record", exact: true }).click();
   await page.getByRole("heading", { name: itemName, exact: true }).waitFor();
   await page.getByText(internalDescription, { exact: true }).waitFor();
-  await page.getByText("INR 125.5000", { exact: true }).waitFor();
+  await page.locator(".master-data-detail__grid").getByText("INR 125.5000", { exact: true }).waitFor();
   pass("Catalog create workflow preserves exact decimal price and privileged internal details.");
 
   await page.getByRole("button", { name: "Edit record", exact: true }).click();
@@ -170,7 +170,7 @@ try {
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await page.getByRole("heading", { name: itemName, exact: true }).waitFor();
   await page.getByText("Record updated. Any prior invoice/quotation snapshots remain unchanged.", { exact: true }).waitFor();
-  await page.getByText("INR 126.7500", { exact: true }).waitFor();
+  await page.locator(".master-data-detail__grid").getByText("INR 126.7500", { exact: true }).waitFor();
   pass("Catalog edit workflow updates future defaults without floating-point display corruption.");
 
   await page.getByRole("button", { name: "Archive record", exact: true }).click();
