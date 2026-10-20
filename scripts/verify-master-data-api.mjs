@@ -1571,19 +1571,19 @@ try {
   assert.equal(invalidCsvPreview.body.report.errors[0].rowNumber, 2);
 
   const duplicateHeaderCsv = await call("/api/v1/customers/import?mode=validate", {
-    method: "POST", headers: { "Content-Type": "text/csv" }, body: "name,name\\r\\nFirst,Second",
+    method: "POST", headers: { "Content-Type": "text/csv" }, body: "name,name\r\nFirst,Second",
   }, financeSession.jar);
   assert.equal(duplicateHeaderCsv.response.status, 422, "duplicate CSV headers must be rejected");
   assert.equal(duplicateHeaderCsv.body.error.code, "CSV_PARSE_ERROR");
   const unterminatedQuoteCsv = await call("/api/v1/catalog/items/import?mode=validate", {
     method: "POST", headers: { "Content-Type": "text/csv" },
-    body: "itemType,name,customerDescription,unitCode,defaultUnitPrice,currency\\r\\nSERVICE,\\"Unclosed,Description,unit,1.0000,INR",
+    body: "itemType,name,customerDescription,unitCode,defaultUnitPrice,currency\r\nSERVICE,\\"Unclosed,Description,unit,1.0000,INR",
   }, financeSession.jar);
   assert.equal(unterminatedQuoteCsv.response.status, 422, "unterminated quoted CSV fields must be rejected");
   assert.equal(unterminatedQuoteCsv.body.error.code, "CSV_PARSE_ERROR");
 
-  const excessiveRowsCsv = "name,email\\r\\n" + Array.from({ length: 501 }, (_, index) =>
-    "CSV row " + index + ",csv-row-" + index + "@example.invalid").join("\\r\\n");
+  const excessiveRowsCsv = "name,email\r\n" + Array.from({ length: 501 }, (_, index) =>
+    "CSV row " + index + ",csv-row-" + index + "@example.invalid").join("\r\n");
   const excessiveRows = await call("/api/v1/customers/import?mode=validate", {
     method: "POST", headers: { "Content-Type": "text/csv" }, body: excessiveRowsCsv,
   }, financeSession.jar);
@@ -1591,7 +1591,7 @@ try {
   assert.equal(excessiveRows.body.error.code, "CSV_PARSE_ERROR");
 
   const oversizedCsv = await call("/api/v1/customers/import?mode=validate", {
-    method: "POST", headers: { "Content-Type": "text/csv" }, body: "name\\r\\n" + "X".repeat(1_000_001),
+    method: "POST", headers: { "Content-Type": "text/csv" }, body: "name\r\n" + "X".repeat(1_000_001),
   }, financeSession.jar);
   assert.equal(oversizedCsv.response.status, 413, "CSV imports reject files larger than one megabyte");
   assert.equal(oversizedCsv.body.error.code, "UPLOAD_TOO_LARGE");
@@ -1602,7 +1602,7 @@ try {
     "customerCode,name,email",
     [atomicCodeA, "Valid row that must not be partially imported", "atomic-a-" + suffix + "@example.invalid"].map(csvCell).join(","),
     [atomicCodeB, "Invalid email row", "not-an-email"].map(csvCell).join(","),
-  ].join("\\r\\n");
+  ].join("\r\n");
   const invalidMultiRowImport = await call("/api/v1/customers/import?mode=validate", {
     method: "POST", headers: { "Content-Type": "text/csv" }, body: invalidMultiRowCsv,
   }, financeSession.jar);
