@@ -1735,7 +1735,7 @@ try {
   const formulaCatalogPreview = await call("/api/v1/catalog/items/import?mode=validate", {
     method: "POST", headers: importHeaders(null), body: formulaCatalogRoundTripCsv,
   }, financeSession.jar);
-  assert.equal(formulaCatalogPreview.response.status, 200, "formula-safe catalog export can be revalidated for import");
+  assert.equal(formulaCatalogPreview.response.status, 200, "formula-safe catalog export can be revalidated for import: " + JSON.stringify(formulaCatalogPreview.body));
   const formulaCatalogCommit = await call("/api/v1/catalog/items/import?mode=commit&confirmDuplicates=true", {
     method: "POST", headers: importHeaders(formulaCatalogPreview.body.data.validationToken), body: formulaCatalogRoundTripCsv,
   }, financeSession.jar);
