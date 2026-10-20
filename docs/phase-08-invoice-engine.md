@@ -1,9 +1,6 @@
 # Phase 08 — Invoice Engine & Financial Calculations
 
-**Status:** Core implementation is committed directly to `main` and passed the clean CI and lockfile/bootstrap run for `25f40dbedb3400505a9132e48878ecedf7f13721`.
-
-- CI: https://github.com/Daarxsn/Fx-Fanancial/actions/runs/39005607553
-- Lockfile/bootstrap: https://github.com/Daarxsn/Fx-Fanancial/actions/runs/39005607523
+**Status:** Invoice-engine core and Pack 2 lifecycle regression hardening are committed directly to `main`. Latest verified code revision: `ea0803f57efe81114e8ee82325fca62a3f0aacbc`; full CI passed in [run 39393296661](https://github.com/Daarxsn/Fx-Financial/actions/runs/39393296661). The workflow verifies the current MySQL 8 migrations/seed/restore, authorization and invoice/quotation API contracts, Phase 6B issue/configuration snapshots, calculations, lint, TypeScript, production build and Playwright browser acceptance. Earlier implementation-baseline CI: https://github.com/Daarxsn/Fx-Financial/actions/runs/39005607553.
 
 ## Delivered
 
@@ -53,6 +50,16 @@ Create retries with an identical idempotency key and identical payload return th
 CI on the implementation revision passed MySQL 8 migrations/seed/dump-restore, OpenAPI validation, authorization/API contracts, Phase 6B issuance/snapshot tests, the new invoice calculation test suite, responsive/accessibility foundation checks, lint, TypeScript and production build.
 
 The added calculation test suite covers exclusive and inclusive tax, fixed/percentage discount handling, an additional charge, half-up rounding at the fourth decimal, invalid negative values/rate and over-discounts, date validation, and outstanding balances. The MySQL-backed API suite additionally covers create/update/list/detail consistency, approved inclusive/exclusive rules, idempotency and conflicts, stale-version protection, and issue-time recalculation against deliberately inconsistent draft totals.
+
+## Pack 2 lifecycle regression hardening (2026-10-20)
+
+The full CI run on `ea0803f57efe81114e8ee82325fca62a3f0aacbc` passed with these new lifecycle regression gates:
+
+- **Issue-time customer identity:** invoice detail and list use the frozen `customer_snapshot` name when available. The MySQL-backed API test renames the live customer after issuance and verifies the issued invoice continues to show its issue-time name in both detail and list.
+- **Quotation conversion date safety:** conversion derives the invoice date from the legal entity's configured timezone and fails closed if the timezone is invalid. The regression test verifies the accepted quotation stays accepted and no invoice draft is created.
+- **Concurrent invoice issuance:** simultaneous same-key, same-document-date requests return one original result and one idempotent replay. Both responses share the same official invoice number and immutable configuration snapshot hash; existing checks verify a single issue snapshot.
+
+These checks do not replace configured Aiven integration evidence, finance/legal policy approvals, or manual production-like browser acceptance. Invoice cancellation/correction behavior remains a policy gate until finance/legal approves how issued documents are corrected and numbered.
 
 ## Remaining rollout gates
 

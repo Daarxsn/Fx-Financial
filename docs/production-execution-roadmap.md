@@ -307,14 +307,16 @@ To move quickly without building defects into the next phase:
 
 ## 8. Immediate next actions (updated 2026-10-20)
 
-**Latest verified engineering baseline:** `3acb7d78d0fead79d85e7cad93d6afb413202451`. The full CI run [39384552352](https://github.com/Daarxsn/Fx-Financial/actions/runs/39384552352) passed, including the customer/catalog API integration suite, CSV edge tests, lint, TypeScript, production build, and Playwright Phase 7 browser acceptance.
+**Latest verified engineering baseline:** `ea0803f57efe81114e8ee82325fca62a3f0aacbc`. The full CI run [39393296661](https://github.com/Daarxsn/Fx-Financial/actions/runs/39393296661) passed, including MySQL-backed authorization/invoice/quotation integration tests, Phase 6B configuration and snapshot checks, exact-decimal calculation tests, lint, TypeScript, production build and Playwright browser acceptance.
+
+**Pack 2 regression fixes verified on this baseline:** issued invoice list and detail use the issue-time customer name snapshot instead of a later mutable customer record; quotation conversion fails closed when an entity timezone is invalid; concurrent same-key invoice issue requests are verified to return one original result and one replay with the same allocated number and snapshot hash.
 
 Perform in this order:
 
 1. Close the remaining Pack 1 operator gates: verify migrations 011–012, idempotent migration rerun, and customer/catalog CRUD plus CSV import/export against the dedicated Aiven development/testing database with verified TLS. Separately complete manual desktop/tablet/mobile, light/dark, keyboard, screen-reader and contrast review. Do not substitute CI MySQL for these checks.
-2. Audit the invoice/quotation lifecycle (Pack 2) against the real UI, server routes, OpenAPI and existing integration tests. Fix only demonstrated gaps, particularly issue-time snapshot completeness, concurrent numbering, stale edits, and safe/idempotent quotation conversion.
-3. Finish the manual payment workflow in Pack 3: expand the new recording endpoint's integration coverage, implement reasoned payment reversal while preserving allocations/audit history, then add payment UI/history and receipt source records. Require green CI before expanding further.
+2. Continue Pack 2 with targeted checks for quotation send/accept/expire/convert journeys, issue-time snapshots, stale edits, and conflict/idempotency handling across routes and real workspace flows. Implement only evidenced gaps. Keep invoice cancellation/correction blocked until the approved finance/legal policy is explicit.
+3. Finish the manual payment workflow in Pack 3: expand payment recording integration coverage, implement reasoned reversal while preserving allocation history and audit evidence, then add payment UI/history and receipt source records. Require green CI before expanding further.
 4. Close the finance/business/tax decisions in Pack 4. Keep issue/correction paths blocked where actual issuer, tax, numbering, terms or statutory settings are not approved.
 5. Build deterministic snapshot-derived PDFs and private storage, then email/outbox/reminders, reporting/exports, hardening, deployment, recovery verification and UAT in the listed dependency order.
 
-**Current completion rule:** Pack 1 is automated-tested in CI, but not operationally closed until the configured Aiven and manual acceptance evidence is captured. Do not call the product production-ready until every required pack gate is either passed or has an explicitly approved exception, and all legal/finance/runtime gates relevant to actual issuing are signed and evidenced.
+**Current completion rule:** Pack 1 is automated-tested in CI, but not operationally closed until the configured Aiven and manual acceptance evidence is captured. Pack 2 has passed these automated lifecycle regression gates but remains open for broader workflow and operator acceptance. Do not call the product production-ready until every required pack gate is either passed or has an explicitly approved exception, and all legal/finance/runtime gates relevant to actual issuing are signed and evidenced.
