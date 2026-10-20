@@ -966,6 +966,43 @@ try {
   assert.equal(conflictingReplay.response.status,409,"a different idempotency key cannot reissue the issued invoice");
   assert.equal(conflictingReplay.body.error.code,"CONFIGURATION_CONFLICT");
 
+  // Reusing a successful issue key on another draft in the same legal entity must not
+  // issue a second document, allocate another number, or create another snapshot.
+  const reusedIssueKeyInvoiceId=randomUUID();
+  await db.execute(
+    "INSERT INTO invoices (id,legal_entity_id,brand_id,customer_id,document_type,lifecycle_status,payment_terms_days,currency,subtotal,discount_total,tax_total,grand_total) VALUES (?, ?, NULL, ?, 'INVOICE','DRAFT',30,'INR',0.0000,0.0000,0.0000,0.0000)",
+    [reusedIssueKeyInvoiceId,entityA.id,created.body.data.id],
+  );
+  const [[sequenceBeforeReusedKey]] = await db.execute(
+    "SELECT next_value FROM invoice_number_sequences WHERE legal_entity_id=? AND document_type='INVOICE' AND financial_year_label=?",
+    [entityA.id,issueResult.body.data.financialYear],
+  );
+  assert.ok(sequenceBeforeReusedKey,"the successful issue has an active sequence row");
+  const reusedIssueKeyResult=await call("/api/v1/invoices/"+reusedIssueKeyInvoiceId+"/issue",{
+    method:"POST",headers:{"Idempotency-Key":issueKey},body:JSON.stringify({documentDate:issueDate}),
+  },phase6aSession.jar);
+  assert.equal(reusedIssueKeyResult.response.status,409,
+    "an issue idempotency key already consumed by another invoice must be rejected");
+  assert.equal(reusedIssueKeyResult.body.error.code,"CONFIGURATION_CONFLICT");
+  const [reusedIssueKeyInvoiceRows]=await db.execute(
+    "SELECT lifecycle_status,invoice_number,issue_idempotency_key FROM invoices WHERE id=?",
+    [reusedIssueKeyInvoiceId],
+  );
+  assert.equal(reusedIssueKeyInvoiceRows[0].lifecycle_status,"DRAFT","issue-key collision leaves the second invoice as a draft");
+  assert.equal(reusedIssueKeyInvoiceRows[0].invoice_number,null,"issue-key collision allocates no invoice number");
+  assert.equal(reusedIssueKeyInvoiceRows[0].issue_idempotency_key,null,"issue-key collision does not persist the consumed key");
+  const [[sequenceAfterReusedKey]] = await db.execute(
+    "SELECT next_value FROM invoice_number_sequences WHERE legal_entity_id=? AND document_type='INVOICE' AND financial_year_label=?",
+    [entityA.id,issueResult.body.data.financialYear],
+  );
+  assert.equal(String(sequenceAfterReusedKey.next_value),String(sequenceBeforeReusedKey.next_value),
+    "issue-key collision consumes no invoice number");
+  const [reusedIssueKeySnapshots]=await db.execute(
+    "SELECT id FROM document_configuration_snapshots WHERE resource_type='INVOICE' AND resource_id=?",
+    [reusedIssueKeyInvoiceId],
+  );
+  assert.equal(reusedIssueKeySnapshots.length,0,"issue-key collision creates no configuration snapshot");
+
   // Both rules and both registrations are individually valid, but each invoice line is
   // deliberately paired with the other jurisdiction's registration. Issuance must reject it.
   const mismatchedTaxInvoiceId=randomUUID();
