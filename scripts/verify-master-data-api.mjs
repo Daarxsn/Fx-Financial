@@ -881,6 +881,27 @@ try {
   assert.equal(issueReplay.body.data.invoiceNumber,issueResult.body.data.invoiceNumber);
   assert.equal(issueReplay.body.data.configurationSha256,issueResult.body.data.configurationSha256);
 
+  const alternateDocumentDate = issueDate === "2026-01-01" ? "2026-01-02" : "2026-01-01";
+  const dateConflictReplay = await call("/api/v1/invoices/" + issuedInvoiceId + "/issue", {
+    method: "POST", headers: { "Idempotency-Key": issueKey }, body: JSON.stringify({ documentDate: alternateDocumentDate }),
+  }, phase6aSession.jar);
+  assert.equal(dateConflictReplay.response.status, 409, "same issue key with a different document date is a conflicting replay");
+  assert.equal(dateConflictReplay.body.error.code, "CONFIGURATION_CONFLICT");
+  const [afterDateConflict] = await db.execute(
+    "SELECT invoice_date,invoice_number,lifecycle_status FROM invoices WHERE id=?", [issuedInvoiceId],
+  );
+  assert.equal(afterDateConflict[0].lifecycle_status, "ISSUED", "conflicting issue retry cannot change lifecycle state");
+  assert.equal(afterDateConflict[0].invoice_number, issueResult.body.data.invoiceNumber, "conflicting issue retry preserves the allocated document number");
+  const persistedIssuedDate = afterDateConflict[0].invoice_date instanceof Date
+    ? afterDateConflict[0].invoice_date.toISOString().slice(0, 10)
+    : String(afterDateConflict[0].invoice_date).slice(0, 10);
+  assert.equal(persistedIssuedDate, issueDate, "conflicting issue retry preserves the originally issued document date");
+  const [snapshotCountAfterDateConflict] = await db.execute(
+    "SELECT COUNT(*) AS total FROM document_configuration_snapshots WHERE resource_type='INVOICE' AND resource_id=?",
+    [issuedInvoiceId],
+  );
+  assert.equal(Number(snapshotCountAfterDateConflict[0].total), 1, "conflicting issue retry cannot replace or duplicate the issue snapshot");
+
   const conflictingReplay=await call("/api/v1/invoices/"+issuedInvoiceId+"/issue",{
     method:"POST",headers:{"Idempotency-Key":issueKey+"-DIFFERENT"},body:JSON.stringify({documentDate:issueDate}),
   },phase6aSession.jar);

@@ -76,9 +76,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ in
       return jsonNoStore({ error: { code: "NOT_FOUND", message: "Invoice not found in your assigned scope." } }, 404);
     }
     if (invoice.lifecycle_status === "ISSUED") {
-      if (invoice.issue_idempotency_key !== idempotencyKey) {
+      const issuedDocumentDate = invoice.invoice_date instanceof Date
+        ? invoice.invoice_date.toISOString().slice(0, 10)
+        : invoice.invoice_date === null ? null : String(invoice.invoice_date).slice(0, 10);
+      if (invoice.issue_idempotency_key !== idempotencyKey || issuedDocumentDate !== documentDate) {
         await conn.rollback();
-        return jsonNoStore({ error: { code: "CONFIGURATION_CONFLICT", message: "This invoice has already been issued with a different idempotency key." } }, 409);
+        return jsonNoStore({ error: { code: "CONFIGURATION_CONFLICT", message: "This invoice has already been issued with a different idempotency key or document date." } }, 409);
       }
       const [snapshots] = await conn.execute<(RowDataPacket & { id: string; configuration_sha256: string })[]>(
         "SELECT id,configuration_sha256 FROM document_configuration_snapshots WHERE resource_type=? AND resource_id=? LIMIT 1",
