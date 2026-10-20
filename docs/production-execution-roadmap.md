@@ -1,7 +1,7 @@
 # FX Invoice Generator — Production Execution Roadmap
 
-**Repository:** \`Daarxsn/Fx-Financial\`  
-**Execution branch:** \`main\` only  
+**Repository:** `Daarxsn/Fx-Financial`  
+**Execution branch:** `main` only  
 **Prepared:** 2026-10-20  
 **Purpose:** Finish the existing product in small, testable, production-oriented chunks without replacing working architecture or pretending that unapproved business settings are ready.
 
@@ -21,14 +21,14 @@ The finished product must support:
 - Customer email delivery, visible delivery status, retry-safe delivery, and overdue reminders.
 - Overview dashboards, reconciled reports, controlled bulk export, and searchable audit history.
 - Strict authentication, role/permission and legal-entity scope enforcement; reliable migrations, recovery, deployment, monitoring, and business acceptance.
-- Stack retained: Next.js App Router, React, TypeScript, MySQL through \`mysql2\`, and Vercel as the planned web host. No Vite migration or architecture rewrite.
+- Stack retained: Next.js App Router, React, TypeScript, MySQL through `mysql2`, and Vercel as the planned web host. No Vite migration or architecture rewrite.
 
 **Launch principle:** technical completion and business/legal approval are separate gates. The application may be code-complete while issuance remains blocked until a real issuer, tax rules, numbering, templates, and required statutory treatment are approved.
 
 ## 2. Execution rules
 
-1. Work directly on \`main\`. Do not create branches or parallel PRs.
-2. Start from the latest \`main\`; never overwrite newer commits with stale content. Refetch the current file and SHA before any file update.
+1. Work directly on `main`. Do not create branches or parallel PRs.
+2. Start from the latest `main`; never overwrite newer commits with stale content. Refetch the current file and SHA before any file update.
 3. Prefer one small, reviewable commit per coherent vertical slice (endpoint + tests, or UI + tests). Do not commit an API without its tests just to show progress.
 4. Because newer pushes can cancel older CI runs, avoid stacking commits while the required CI is still running unless fixing a known CI blocker. After a commit, wait for its CI result before treating the slice as done.
 5. Every slice ends with: lint, TypeScript, relevant automated tests, production build/CI, and a short evidence note. Use the fastest focused test locally first, then the complete CI gate.
@@ -42,13 +42,13 @@ The finished product must support:
 
 ## 3. Verified starting position
 
-At the time this plan was prepared, latest observed \`main\` was:
+At the time this plan was prepared, latest observed `main` was:
 
-- \`df758b645b6d8152f6b76feb43db70f46718e9b9\` — \`feat: record invoice payments with safe allocations\`
-- Parent \`f9ff69512f38dc01ec7eb7e55a741f6d18374753\` adds a high-value exact-decimal regression test for the quotation list.
-- Parent \`68cce99e329f090e3bcd2ec830f691b8fcb72c94\` fixes quotation taxable-value arithmetic to use exact-decimal subtraction.
+- `df758b645b6d8152f6b76feb43db70f46718e9b9` — `feat: record invoice payments with safe allocations`
+- Parent `f9ff69512f38dc01ec7eb7e55a741f6d18374753` adds a high-value exact-decimal regression test for the quotation list.
+- Parent `68cce99e329f090e3bcd2ec830f691b8fcb72c94` fixes quotation taxable-value arithmetic to use exact-decimal subtraction.
 
-The CI run for \`df758b6\` was in progress during inspection. CI runs for the two preceding commits were cancelled by later pushes, so their changes are **not independently CI-certified yet**. The last known fully successful run on the prior baseline was \`bb4911e3b762dd9b87bd3ddc850cdfa9377817d2\` (run [39375989948](https://github.com/Daarxsn/Fx-Financial/actions/runs/39375989948)). Check the latest run before feature work continues.
+The CI run for `df758b6` was in progress during inspection. CI runs for the two preceding commits were cancelled by later pushes, so their changes are **not independently CI-certified yet**. The last known fully successful run on the prior baseline was `bb4911e3b762dd9b87bd3ddc850cdfa9377817d2` (run [39375989948](https://github.com/Daarxsn/Fx-Financial/actions/runs/39375989948)). Check the latest run before feature work continues.
 
 ### Core already present (still subject to current regression checks)
 
@@ -57,15 +57,15 @@ The CI run for \`df758b6\` was in progress during inspection. CI runs for the tw
 - Company/brand/legal-entity/tax/numbering/template settings foundation and issue-time snapshots/configuration-readiness checks.
 - Customer and item/service catalogue CRUD, archive, search/pagination and CSV import/export.
 - Invoice draft/create/edit/list/detail, server-calculated amounts, controlled issue path, idempotency and optimistic concurrency.
-- Quotation workflow and conversion foundation exists on \`main\`; its remaining workflow and UI/API coverage must be re-audited rather than assumed complete.
+- Quotation workflow and conversion foundation exists on `main`; its remaining workflow and UI/API coverage must be re-audited rather than assumed complete.
 - A newly committed invoice payment-recording API exists. It is not yet confirmed by the current CI, a reversal endpoint, payment workspace UI, full integration tests, or business reconciliation.
-- Scaled-integer/\`BigInt\` money calculations are established. Recent quotation-list precision fix and regression test are awaiting a clean CI pass.
+- Scaled-integer/`BigInt` money calculations are established. Recent quotation-list precision fix and regression test are awaiting a clean CI pass.
 
 ### Not yet production-complete
 
 - Confirmed, independently passing CI for the latest changes.
 - Manual real-browser/customer/catalog/invoice/quotation acceptance and responsive/accessibility review.
-- Formal business/finance/tax policy approvals recorded in \`docs/phase-02-signoff-packet.md\`.
+- Formal business/finance/tax policy approvals recorded in `docs/phase-02-signoff-packet.md`.
 - Configured MySQL/Aiven proof for the current migrations and latest end-to-end changes; provider-level backup restore drill.
 - Complete payment allocation/reversal/receipt path and UI.
 - Approved issue correction/cancellation/credit/debit-note behavior.
@@ -86,7 +86,7 @@ A chunk is accepted only when all applicable statements below are true:
 - [ ] Audit evidence exists for consequential financial or administrative actions.
 - [ ] API contract/OpenAPI, UI, and automated tests agree.
 - [ ] Loading, empty, validation, success, failure, unauthorized, and stale/conflict states are handled.
-- [ ] The relevant regression test, \`npm run lint\`, \`npm run typecheck\`, and \`npm run build\` pass locally/CI as applicable.
+- [ ] The relevant regression test, `npm run lint`, `npm run typecheck`, and `npm run build` pass locally/CI as applicable.
 - [ ] Required CI run is green on the commit being accepted.
 - [ ] No unknown business facts were invented and no secret or real customer data was committed.
 - [ ] The commit SHA, test evidence, and any remaining operator/business blocker are noted in the tracker.
@@ -99,7 +99,7 @@ A chunk is accepted only when all applicable statements below are true:
 
 | Chunk | Work | Acceptance evidence |
 |---|---|---|
-| 0.1 | Check latest \`main\` SHA and latest CI run. Inspect failed/cancelled/in-progress status and rerun/fix on \`main\` as appropriate. | The latest current SHA has one completed green CI run; no claim relies on cancelled runs. |
+| 0.1 | Check latest `main` SHA and latest CI run. Inspect failed/cancelled/in-progress status and rerun/fix on `main` as appropriate. | The latest current SHA has one completed green CI run; no claim relies on cancelled runs. |
 | 0.2 | Review the two exact-decimal quotation commits and current invoice-payment route diff. Confirm the money regex, decimal helper, idempotency behavior, transaction and authorization are correct. | Code review notes plus focused regression coverage. |
 | 0.3 | Run the payment route through lint, TypeScript, build and all CI integration tests. Fix any route/test defects before extending it. | Green CI on the payment route commit. |
 | 0.4 | Reconcile stale README/phase docs with the real current repository: migrations, permission count, seed count, last completed features, and pending phases. Do not rewrite historical records; add dated corrections/current-status notes. | Documentation counts agree with the current migrations, seed and CI workflow. |
@@ -144,7 +144,7 @@ A chunk is accepted only when all applicable statements below are true:
 
 | Chunk | Work | Acceptance evidence |
 |---|---|---|
-| 3.1 | Complete static review and CI certification of \`POST/GET /api/v1/invoices/{invoiceId}/payments\`; fix any gaps. | Exact-decimal validation, invoice/entity scope, permission, CSRF, idempotency and audit tests pass. |
+| 3.1 | Complete static review and CI certification of `POST/GET /api/v1/invoices/{invoiceId}/payments`; fix any gaps. | Exact-decimal validation, invoice/entity scope, permission, CSRF, idempotency and audit tests pass. |
 | 3.2 | Add integration tests to record a payment against an issued invoice: valid, invalid date/amount/method, draft/cancelled invoice, unauthorized user, cross-entity request and missing key. | Expected HTTP/result contract and unchanged data after rejection. |
 | 3.3 | Test same-key/same-payload replay and same-key/different-payload conflict; send concurrent payment attempts that together would exceed balance. | Exactly-once behavior and no overpayment under race. |
 | 3.4 | Add/review payment list/detail query and allocation history; make balances derive from valid, recorded allocations with exact decimals. | Invoice balance, customer balance and payment history reconcile. |
@@ -163,7 +163,7 @@ A chunk is accepted only when all applicable statements below are true:
 
 | Chunk | Work | Acceptance evidence |
 |---|---|---|
-| 4.1 | Complete the decision rows in \`docs/phase-02-signoff-packet.md\`: actual issuer mapping, financial year/numbering, currency, rounding, tax/discountrs, terms, payments/overpayment, corrections, permissions, statutory/e-invoice scope, templates and communications. | Named authorized decision-makers, dates and evidence references; unresolved rows stay blocked. |
+| 4.1 | Complete the decision rows in `docs/phase-02-signoff-packet.md`: actual issuer mapping, financial year/numbering, currency, rounding, tax/discounts, terms, payments/overpayment, corrections, permissions, statutory/e-invoice scope, templates and communications. | Named authorized decision-makers, dates and evidence references; unresolved rows stay blocked. |
 | 4.2 | Map MyFX POS, FX Digitech and FX Coworks to the actual approved legal entity/entities and effective dates. | Configuration includes only evidenced mappings; brand is not assumed to be an issuer. |
 | 4.3 | Add tests using finance-approved worked examples for tax-inclusive/exclusive, discount order, half-up rounding, charges and due dates. | Approved expected values match server and UI; rejected/unapproved rules cannot be selected. |
 | 4.4 | Based on approved policy, implement explicit cancellation/correction flow: reason, authorized action, payment-state guard, original preserved, linked document, audit trail and approved numbering treatment. | Issued invoice never gets silently edited or deleted. |
@@ -253,9 +253,9 @@ A chunk is accepted only when all applicable statements below are true:
 | 9.1 | Confirm CI runs install, secret scan, MySQL migrations/seed/restore tests, contract/auth tests, calculations, UI validation, lint, types and production build. Add missing later-phase tests to CI. | Fresh CI run passes from a clean checkout. |
 | 9.2 | Add browser-based smoke/E2E checks for login, setup readiness, customer/catalog, quotation, invoice issue, payment, PDF access and permissions. | Critical path runs on clean disposable MySQL fixtures; no production data required. |
 | 9.3 | Verify Vercel framework/build settings, Node version, root directory, install/build commands, environment scope and domain configuration. | Preview deployment builds from the exact main commit. |
-| 9.4 | Define and validate secrets/env variables: \`DATABASE_*\`, verified TLS CA source, \`SESSION_SECRET\`, exact HTTPS \`APP_ORIGIN\`, storage credentials, email credentials and webhook secrets. | Production secret checklist passes without exposing values; separate environment scopes. |
+| 9.4 | Define and validate secrets/env variables: `DATABASE_*`, verified TLS CA source, `SESSION_SECRET`, exact HTTPS `APP_ORIGIN`, storage credentials, email credentials and webhook secrets. | Production secret checklist passes without exposing values; separate environment scopes. |
 | 9.5 | Create separate, least-privilege DB identities for runtime, migration, backup/restore and read-only audit where the provider supports it. Rotate any credential exposed in chat/logs/history via the provider's approved process. | Runtime cannot perform schema DDL unless explicitly authorized; old rotated credential fails; no secret appears in repo. |
-| 9.6 | Confirm Aiven/DB availability plan, allowed networks, TLS certificate validation, connection limits/timeouts, backups and retention. | \`npm run db:verify\` passes against the intended non-production target with TLS enabled and cert validation intact. |
+| 9.6 | Confirm Aiven/DB availability plan, allowed networks, TLS certificate validation, connection limits/timeouts, backups and retention. | `npm run db:verify` passes against the intended non-production target with TLS enabled and cert validation intact. |
 | 9.7 | Perform provider-level backup restore into a separate isolated database/service, compare migration/data invariants, and record RPO/RTO. | Successful restore drill and approved recovery targets documented. |
 | 9.8 | Review/approve production migration sequence, backup point, expected locks/downtime, post-migration verification and recovery actions. | Written change record; no migration edited after application. |
 | 9.9 | Apply the reviewed migration plan to production only with explicit change approval and verified backup. | Production schema matches expected checksums/counts; smoke tests pass. |
@@ -309,7 +309,7 @@ To move quickly without building defects into the next phase:
 
 Perform in this order:
 
-1. Check the current CI result for \`df758b6\`; if green, record it. If red, fix the failure before adding features.
+1. Check the current CI result for `df758b6`; if green, record it. If red, fix the failure before adding features.
 2. Validate the payment recording endpoint and add focused integration tests for payment success, idempotency, scope, permissions, invalid states, overpayment and concurrency.
 3. Complete payment reversal API with preserved allocation history and audit reason.
 4. Add the payment UI and history/reversal states; integrate end-to-end tests.
