@@ -39,7 +39,7 @@ const permissions = [
 ] as const;
 
 const roles = [
-  ["system_admin", "System administrator"],
+  ["system_admin", "Super Administrator"],
   ["finance_admin", "Finance administrator"],
   ["invoice_creator", "Invoice creator"],
   ["invoice_issuer", "Invoice issuer"],
@@ -49,12 +49,12 @@ const roles = [
 ] as const;
 
 /**
- * Least-privilege role templates. These grant permissions to role definitions only; they
- * never assign a role to a user. Once an administrator customizes any role mapping, rerunning
- * this seed does not restore/re-add template grants.
+ * Reviewed role templates. Super Administrator deliberately receives every registered permission;
+ * the remaining roles retain their least-privilege grants. Templates grant only role definitions,
+ * never user assignments or entity scope. Existing customized mappings are not overwritten by reseeding.
  */
 const roleGrantTemplates: Record<string, readonly string[]> = {
-  system_admin: ["users:manage", "settings:manage", "audit:read"],
+  system_admin: permissions.map(([permissionKey]) => permissionKey),
   finance_admin: [
     "customers:read", "customers:create", "customers:update", "customers:archive",
     "catalog:read", "catalog:create", "catalog:update", "catalog:archive",

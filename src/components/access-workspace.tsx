@@ -18,7 +18,7 @@ const ROLE_OPTIONS: RoleOption[] = [
   { value: "payment_recorder", label: "Payment Recorder", description: "View invoices and record payments." },
   { value: "approver", label: "Approver", description: "Review invoice/quotation approval work where approval workflows are enabled." },
   { value: "auditor", label: "Auditor / Read-only", description: "Read approved records and audit information without writing finance data." },
-  { value: "system_admin", label: "System Administrator", description: "Manage users and configuration; this role does not itself grant finance-document access." },
+  { value: "system_admin", label: "Super Administrator", description: "Full access to every implemented module, finance workflow, user controls and all legal entities. Reserve for the CEO or a specifically trusted test administrator." },
 ];
 
 async function readJson<T>(path: string, init: RequestInit = {}): Promise<{ response: Response; body: ApiResult<T> }> {
@@ -163,7 +163,7 @@ export function AccessWorkspace() {
       <div className="section-overview-banner__icon" aria-hidden="true">FX</div>
       <div className="section-overview-banner__copy">
         <strong>Permission-first onboarding</strong>
-        <p>Invite a separate account with the minimum finance role and only the legal entities it needs. System administration does not automatically grant access to finance documents.</p>
+        <p>Super Administrator has global access across implemented modules and legal entities. Use it only for the CEO or a specifically trusted test administrator; assign ordinary staff the minimum finance role and entity scope they need.</p>
       </div>
       <StatusBadge tone="info">RBAC enforced</StatusBadge>
     </div>
@@ -188,7 +188,7 @@ export function AccessWorkspace() {
           <div className="form-field"><label className="form-label" htmlFor="access-email">Work email</label><input className="form-control" id="access-email" type="email" value={email} onChange={event => setEmail(event.target.value)} maxLength={320} autoComplete="email" required /></div>
           <div className="form-field form-field--wide"><label className="form-label" htmlFor="access-role">Role</label><select className="form-control" id="access-role" value={roleKey} onChange={event => setRoleKey(event.target.value)}>{roleOptions.map(role => <option key={role.value} value={role.value}>{role.label}</option>)}</select>
             {selectedRole ? <p className="form-hint">{selectedRole.description}</p> : null}
-            {roleKey === "system_admin" ? <p className="form-hint">System Administrator is intentionally not a finance superuser. Choose Finance Administrator or Invoice & Quotation Creator to work with documents.</p> : null}
+            {roleKey === "system_admin" ? <p className="form-hint">Super Administrator can perform all implemented admin and finance actions across legal entities, including configuration approval. Reserve this role for the CEO or specifically trusted test accounts.</p> : null}
           </div>
           <fieldset className="master-data-fieldset">
             <legend>Legal-entity scope</legend>
@@ -212,7 +212,7 @@ export function AccessWorkspace() {
     <section className="master-data-panel" aria-labelledby="access-user-list-title">
       <div className="master-data-panel__heading"><div><p className="page-eyebrow">CURRENT ACCOUNTS</p><h2 id="access-user-list-title">Team access</h2><p>Role changes and access changes revoke existing sessions so new privileges cannot be used by a stale session.</p></div><Button variant="secondary" onClick={() => void load()}>Refresh</Button></div>
       <div className="data-table-scroll"><table className="data-table"><thead><tr><th>User</th><th>Status</th><th>Role</th><th>Legal entities</th><th>Last login</th></tr></thead><tbody>
-        {users.map(user => <tr key={user.id}><td><strong>{user.displayName}</strong><div className="invoice-workspace-muted">{user.email}</div></td><td><StatusBadge tone={user.accountStatus === "ACTIVE" ? "success" : user.accountStatus === "INVITED" ? "warning" : "danger"}>{user.accountStatus}</StatusBadge></td><td>{user.roleKeys.map(role => role.replaceAll("_", " ")).join(", ") || "No role"}</td><td>{user.legalEntityCount}</td><td>{formatDate(user.lastLoginAt)}</td></tr>)}
+        {users.map(user => <tr key={user.id}><td><strong>{user.displayName}</strong><div className="invoice-workspace-muted">{user.email}</div></td><td><StatusBadge tone={user.accountStatus === "ACTIVE" ? "success" : user.accountStatus === "INVITED" ? "warning" : "danger"}>{user.accountStatus}</StatusBadge></td><td>{user.roleKeys.map(role => role === "system_admin" ? "Super Administrator" : role.replaceAll("_", " ")).join(", ") || "No role"}</td><td>{user.legalEntityCount}</td><td>{formatDate(user.lastLoginAt)}</td></tr>)}
         {!users.length ? <tr><td colSpan={5}><p className="form-hint">No users were returned for the current page.</p></td></tr> : null}
       </tbody></table></div>
     </section>

@@ -296,7 +296,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <>
                 <span className="topbar-user" title={currentUser.email}>
                   <span className="topbar-user__avatar" aria-hidden="true">{currentUser.displayName.trim().split(/\\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "FX"}</span>
-                  <span className="topbar-user__text"><strong>{currentUser.displayName}</strong><small>{currentUser.roles[0]?.replaceAll("_", " ") ?? "Signed in"}</small></span>
+                  <span className="topbar-user__text"><strong>{currentUser.displayName}</strong><small>{currentUser.roles.includes("system_admin") ? "Super Administrator" : currentUser.roles[0]?.replaceAll("_", " ") ?? "Signed in"}</small></span>
                 </span>
                 <button className="topbar-signout" type="button" onClick={() => void signOut()} disabled={authBusy}>
                   {authBusy ? "Signing out…" : "Sign out"}

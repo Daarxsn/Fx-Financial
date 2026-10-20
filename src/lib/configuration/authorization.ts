@@ -2,11 +2,12 @@ import "server-only";
 import { AuthorizationError } from "@/lib/auth/authorize";
 import type { SessionPrincipal } from "@/lib/auth/session";
 
-/** Financial configuration requires an explicitly assigned finance-administrator role.
- * settings:manage alone is not approval authority: a system administrator must not implicitly
- * approve tax registrations/rates or activate a financial number series.
+/** Financial configuration requires finance_admin or the explicitly elevated Super Administrator.
+ * Ordinary settings access still does not approve tax registrations/rates or activate number series.
  */
 export function requireFinanceConfigurationApprover(actor: SessionPrincipal): SessionPrincipal {
-  if (!actor.roles.includes("finance_admin")) throw new AuthorizationError("FORBIDDEN");
+  if (!actor.roles.includes("finance_admin") && !actor.roles.includes("system_admin")) {
+    throw new AuthorizationError("FORBIDDEN");
+  }
   return actor;
 }

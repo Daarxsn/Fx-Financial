@@ -96,6 +96,22 @@ export async function resolveSessionToken(token: string | null): Promise<Session
       [row.user_id],
     ),
   ]);
+  const isSuperAdmin = roleRows.some((item) => item.role_key === "system_admin");
+  let effectivePermissionRows = permissionRows;
+  let effectiveScopeRows = scopeRows;
+  if (isSuperAdmin) {
+    const [[allPermissionRows], [allEntityRows]] = await Promise.all([
+      pool.query<(RowDataPacket & { permission_key: string })[]>(
+        "SELECT permission_key FROM app_permissions ORDER BY permission_key",
+      ),
+      pool.query<(RowDataPacket & { legal_entity_id: string })[]>(
+        "SELECT id AS legal_entity_id FROM legal_entities ORDER BY id",
+      ),
+    ]);
+    effectivePermissionRows = allPermissionRows;
+    effectiveScopeRows = allEntityRows;
+  }
+
   await pool.execute(
     `UPDATE auth_sessions SET last_seen_at = NOW(3)
       WHERE id = ? AND revoked_at IS NULL
@@ -108,8 +124,8 @@ export async function resolveSessionToken(token: string | null): Promise<Session
     email: row.email,
     displayName: row.display_name,
     roles: roleRows.map((item) => item.role_key),
-    permissions: permissionRows.map((item) => item.permission_key),
-    legalEntityIds: scopeRows.map((item) => item.legal_entity_id),
+    permissions: effectivePermissionRows.map((item) => item.permission_key),
+    legalEntityIds: effectiveScopeRows.map((item) => item.legal_entity_id),
     expiresAt: Number(row.expires_at_unix),
     csrfTokenHash: row.csrf_token_hash,
   };
