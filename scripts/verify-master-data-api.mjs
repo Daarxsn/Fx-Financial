@@ -1726,12 +1726,12 @@ try {
     headers: { Cookie: cookieHeader(financeSession.jar) }, cache: "no-store",
   });
   assert.equal(formulaCatalogExport.status, 200);
-  const formulaCatalogLines = (await formulaCatalogExport.text()).split("\\r\\n");
+  const formulaCatalogLines = (await formulaCatalogExport.text()).split("\r\n");
   const formulaCatalogLine = formulaCatalogLines.find(line => line.includes("'" + formulaCatalogName));
   assert.ok(formulaCatalogLine, "catalog item names that resemble spreadsheet formulas are neutralized");
   assert.ok(formulaCatalogLine.includes("'" + formulaCatalogDescription), "catalog descriptions that begin with + are neutralized");
   assert.ok(formulaCatalogLine.includes("'" + formulaCatalogInternal), "privileged internal descriptions that begin with @ are neutralized");
-  const formulaCatalogRoundTripCsv = formulaCatalogLines[0] + "\\r\\n" + formulaCatalogLine + "\\r\\n";
+  const formulaCatalogRoundTripCsv = formulaCatalogLines[0] + "\r\n" + formulaCatalogLine + "\r\n";
   const formulaCatalogPreview = await call("/api/v1/catalog/items/import?mode=validate", {
     method: "POST", headers: importHeaders(null), body: formulaCatalogRoundTripCsv,
   }, financeSession.jar);
