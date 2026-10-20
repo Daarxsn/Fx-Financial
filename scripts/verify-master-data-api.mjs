@@ -818,12 +818,28 @@ try {
     [randomUUID(),issuedInvoiceId,phase6bTaxCode,phase6bTaxRuleId,phase6bRegistrationId],
   );
   const issueKey="p6b-happy-"+phase6bSuffix.toLowerCase()+"-001";
-  const issueResult=await call("/api/v1/invoices/"+issuedInvoiceId+"/issue",{
-    method:"POST",headers:{"Idempotency-Key":issueKey},body:JSON.stringify({documentDate:issueDate}),
-  },phase6aSession.jar);
-  assert.equal(issueResult.response.status,200,"approved in-scope draft invoice issues successfully: "+JSON.stringify(issueResult.body?.error??null));
+  const concurrentIssueResults=await Promise.all([
+    call("/api/v1/invoices/"+issuedInvoiceId+"/issue",{
+      method:"POST",headers:{"Idempotency-Key":issueKey},body:JSON.stringify({documentDate:issueDate}),
+    },phase6aSession.jar),
+    call("/api/v1/invoices/"+issuedInvoiceId+"/issue",{
+      method:"POST",headers:{"Idempotency-Key":issueKey},body:JSON.stringify({documentDate:issueDate}),
+    },phase6aSession.jar),
+  ]);
+  assert.deepEqual(concurrentIssueResults.map(result=>result.response.status).sort((a,b)=>a-b),[200,200],
+    "concurrent same-key issue requests both receive the committed result");
+  assert.deepEqual(concurrentIssueResults.map(result=>result.body.data.idempotentReplay).sort(),[false,true],
+    "exactly one concurrent issue request performs issuance and the other is a replay");
+  const issueResult=concurrentIssueResults.find(result=>result.body?.data?.idempotentReplay===false);
+  const concurrentIssueReplay=concurrentIssueResults.find(result=>result.body?.data?.idempotentReplay===true);
+  assert.ok(issueResult&&concurrentIssueReplay,"concurrent issuance yields one original result and one replay");
+  assert.equal(issueResult.response.status,200,"approved in-scope draft invoice issues successfully");
   assert.equal(issueResult.body.data.status,"ISSUED");
   assert.equal(issueResult.body.data.idempotentReplay,false);
+  assert.equal(concurrentIssueReplay.body.data.invoiceNumber,issueResult.body.data.invoiceNumber,
+    "concurrent issue requests observe the same allocated invoice number");
+  assert.equal(concurrentIssueReplay.body.data.configurationSha256,issueResult.body.data.configurationSha256,
+    "concurrent issue requests observe the same immutable configuration snapshot hash");
   assert.equal(issueResult.body.data.subtotal,"100.0000");
   assert.equal(issueResult.body.data.discountTotal,"0.0000");
   assert.equal(issueResult.body.data.taxableValue,"100.0000");
