@@ -541,6 +541,8 @@ button:disabled { cursor: not-allowed; opacity: .6; }
 .topbar-signin:hover, .topbar-signout:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
 .topbar-auth-message { position: absolute; top: 60px; right: 22px; z-index: 31; max-width: 320px; margin: 0; padding: 8px 10px; border: 1px solid var(--danger); border-radius: 9px; background: var(--danger-bg); color: var(--danger); font-size: 10px; box-shadow: var(--shadow-card); }
 @media (max-width: 520px) {
+  /* Keep the topbar compact on narrow devices; the environment tag is duplicated by the workspace footer. */
+  .topbar .environment-pill, .topbar .topbar__divider { display: none; }
   .auth-shell__main { padding: 18px 12px; }
   .auth-card { padding: 24px 20px; border-radius: 18px; }
   .auth-card__brand { margin-bottom: 25px; }

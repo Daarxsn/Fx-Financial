@@ -11,6 +11,7 @@ export function proxy(request: NextRequest) {
     pathname === "/api" ||
     pathname.startsWith("/api/") ||
     pathname.startsWith("/_next/") ||
+    pathname.startsWith("/brand/") ||
     PUBLIC_PAGES.has(pathname)
   ) {
     return NextResponse.next();
