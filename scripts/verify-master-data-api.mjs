@@ -1267,6 +1267,82 @@ try {
   const cancelledQuotation = await call("/api/v1/quotations/" + quotationId, {}, quotationFinanceSession.jar);
   assert.equal(cancelledQuotation.response.status, 200);
   assert.equal(cancelledQuotation.body.data.status, "CANCELLED");
+  // Pack 2: conversion must be atomic and idempotent even when two retries race.
+  // This is a CI-only accepted-quotation state fixture: quote status transition gates are
+  // separately tested by the quotation status route; this test isolates conversion behavior.
+  const conversionQuotationKey = "q-convert-source-" + suffix;
+  const conversionQuotation = await call("/api/v1/quotations", {
+    method: "POST",
+    headers: { "Idempotency-Key": conversionQuotationKey },
+    body: JSON.stringify({ ...quotationPayload, notes: "Pack 2 concurrent conversion fixture" }),
+  }, quotationFinanceSession.jar);
+  assert.equal(conversionQuotation.response.status, 201,
+    "conversion fixture quotation is created as a draft: " + JSON.stringify(conversionQuotation.body.error ?? null));
+  const conversionQuotationId = conversionQuotation.body.data.id;
+  const [acceptedFixture] = await db.execute(
+    "UPDATE quotations SET status='ACCEPTED' WHERE id=? AND status='DRAFT'",
+    [conversionQuotationId],
+  );
+  assert.equal(acceptedFixture.affectedRows, 1, "CI fixture moves the quotation into the accepted state");
+  const conversionIdempotencyKey = "q-convert-result-" + randomUUID();
+  const concurrentConversions = await Promise.all([
+    call("/api/v1/quotations/" + conversionQuotationId + "/convert", {
+      method: "POST", headers: { "Idempotency-Key": conversionIdempotencyKey }, body: "{}",
+    }, quotationFinanceSession.jar),
+    call("/api/v1/quotations/" + conversionQuotationId + "/convert", {
+      method: "POST", headers: { "Idempotency-Key": conversionIdempotencyKey }, body: "{}",
+    }, quotationFinanceSession.jar),
+  ]);
+  assert.deepEqual(concurrentConversions.map(result => result.response.status).sort((a,b) => a-b), [200,201],
+    "concurrent identical quotation conversion requests return one creation and one idempotent replay");
+  const convertedInvoiceId = concurrentConversions[0].body.data.invoiceId;
+  assert.ok(convertedInvoiceId, "conversion response includes the created invoice draft ID");
+  assert.equal(concurrentConversions[1].body.data.invoiceId, convertedInvoiceId,
+    "concurrent conversion requests resolve to the same invoice draft");
+  assert.deepEqual(concurrentConversions.map(result => result.body.data.idempotentReplay).sort(), [false,true],
+    "exactly one concurrent conversion creates the draft and the other is marked as a replay");
+  const [convertedQuoteRows] = await db.execute(
+    "SELECT status,converted_invoice_id,conversion_idempotency_key,record_version FROM quotations WHERE id=?",
+    [conversionQuotationId],
+  );
+  assert.equal(convertedQuoteRows.length, 1);
+  assert.equal(convertedQuoteRows[0].status, "CONVERTED");
+  assert.equal(convertedQuoteRows[0].converted_invoice_id, convertedInvoiceId);
+  assert.equal(convertedQuoteRows[0].conversion_idempotency_key, conversionIdempotencyKey);
+  const [convertedInvoiceRows] = await db.execute(
+    "SELECT lifecycle_status,related_invoice_id,grand_total,idempotency_key FROM invoices WHERE id=?",
+    [convertedInvoiceId],
+  );
+  assert.equal(convertedInvoiceRows.length, 1);
+  assert.equal(convertedInvoiceRows[0].lifecycle_status, "DRAFT",
+    "quotation conversion creates a draft and never issues an invoice implicitly");
+  assert.equal(convertedInvoiceRows[0].idempotency_key, conversionIdempotencyKey);
+  assert.equal(String(convertedInvoiceRows[0].grand_total), quotation.body.data.grandTotal,
+    "conversion preserves the accepted quotation's calculated amount");
+  const [[convertedInvoiceCount]] = await db.execute(
+    "SELECT COUNT(*) AS total FROM invoices WHERE idempotency_key=?",
+    [conversionIdempotencyKey],
+  );
+  assert.equal(Number(convertedInvoiceCount.total), 1, "concurrent conversion creates exactly one invoice row");
+  const [[convertedAuditCount]] = await db.execute(
+    "SELECT COUNT(*) AS total FROM audit_events WHERE entity_type='invoice' AND entity_id=? AND action='invoice.draft.created'",
+    [convertedInvoiceId],
+  );
+  assert.equal(Number(convertedAuditCount.total), 1, "the converted draft has exactly one creation audit event");
+  const differentConversionKey = await call("/api/v1/quotations/" + conversionQuotationId + "/convert", {
+    method: "POST", headers: { "Idempotency-Key": "q-convert-different-" + randomUUID() }, body: "{}",
+  }, quotationFinanceSession.jar);
+  assert.equal(differentConversionKey.response.status, 409,
+    "a converted quotation cannot create another invoice using a different idempotency key");
+  assert.equal(differentConversionKey.body.error.code, "DUPLICATE_SUBMISSION");
+  const [invoiceCountAfterDifferentKey] = await db.execute(
+    "SELECT COUNT(*) AS total FROM invoices WHERE idempotency_key=?",
+    [conversionIdempotencyKey],
+  );
+  assert.equal(Number(invoiceCountAfterDifferentKey[0].total), 1,
+    "a conflicting conversion retry does not create a second invoice");
+  console.log("PASS: Pack 2 quotation conversion tests cover concurrent retries, one-draft invariant, same-key replay, different-key conflict, preserved totals and creation audit evidence.");
+
   console.log("PASS: Phase 10 quotation API covers scoped draft create, exact totals, idempotent replay, detail/list, optimistic-concurrency update, stale-write rejection and reasoned cancellation.");
 
 
