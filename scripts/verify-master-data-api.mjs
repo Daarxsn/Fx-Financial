@@ -1577,7 +1577,7 @@ try {
   assert.equal(duplicateHeaderCsv.body.error.code, "CSV_PARSE_ERROR");
   const unterminatedQuoteCsv = await call("/api/v1/catalog/items/import?mode=validate", {
     method: "POST", headers: { "Content-Type": "text/csv" },
-    body: "itemType,name,customerDescription,unitCode,defaultUnitPrice,currency\r\nSERVICE,\\"Unclosed,Description,unit,1.0000,INR",
+    body: "itemType,name,customerDescription,unitCode,defaultUnitPrice,currency\r\nSERVICE,\"Unclosed,Description,unit,1.0000,INR",
   }, financeSession.jar);
   assert.equal(unterminatedQuoteCsv.response.status, 422, "unterminated quoted CSV fields must be rejected");
   assert.equal(unterminatedQuoteCsv.body.error.code, "CSV_PARSE_ERROR");
