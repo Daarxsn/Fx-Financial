@@ -363,6 +363,9 @@ export function QuotationWorkspace() {
     {!canRead ? <InlineAlert tone="warning" title="Quotation read permission required">
       Your role does not have quotations:read. The API enforces this permission even when the workspace is open.
     </InlineAlert> : null}
+    {canRead && !canWrite ? <InlineAlert tone="warning" title="Quotation creation permission required">
+      You can view quotations, but your role cannot create or update them. Ask an access administrator to assign <code>quotations:write</code> (typically Finance Administrator or Invoice Creator) and an active legal-entity scope.
+    </InlineAlert> : null}
     <div className="invoice-workspace-summary">
       <strong>{loading ? "Loading quotations…" : total + " " + (total === 1 ? "quotation" : "quotations")}</strong>
       <span>Drafts do not consume official quotation numbers. Numbering is allocated only when the quote is marked sent.</span>

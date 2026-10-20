@@ -19,7 +19,8 @@
     "config:phase6b-test": "tsx scripts/verify-phase-6b-configuration.ts",
     "finance:calculation-test": "tsx scripts/verify-invoice-calculations.ts",
     "phase7:ui-test": "node scripts/validate-phase-7-ui.mjs",
-    "phase7:browser-test": "node scripts/verify-phase-7-browser.mjs"
+    "phase7:browser-test": "node scripts/verify-phase-7-browser.mjs",
+    "invoice:access-ui-test": "node scripts/validate-quotation-access-ui.mjs"
   },
   "dependencies": {
     "mysql2": "^3.24.5",

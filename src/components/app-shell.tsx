@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Icon, type IconName } from "@/components/icon";
 import { IconButton, LoadingState } from "@/components/ui";
 
-type NavItem = { label: string; href: string; icon: IconName; badge?: string };
+type NavItem = { label: string; href: string; icon: IconName; badge?: string; permission?: string };
 type NavGroup = { label: string; items: NavItem[] };
 
 const navGroups: NavGroup[] = [
@@ -23,7 +23,7 @@ const navGroups: NavGroup[] = [
     { label: "Reports", href: "/reports", icon: "chart" },
     { label: "Audit trail", href: "/audit", icon: "shield" },
   ] },
-  { label: "Configure", items: [{ label: "Settings", href: "/settings", icon: "settings" }] },
+  { label: "Configure", items: [{ label: "Settings", href: "/settings", icon: "settings", permission: "settings:manage" }, { label: "Users & access", href: "/access", icon: "users", permission: "users:manage" }] },
 ];
 
 const navByPath = new Map(navGroups.flatMap((group) => group.items).map((item) => [item.href, item]));
@@ -36,14 +36,15 @@ const descriptions: Record<string, string> = {
   "/payments": "Record receipts and keep allocations distinct from invoice totals.",
   "/reports": "Review financial reporting when verified data sources are connected.",
   "/audit": "A traceable view of changes and important business actions.",
-  "/settings": "Manage workspace configuration when authorized workflows are enabled.",
+  "/settings": "Configure the company, brands, tax and document numbering.",
+  "/access": "Invite users and assign finance roles and legal-entity access.",
 };
 
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<{ id: string; email: string; displayName: string; roles: string[] } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; email: string; displayName: string; roles: string[]; permissions: string[] } | null>(null);
   const [authLoaded, setAuthLoaded] = useState(false);
   const [authPath, setAuthPath] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
@@ -238,27 +239,31 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="sidebar-nav" aria-label="Workspace">
-          {navGroups.map((group) => (
-            <div className="nav-group" key={group.label}>
-              <p className="nav-group__label">{group.label}</p>
-              {group.items.map((item) => {
-                const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`nav-item ${active ? "nav-item--active" : ""}`}
-                    aria-current={active ? "page" : undefined}
-                    onClick={closeMobile}
-                  >
-                    <Icon name={item.icon} size={19} />
-                    <span>{item.label}</span>
-                    {active ? <span className="nav-item__indicator" aria-hidden="true" /> : null}
-                  </Link>
-                );
-              })}
-            </div>
-          ))}
+          {navGroups.map((group) => {
+            const visibleItems = group.items.filter((item) => !item.permission || currentUser?.permissions.includes(item.permission));
+            if (!visibleItems.length) return null;
+            return (
+              <div className="nav-group" key={group.label}>
+                <p className="nav-group__label">{group.label}</p>
+                {visibleItems.map((item) => {
+                  const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`nav-item ${active ? "nav-item--active" : ""}`}
+                      aria-current={active ? "page" : undefined}
+                      onClick={closeMobile}
+                    >
+                      <Icon name={item.icon} size={19} />
+                      <span>{item.label}</span>
+                      {active ? <span className="nav-item__indicator" aria-hidden="true" /> : null}
+                    </Link>
+                  );
+                })}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="sidebar-bottom">

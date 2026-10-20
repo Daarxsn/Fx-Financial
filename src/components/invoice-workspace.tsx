@@ -36,6 +36,8 @@ export function InvoiceWorkspace(){
  const [lines,setLines]=useState<LineDraft[]>([freshLine()]);const [dirty,setDirty]=useState(false);
  const [createKey,setCreateKey]=useState(()=>crypto.randomUUID()+crypto.randomUUID());const [issueKeys,setIssueKeys]=useState<Record<string,string>>({});
  const limit=25;const canCreate=permissions.includes("invoices:draft:create");const canUpdate=permissions.includes("invoices:draft:update");const canIssue=permissions.includes("invoices:issue");
+ const canRead=permissions.includes("invoices:read");
+ const missingSetup=!optionsLoading&&canCreate&&(!options.legalEntities.length||!options.customers.length);
  const selectedEntity=options.legalEntities.find(e=>e.id===form.legalEntityId);
  const rules=useMemo(()=>options.taxRules.filter(r=>r.legalEntityId===form.legalEntityId),[options.taxRules,form.legalEntityId]);
  const getRequest=useCallback(async(url:string,init:RequestInit={})=>{
@@ -101,6 +103,15 @@ export function InvoiceWorkspace(){
    {canCreate?<Button disabled={optionsLoading||!options.legalEntities.length||!options.customers.length} onClick={startNew}>+ New invoice</Button>:null}
   </div>
   <InlineAlert tone="info" title="Server-authoritative financials">The server calculates exact-decimal amounts using HALF_UP rounding to four places. Approved, effective tax rules determine rates and inclusive/exclusive treatment. Multi-currency conversion is disabled until an approved FX policy exists.</InlineAlert>
+  {!canRead?<InlineAlert tone="warning" title="Invoice access is not assigned">
+    This account does not have <code>invoices:read</code>, so the invoice list and draft actions are unavailable. A system administrator must assign an approved finance role and the appropriate legal-entity scope. The system administrator role alone does not grant finance permissions.
+  </InlineAlert>:null}
+  {canRead&&!canCreate?<InlineAlert tone="warning" title="Invoice creation permission required">
+    You can view invoices, but your role cannot create drafts. Ask an access administrator to assign <code>invoices:draft:create</code> (typically the Finance Administrator or Invoice Creator role) and an active legal-entity scope.
+  </InlineAlert>:null}
+  {missingSetup?<InlineAlert tone="warning" title="Invoice creation is not configured">
+    {!options.legalEntities.length&&!options.customers.length?"No active legal entity is assigned to this account and there are no active customers available.":"The invoice form needs an active legal entity in your assigned scope and at least one active customer."} Configure the legal entity in Settings and create customer records before drafting an invoice. No test or placeholder financial data is inserted.
+  </InlineAlert>:null}
   {error?<InlineAlert tone="danger" title="Invoice action needs attention">{error}</InlineAlert>:null}
   {success?<InlineAlert tone="success" title="Invoice updated">{success}</InlineAlert>:null}
   {optionsLoading?<LoadingState label="Loading legal entities, customers, catalog and approved tax rules…"/>:null}
