@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { randomBytes, randomUUID, scrypt as scryptCallback } from "node:crypto";
 import mysql from "mysql2/promise";
 import { chromium } from "playwright";
@@ -115,8 +115,26 @@ try {
   await page.goto(`${baseUrl}/customers`);
   await page.getByRole("heading", { name: "Customers", exact: true }).waitFor();
   await waitForList(page);
-  await page.getByRole("button", { name: /New customer/i }).click();
+  const newCustomerButton = page.getByRole("button", { name: /New customer/i });
+  await newCustomerButton.click();
   await page.getByRole("heading", { name: "Create customer", exact: true }).waitFor();
+  await page.waitForFunction(() => document.activeElement?.id === "customerCode");
+  pass("Opening the customer editor moves keyboard focus into the form.");
+
+  await page.keyboard.press("Escape");
+  await page.getByRole("heading", { name: "Create customer", exact: true }).waitFor({ state: "detached" });
+  assert.equal(await newCustomerButton.evaluate(element => element === document.activeElement), true,
+    "Escape closes the non-modal editor and returns focus to its opener.");
+  pass("Escape closes the customer editor and restores focus to its opener.");
+
+  await newCustomerButton.click();
+  await page.getByRole("heading", { name: "Create customer", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Create record", exact: true }).click();
+  assert.equal(await page.locator("#name").evaluate(element => element.matches(":invalid")), true,
+    "the browser prevents an empty required customer name from being submitted.");
+  await page.getByRole("heading", { name: "Create customer", exact: true }).waitFor();
+  pass("Required customer fields prevent an empty submission.");
+
   await page.locator("#customerCode").fill(customerCode);
   await page.getByLabel(/Customer \/ legal name/).fill(customerName);
   await page.locator("#email").fill(`customer-${suffix.toLowerCase()}@example.invalid`);
@@ -142,7 +160,12 @@ try {
   await page.getByRole("button", { name: "Confirm archive", exact: true }).click();
   await page.getByText("Archived. The record remains recoverable for audit/history, and any historical documents stay linked.", { exact: true }).waitFor();
   await page.locator("#customers-status").selectOption("all");
+  await page.locator("#customers-search").fill("NO-MATCH-" + suffix);
+  await page.getByText("No customers found", { exact: true }).waitFor();
+  await page.locator("#customers-search").fill(customerCode);
   await page.locator("tbody tr").filter({ hasText: customerCode }).getByText("Archived", { exact: true }).waitFor();
+  assert.equal(await page.locator("tbody tr").count(), 1, "customer code search narrows results to the matching record.");
+  pass("Customer search covers a no-results state and exact code filtering after archive.");
   pass("Customer archive requires a reason and remains visible in the archived filter.");
 
   await page.goto(`${baseUrl}/catalog`);
@@ -179,8 +202,32 @@ try {
   await page.getByRole("button", { name: "Confirm archive", exact: true }).click();
   await page.getByText("Archived. The record remains recoverable for audit/history, and any historical documents stay linked.", { exact: true }).waitFor();
   await page.locator("#catalog-status").selectOption("all");
+  await page.locator("#catalog-search").fill("NO-MATCH-" + suffix);
+  await page.getByText("No items or services found", { exact: true }).waitFor();
+  await page.locator("#catalog-search").fill(itemCode);
   await page.locator("tbody tr").filter({ hasText: itemCode }).getByText("Archived", { exact: true }).waitFor();
+  assert.equal(await page.locator("tbody tr").count(), 1, "catalog code search narrows results to the matching record.");
+  pass("Catalog search covers no-results feedback and exact code filtering.");
   pass("Catalog archive requires a reason and preserves the archived row for history.");
+
+  const importedCustomerCode = "UI-CSV-" + suffix.toUpperCase();
+  const customerCsvPath = `${artifactDirectory}/customers-import.csv`;
+  await writeFile(customerCsvPath,
+    "customerCode,name,email\\r\\n" + importedCustomerCode + ",Browser CSV Import " + suffix +
+      ",browser-csv-" + suffix.toLowerCase() + "@example.invalid\\r\\n",
+    "utf8");
+  await page.goto(`${baseUrl}/customers`);
+  await page.getByRole("heading", { name: "Customers", exact: true }).waitFor();
+  await waitForList(page);
+  await page.locator("details.master-data-import summary").click();
+  await page.locator("#customers-csv-file").setInputFiles(customerCsvPath);
+  await page.getByRole("button", { name: "Validate CSV", exact: true }).click();
+  await page.getByText("Validated 1 rows", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Commit 1 rows", exact: true }).click();
+  await page.getByText("Committed 1 rows", { exact: true }).waitFor();
+  await page.locator("#customers-search").fill(importedCustomerCode);
+  await page.locator("tbody tr").filter({ hasText: importedCustomerCode }).waitFor();
+  pass("Customer CSV import validates before explicit commit and the imported record is searchable.");
 
   for (const width of [1365, 768, 390]) {
     await assertNoPageOverflow(page, width);
