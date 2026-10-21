@@ -1725,6 +1725,139 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/policy-decisions:
+    get:
+      tags: [Governance]
+      summary: Read evidence-backed global and issuer-specific policy decisions
+      operationId: listBusinessPolicyDecisions
+      x-implementation-status: implemented
+      responses:
+        "200":
+          description: Scoped policy decisions and recorded external approval evidence
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PolicyDecisionListResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/policy-decisions/{decisionKey}:
+    parameters:
+      - in: path
+        name: decisionKey
+        required: true
+        schema: { type: string, pattern: "^D-(0[1-9]|1[0-2])$" }
+    patch:
+      tags: [Governance]
+      summary: Record or reopen a business/finance policy decision with evidence
+      operationId: updateBusinessPolicyDecision
+      x-implementation-status: implemented
+      parameters:
+        - { $ref: "#/components/parameters/CsrfToken" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PolicyDecisionUpdateInput" }
+      responses:
+        "200":
+          description: Decision saved, with an append-only history event
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PolicyDecisionUpdateResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/correction-requests:
+    get:
+      tags: [Governance]
+      summary: List scoped issued-document correction requests and append-only history
+      operationId: listInvoiceCorrectionRequests
+      x-implementation-status: implemented
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [all, PENDING_REVIEW, REJECTED, EXECUTED], default: all }
+        - in: query
+          name: invoiceId
+          schema: { $ref: "#/components/schemas/Uuid" }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, maximum: 1000000, default: 0 }
+      responses:
+        "200":
+          description: Scoped request queue/history; makers can read their requests and approvers can read the review queue
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorrectionRequestListResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Governance]
+      summary: Request cancellation or a credit/debit-note correction without mutating the source invoice
+      operationId: createInvoiceCorrectionRequest
+      x-implementation-status: implemented
+      parameters:
+        - { $ref: "#/components/parameters/CsrfToken" }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, minLength: 16, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CorrectionRequestInput" }
+      responses:
+        "201":
+          description: Correction request stored as PENDING_REVIEW; the source invoice is unchanged
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorrectionRequestResponse" }
+        "200":
+          description: Matching idempotent retry returned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorrectionRequestResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/correction-requests/{requestId}/decision:
+    parameters:
+      - { $ref: "#/components/parameters/UuidPath", name: requestId }
+    post:
+      tags: [Governance]
+      summary: Independently approve or reject a correction request with a reason
+      operationId: decideInvoiceCorrectionRequest
+      x-implementation-status: implemented
+      parameters:
+        - { $ref: "#/components/parameters/CsrfToken" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CorrectionDecisionInput" }
+      responses:
+        "200":
+          description: Request rejected or an approved unpaid invoice cancellation safely executed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorrectionDecisionResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
 components:
   securitySchemes:
     cookieAuth:
@@ -3131,3 +3264,159 @@ components:
           items: { $ref: "#/components/schemas/UserRecord" }
         meta:
           $ref: "#/components/schemas/Meta"
+    PolicyDecisionStatus:
+      type: string
+      enum: [PENDING, APPROVED, NOT_APPLICABLE, BLOCKED]
+    PolicyDecisionRecord:
+      type: object
+      required: [decisionKey, legalEntityId, topic, recommendedStartingPoint, requiredApprover, requiresIssueGate, status, updatedAt]
+      properties:
+        decisionKey: { type: string, pattern: "^D-(0[1-9]|1[0-2])$" }
+        legalEntityId: { oneOf: [{ $ref: "#/components/schemas/Uuid" }, { type: "null" }] }
+        legalEntityName: { type: [string, "null"] }
+        topic: { type: string }
+        recommendedStartingPoint: { type: string }
+        requiredApprover: { type: string }
+        requiresIssueGate: { type: boolean }
+        status: { $ref: "#/components/schemas/PolicyDecisionStatus" }
+        decisionCode: { type: [string, "null"] }
+        decisionText: { type: [string, "null"] }
+        rationale: { type: [string, "null"] }
+        externalApproverName: { type: [string, "null"] }
+        externalApproverRole: { type: [string, "null"] }
+        approvalReference: { type: [string, "null"] }
+        approvalDate: { type: [string, "null"], format: date }
+        updatedAt: { type: string, format: date-time }
+    PolicyDecisionListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/PolicyDecisionRecord" }
+        meta:
+          type: object
+          required: [total]
+          properties:
+            total: { type: integer, minimum: 0 }
+    PolicyDecisionUpdateInput:
+      type: object
+      additionalProperties: false
+      required: [status, rationale]
+      properties:
+        legalEntityId: { $ref: "#/components/schemas/Uuid" }
+        status: { $ref: "#/components/schemas/PolicyDecisionStatus" }
+        decisionCode: { type: [string, "null"], minLength: 2, maxLength: 80 }
+        decisionText: { type: [string, "null"], minLength: 10, maxLength: 4000 }
+        rationale: { type: string, minLength: 10, maxLength: 2000 }
+        externalApproverName: { type: [string, "null"], minLength: 2, maxLength: 160 }
+        externalApproverRole: { type: [string, "null"], minLength: 2, maxLength: 160 }
+        approvalReference: { type: [string, "null"], minLength: 3, maxLength: 255 }
+        approvalDate: { type: [string, "null"], format: date }
+    PolicyDecisionUpdateResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [decisionKey, legalEntityId, status, updatedBy]
+          properties:
+            decisionKey: { type: string }
+            legalEntityId: { oneOf: [{ $ref: "#/components/schemas/Uuid" }, { type: "null" }] }
+            status: { $ref: "#/components/schemas/PolicyDecisionStatus" }
+            decisionCode: { type: [string, "null"] }
+            updatedBy: { $ref: "#/components/schemas/Uuid" }
+        meta: { $ref: "#/components/schemas/Meta" }
+    CorrectionType:
+      type: string
+      enum: [CANCEL, CREDIT_NOTE, DEBIT_NOTE]
+    CorrectionRequestStatus:
+      type: string
+      enum: [PENDING_REVIEW, REJECTED, EXECUTED]
+    CorrectionRequestInput:
+      type: object
+      additionalProperties: false
+      required: [invoiceId, correctionType, reason]
+      properties:
+        invoiceId: { $ref: "#/components/schemas/Uuid" }
+        correctionType: { $ref: "#/components/schemas/CorrectionType" }
+        reason: { type: string, minLength: 10, maxLength: 1000 }
+    CorrectionRequestEvent:
+      type: object
+      required: [id, eventType, status, reason, actorId, createdAt]
+      properties:
+        id: { $ref: "#/components/schemas/Uuid" }
+        eventType: { type: string, enum: [REQUESTED, REJECTED, EXECUTED] }
+        previousStatus: { type: [string, "null"], enum: [PENDING_REVIEW, REJECTED, EXECUTED, null] }
+        status: { $ref: "#/components/schemas/CorrectionRequestStatus" }
+        reason: { type: string }
+        actorId: { $ref: "#/components/schemas/Uuid" }
+        createdAt: { type: string, format: date-time }
+    CorrectionRequestRecord:
+      type: object
+      required: [id, invoiceId, legalEntityId, correctionType, status, reason, requestedBy, history]
+      properties:
+        id: { $ref: "#/components/schemas/Uuid" }
+        invoiceId: { $ref: "#/components/schemas/Uuid" }
+        legalEntityId: { $ref: "#/components/schemas/Uuid" }
+        invoiceNumber: { type: [string, "null"] }
+        correctionType: { $ref: "#/components/schemas/CorrectionType" }
+        status: { $ref: "#/components/schemas/CorrectionRequestStatus" }
+        reason: { type: string }
+        requestedBy: { $ref: "#/components/schemas/Uuid" }
+        reviewedBy: { type: [string, "null"], format: uuid }
+        reviewDecision: { type: [string, "null"], enum: [APPROVE, REJECT, null] }
+        reviewReason: { type: [string, "null"] }
+        reviewedAt: { type: [string, "null"], format: date-time }
+        executedAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        history:
+          type: array
+          items: { $ref: "#/components/schemas/CorrectionRequestEvent" }
+    CorrectionRequestListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/CorrectionRequestRecord" }
+        meta:
+          type: object
+          required: [pagination]
+          properties:
+            pagination: { $ref: "#/components/schemas/Pagination" }
+    CorrectionRequestResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          allOf:
+            - { $ref: "#/components/schemas/CorrectionRequestRecord" }
+            - type: object
+              properties:
+                idempotentReplay: { type: boolean }
+        meta: { $ref: "#/components/schemas/Meta" }
+    CorrectionDecisionInput:
+      type: object
+      additionalProperties: false
+      required: [decision, reason]
+      properties:
+        decision: { type: string, enum: [APPROVE, REJECT] }
+        reason: { type: string, minLength: 10, maxLength: 1000 }
+    CorrectionDecisionResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [requestId, status]
+          properties:
+            requestId: { $ref: "#/components/schemas/Uuid" }
+            status: { $ref: "#/components/schemas/CorrectionRequestStatus" }
+            decision: { type: string, enum: [APPROVE, REJECT] }
+            invoiceId: { $ref: "#/components/schemas/Uuid" }
+            invoiceStatus: { type: string, enum: [CANCELLED] }
+            invoiceNumber: { type: [string, "null"] }
+            reviewedBy: { $ref: "#/components/schemas/Uuid" }
+        meta: { $ref: "#/components/schemas/Meta" }
