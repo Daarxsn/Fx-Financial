@@ -965,6 +965,141 @@ try {
   console.log("PASS: payment API validates inputs, enforces balance, preserves exact decimals, records one allocation under concurrent retries, and rejects conflicting idempotency keys.");
 
 
+   // Pack 3 Part A: standalone receipt capture, snapshots, idempotency and scoped history.
+   const p3Options=await call("/api/v1/payments/options",{},phase6aSession.jar);
+   assert.equal(p3Options.response.status,200);
+   assert.ok(p3Options.body.data.legalEntities.some(x=>x.id===entityA.id));
+   assert.ok(p3Options.body.data.customers.some(x=>x.id===created.body.data.id));
+   const p3ReceiptKey="p3-receipt-"+randomUUID();
+   const p3ReceiptBody={legalEntityId:entityA.id,customerId:created.body.data.id,amount:"12.0000",currency:"INR",
+     paymentDate:issueDate,method:"bank transfer",reference:"CI-P3-"+phase6bSuffix,notes:"Pack 3 standalone receipt fixture"};
+   const p3Receipt=await call("/api/v1/payments",{method:"POST",headers:{"Idempotency-Key":p3ReceiptKey},body:JSON.stringify(p3ReceiptBody)},phase6aSession.jar);
+   assert.equal(p3Receipt.response.status,201,"standalone receipt can exist before invoice allocation");
+   assert.match(p3Receipt.body.data.receiptReference,/^RCPT-[0-9A-F]{32}$/);
+   assert.equal(p3Receipt.body.data.allocatedAmount,"0.0000");
+   assert.equal(p3Receipt.body.data.unallocatedAmount,"12.0000");
+   assert.equal(p3Receipt.body.data.customerSnapshot.name,created.body.data.name);
+   assert.equal(p3Receipt.body.data.legalEntitySnapshot.displayName,entityA.displayName);
+   const p3ReceiptReplay=await call("/api/v1/payments",{method:"POST",headers:{"Idempotency-Key":p3ReceiptKey},body:JSON.stringify(p3ReceiptBody)},phase6aSession.jar);
+   assert.equal(p3ReceiptReplay.response.status,200);
+   assert.equal(p3ReceiptReplay.body.data.id,p3Receipt.body.data.id);
+   const p3ReceiptConflict=await call("/api/v1/payments",{method:"POST",headers:{"Idempotency-Key":p3ReceiptKey},body:JSON.stringify({...p3ReceiptBody,amount:"13.0000"})},phase6aSession.jar);
+   assert.equal(p3ReceiptConflict.response.status,409);
+   const p3List=await call("/api/v1/payments?legalEntityId="+entityA.id+"&customerId="+created.body.data.id+"&status=RECORDED&limit=100&offset=0",{},phase6aSession.jar);
+   assert.equal(p3List.response.status,200);
+   assert.ok(p3List.body.data.some(x=>x.id===p3Receipt.body.data.id));
+   const p3Detail=await call("/api/v1/payments/"+p3Receipt.body.data.id,{},phase6aSession.jar);
+   assert.equal(p3Detail.response.status,200);
+   assert.equal(p3Detail.body.data.customerSnapshot.name,created.body.data.name);
+   assert.deepEqual(p3Detail.body.data.allocations,[]);
+   console.log("PASS: Pack 3 standalone receipt creation/replay/conflict, party snapshots, listing and detail.");
+
+   // Pack 3 Part B: partial allocation, amount bounds, exact balances and full receipt reversal.
+   const p3AllocKeyA="p3-alloc-a-"+randomUUID();
+   const p3AllocBodyA={paymentId:p3Receipt.body.data.id,amount:"5.0000"};
+   const p3AllocA=await call("/api/v1/invoices/"+issuedInvoiceId+"/allocations",{
+     method:"POST",headers:{"Idempotency-Key":p3AllocKeyA},body:JSON.stringify(p3AllocBodyA),
+   },phase6aSession.jar);
+   assert.equal(p3AllocA.response.status,201);
+   assert.equal(p3AllocA.body.data.unallocatedAmount,"7.0000");
+   const p3AllocReplay=await call("/api/v1/invoices/"+issuedInvoiceId+"/allocations",{
+     method:"POST",headers:{"Idempotency-Key":p3AllocKeyA},body:JSON.stringify(p3AllocBodyA),
+   },phase6aSession.jar);
+   assert.equal(p3AllocReplay.response.status,200);
+   assert.equal(p3AllocReplay.body.data.id,p3AllocA.body.data.id);
+   const p3AllocConflict=await call("/api/v1/invoices/"+issuedInvoiceId+"/allocations",{
+     method:"POST",headers:{"Idempotency-Key":p3AllocKeyA},body:JSON.stringify({...p3AllocBodyA,amount:"4.0000"}),
+   },phase6aSession.jar);
+   assert.equal(p3AllocConflict.response.status,409);
+   const p3OverReceipt=await call("/api/v1/invoices/"+issuedInvoiceId+"/allocations",{
+     method:"POST",headers:{"Idempotency-Key":"p3-over-receipt-"+randomUUID()},body:JSON.stringify({paymentId:p3Receipt.body.data.id,amount:"8.0000"}),
+   },phase6aSession.jar);
+   assert.equal(p3OverReceipt.response.status,409);
+   assert.equal(p3OverReceipt.body.error.code,"ALLOCATION_EXCEEDS_RECEIPT");
+   const p3AllocB=await call("/api/v1/invoices/"+issuedInvoiceId+"/allocations",{
+     method:"POST",headers:{"Idempotency-Key":"p3-alloc-b-"+randomUUID()},body:JSON.stringify({paymentId:p3Receipt.body.data.id,amount:"2.0000"}),
+   },phase6aSession.jar);
+   assert.equal(p3AllocB.response.status,201,"the same receipt can have multiple partial allocation chunks to the same invoice");
+   assert.equal(p3AllocB.body.data.unallocatedAmount,"5.0000");
+   const p3AfterPartial=await call("/api/v1/invoices/"+issuedInvoiceId,{},phase6aSession.jar);
+   assert.equal(p3AfterPartial.body.data.paidAmount,"32.1234");
+   assert.equal(p3AfterPartial.body.data.outstandingBalance,"85.8766");
+
+   const p3LargeReceipt=await call("/api/v1/payments",{
+     method:"POST",headers:{"Idempotency-Key":"p3-large-"+randomUUID()},
+     body:JSON.stringify({legalEntityId:entityA.id,customerId:created.body.data.id,amount:"100.0000",currency:"INR",
+       paymentDate:issueDate,method:"bank transfer",reference:"CI-P3-LARGE-"+phase6bSuffix,notes:"Pack 3 invoice balance boundary fixture"}),
+   },phase6aSession.jar);
+   assert.equal(p3LargeReceipt.response.status,201);
+   const p3OverInvoice=await call("/api/v1/invoices/"+issuedInvoiceId+"/allocations",{
+     method:"POST",headers:{"Idempotency-Key":"p3-over-balance-"+randomUUID()},
+     body:JSON.stringify({paymentId:p3LargeReceipt.body.data.id,amount:"85.8767"}),
+   },phase6aSession.jar);
+   assert.equal(p3OverInvoice.response.status,409);
+   assert.equal(p3OverInvoice.body.error.code,"ALLOCATION_EXCEEDS_BALANCE");
+   assert.equal(p3OverInvoice.body.error.details.outstandingBalance,"85.8766");
+   const p3BalanceAllocation=await call("/api/v1/invoices/"+issuedInvoiceId+"/allocations",{
+     method:"POST",headers:{"Idempotency-Key":"p3-exact-balance-"+randomUUID()},
+     body:JSON.stringify({paymentId:p3LargeReceipt.body.data.id,amount:"85.8766"}),
+   },phase6aSession.jar);
+   assert.equal(p3BalanceAllocation.response.status,201);
+   const p3FullyPaid=await call("/api/v1/invoices/"+issuedInvoiceId,{},phase6aSession.jar);
+   assert.equal(p3FullyPaid.body.data.paidAmount,"118.0000");
+   assert.equal(p3FullyPaid.body.data.outstandingBalance,"0.0000");
+   assert.equal(p3FullyPaid.body.data.paymentStatus,"PAID");
+
+   const p3ReverseKey="p3-reversal-"+randomUUID();
+   const p3ReverseBody={reason:"Pack 3 CI reversal restores invoice balance"};
+   const p3Reverse=await call("/api/v1/payments/"+p3LargeReceipt.body.data.id+"/reverse",{
+     method:"POST",headers:{"Idempotency-Key":p3ReverseKey},body:JSON.stringify(p3ReverseBody),
+   },phase6aSession.jar);
+   assert.equal(p3Reverse.response.status,200);
+   assert.equal(p3Reverse.body.data.status,"REVERSED");
+   const p3ReverseReplay=await call("/api/v1/payments/"+p3LargeReceipt.body.data.id+"/reverse",{
+     method:"POST",headers:{"Idempotency-Key":p3ReverseKey},body:JSON.stringify(p3ReverseBody),
+   },phase6aSession.jar);
+   assert.equal(p3ReverseReplay.response.status,200);
+   assert.equal(p3ReverseReplay.body.data.idempotentReplay,true);
+   assert.equal(p3ReverseReplay.body.data.reversalEventId,p3Reverse.body.data.reversalEventId);
+   const p3ReverseConflict=await call("/api/v1/payments/"+p3LargeReceipt.body.data.id+"/reverse",{
+     method:"POST",headers:{"Idempotency-Key":p3ReverseKey},body:JSON.stringify({reason:"Conflicting reversal reason"}),
+   },phase6aSession.jar);
+   assert.equal(p3ReverseConflict.response.status,409);
+   const p3AfterReverse=await call("/api/v1/invoices/"+issuedInvoiceId,{},phase6aSession.jar);
+   assert.equal(p3AfterReverse.body.data.paidAmount,"32.1234");
+   assert.equal(p3AfterReverse.body.data.outstandingBalance,"85.8766");
+   const p3ReversedDetail=await call("/api/v1/payments/"+p3LargeReceipt.body.data.id,{},phase6aSession.jar);
+   assert.equal(p3ReversedDetail.body.data.status,"REVERSED");
+   assert.equal(p3ReversedDetail.body.data.allocations.length,1);
+   assert.equal(p3ReversedDetail.body.data.reversalEvents.length,1);
+   const p3BadReason=await call("/api/v1/payments/"+p3Receipt.body.data.id+"/reverse",{
+     method:"POST",headers:{"Idempotency-Key":"p3-bad-reason-"+randomUUID()},body:JSON.stringify({reason:"x"}),
+   },phase6aSession.jar);
+   assert.equal(p3BadReason.response.status,422);
+   const p3ReverseSmall=await call("/api/v1/payments/"+p3Receipt.body.data.id+"/reverse",{
+     method:"POST",headers:{"Idempotency-Key":"p3-reverse-small-"+randomUUID()},body:JSON.stringify({reason:"Pack 3 partially allocated receipt reversed"}),
+   },phase6aSession.jar);
+   assert.equal(p3ReverseSmall.response.status,200);
+   const p3FinalInvoice=await call("/api/v1/invoices/"+issuedInvoiceId,{},phase6aSession.jar);
+   assert.equal(p3FinalInvoice.body.data.paidAmount,"25.1234");
+   assert.equal(p3FinalInvoice.body.data.outstandingBalance,"92.8766");
+   const p3SmallDetail=await call("/api/v1/payments/"+p3Receipt.body.data.id,{},phase6aSession.jar);
+   assert.equal(p3SmallDetail.body.data.status,"REVERSED");
+   assert.equal(p3SmallDetail.body.data.allocations.length,2);
+   const p3NoReverse=await seedUser("payment_recorder","p3-no-reverse-"+suffix+"@example.invalid","ACTIVE",
+     "Pack3 No Reverse Password #5!",[entityA.id]);
+   const p3NoReverseSession=await login(p3NoReverse);
+   const p3ForbiddenReverse=await call("/api/v1/payments/"+p3LargeReceipt.body.data.id+"/reverse",{
+     method:"POST",headers:{"Idempotency-Key":"p3-forbidden-"+randomUUID()},body:JSON.stringify({reason:"permission enforcement test"}),
+   },p3NoReverseSession.jar);
+   assert.equal(p3ForbiddenReverse.response.status,403);
+   const [p3AuditRows]=await db.execute(
+     "SELECT COUNT(*) AS n FROM audit_events WHERE action='payment.reversed' AND entity_id IN (?,?)",
+     [p3LargeReceipt.body.data.id,p3Receipt.body.data.id]);
+   assert.equal(Number(p3AuditRows[0].n),2);
+   console.log("PASS: Pack 3 partial allocation, balance bounds, full reversal, immutable allocation history, idempotency and least-privilege reversal.");
+
+
    // Pack 3 Part A: standalone receipt capture, immutable references/snapshots and scoped listing.
    const paymentOptions=await call("/api/v1/payments/options",{},phase6aSession.jar);
    assert.equal(paymentOptions.response.status,200,"receipt entry options require payments:record and current entity scope");
