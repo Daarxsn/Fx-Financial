@@ -3,7 +3,8 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Icon } from "@/components/icon";
-import { Breadcrumbs, Card, EmptyState, PageHeader, StatusBadge } from "@/components/ui";
+import { Breadcrumbs, Card, PageHeader, StatusBadge } from "@/components/ui";
+import { PaymentSummary } from "@/components/payment-summary";
 
 const modules = [
   { number: "01", title: "Invoices", description: "Create drafts, review server-calculated totals and issue after required finance checks.", href: "/invoices", icon: "invoice" as const, status: "Document workflow" },
@@ -75,14 +76,10 @@ export default function HomePage() {
       <div className="overview-lower-grid">
         <Card className="activity-card">
           <div className="card-heading">
-            <div><h2>Recent activity</h2><p>Important workspace actions will appear here.</p></div>
-            <span className="card-heading__icon"><Icon name="activity" size={19} /></span>
+            <div><h2>Receivables snapshot</h2><p>Scoped invoice and receipt totals, reconciled from recorded allocations.</p></div>
+            <span className="card-heading__icon"><Icon name="wallet" size={19} /></span>
           </div>
-          <EmptyState
-            icon="clock"
-            title="Nothing to report yet"
-            description="The recent-activity feed is not connected to a scoped activity query yet, so no live business events are shown here."
-          />
+          <PaymentSummary />
         </Card>
         <Card className="readiness-card">
           <div className="card-heading">

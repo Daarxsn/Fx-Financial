@@ -1193,6 +1193,33 @@ try {
    const p3BalanceRaceInvoice=await call("/api/v1/invoices/"+issuedInvoiceId,{},phase6aSession.jar);
    assert.equal(p3BalanceRaceInvoice.body.data.paidAmount,"85.1234");
    assert.equal(p3BalanceRaceInvoice.body.data.outstandingBalance,"32.8766");
+   const p3DashboardSummary=await call("/api/v1/payments/summary",{},phase6aSession.jar);
+   assert.equal(p3DashboardSummary.response.status,200,"receivables summary is restricted to authenticated payment readers");
+   const p3SummaryEntity=p3DashboardSummary.body.data.summaries.find(row=>row.legalEntityId===entityA.id&&row.currency==="INR");
+   assert.ok(p3SummaryEntity,"dashboard groups totals by authorized legal entity and currency");
+   const p3SummaryInvoices=await call("/api/v1/invoices?status=ISSUED&legalEntityId="+entityA.id+"&limit=100&offset=0",{},phase6aSession.jar);
+   assert.equal(p3SummaryInvoices.response.status,200);
+   const p3SummaryReceipts=await call("/api/v1/payments?legalEntityId="+entityA.id+"&limit=100&offset=0",{},phase6aSession.jar);
+   assert.equal(p3SummaryReceipts.response.status,200);
+   const p3MoneySum=(values)=>{
+     let units=0n;
+     for(const value of values){
+       const [whole,fraction=""]=String(value).split(".");
+       units+=BigInt(whole||"0")*10000n+BigInt((fraction+"0000").slice(0,4));
+     }
+     return (units/10000n).toString()+"."+(units%10000n).toString().padStart(4,"0");
+   };
+   assert.equal(p3SummaryEntity.issuedInvoiceTotal,p3MoneySum(p3SummaryInvoices.body.data.map(row=>row.grandTotal)));
+   assert.equal(p3SummaryEntity.allocatedInvoiceTotal,p3MoneySum(p3SummaryInvoices.body.data.map(row=>row.paidAmount)));
+   assert.equal(p3SummaryEntity.outstandingBalance,p3MoneySum(p3SummaryInvoices.body.data.map(row=>row.outstandingBalance)));
+   const p3RecordedReceipts=p3SummaryReceipts.body.data.filter(row=>row.status==="RECORDED");
+   assert.equal(p3SummaryEntity.recordedReceiptTotal,p3MoneySum(p3RecordedReceipts.map(row=>row.amount)));
+   assert.equal(p3SummaryEntity.allocatedReceiptTotal,p3MoneySum(p3RecordedReceipts.map(row=>row.allocatedAmount)));
+   assert.equal(p3SummaryEntity.unallocatedReceiptTotal,p3MoneySum(p3RecordedReceipts.map(row=>row.unallocatedAmount)));
+   assert.equal(p3SummaryEntity.reversedReceiptCount,p3SummaryReceipts.body.data.filter(row=>row.status==="REVERSED").length);
+   const p3ForbiddenSummary=await call("/api/v1/payments/summary",{},staffSession.jar);
+   assert.equal(p3ForbiddenSummary.response.status,403,"overview financial totals are not exposed without payments:read");
+   console.log("PASS: Pack 3 dashboard summary reconciles exact totals to invoice and receipt list APIs and enforces payment-read access.");
    console.log("PASS: Pack 3 concurrent reversal and competing payment requests cannot double-reverse or aggregate-overpay.");
    console.log("PASS: Pack 3 receipt create/replay/conflict, snapshots, scoped listing, partial allocations, amount bounds, full-paid balance, atomic reversals, idempotency and least-privilege reversal are covered.");
 

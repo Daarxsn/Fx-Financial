@@ -422,6 +422,16 @@ try {
    assert.equal(p3DirectRows[0].status, "RECORDED");
    pass("Invoice details record a fully allocated payment through the permission-gated receipt API.");
 
+    await page.goto(baseUrl + "/");
+    await page.getByRole("heading", { name: "Receivables snapshot", exact: true }).waitFor();
+    await page.getByText("Outstanding balance", { exact: true }).first().waitFor();
+    await page.getByText("Unallocated receipts", { exact: true }).first().waitFor();
+    pass("Overview displays the scoped receivables reconciliation snapshot.");
+    for (const width of [1365, 768, 390]) {
+      await assertNoPageOverflow(page, width);
+    }
+    pass("Receivables snapshot renders without horizontal overflow at desktop, tablet and mobile widths.");
+
 
 
   for (const width of [1365, 768, 390]) {
