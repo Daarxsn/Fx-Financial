@@ -6,7 +6,6 @@ import { pool } from "@/lib/db/pool";
 import { requirePermission } from "@/lib/auth/authorize";
 import { assertCsrf } from "@/lib/auth/csrf";
 import { apiError, jsonNoStore } from "@/lib/http/api-response";
-import { invoiceCalendarDateSchema } from "@/lib/validation/invoice";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +20,6 @@ function units(value: string | number): bigint {
 }
 function money(value: bigint): string { return (value/SCALE).toString()+"."+(value%SCALE).toString().padStart(4,"0"); }
 function uuid(value:string){return /^[0-9a-f-]{36}$/i.test(value);}
-function dateText(value:Date|string|null){return value===null?null:value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10);}
 function duplicate(error:unknown){return typeof error==="object"&&error!==null&&"code" in error&&(error as {code?:string}).code==="ER_DUP_ENTRY";}
 const schema=z.object({paymentId:z.string().uuid(),amount:z.string().regex(MONEY,"Enter a positive decimal with up to four fractional digits.")
   .refine(value=>units(value)>0n,"Allocation amount must be greater than zero.")}).strict();

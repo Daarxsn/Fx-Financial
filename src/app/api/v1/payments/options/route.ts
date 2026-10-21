@@ -1,4 +1,3 @@
-import { NextRequest } from "next/server";
 import type { RowDataPacket } from "mysql2";
 import { pool } from "@/lib/db/pool";
 import { requirePermission } from "@/lib/auth/authorize";
@@ -6,7 +5,7 @@ import { apiError, jsonNoStore } from "@/lib/http/api-response";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
-export async function GET(_request:NextRequest){
+export async function GET(){
  try{
   const actor=await requirePermission("payments:record");
   const scopes=[...new Set(actor.legalEntityIds)];

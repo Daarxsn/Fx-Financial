@@ -111,9 +111,9 @@ export function PaymentWorkspace() {
     } finally { setOptionsLoading(false); }
   }, [canRecord, form.legalEntityId, request]);
 
-  useEffect(() => { void refreshProfile(); }, [refreshProfile]);
-  useEffect(() => { void refreshReceipts(); }, [refreshReceipts]);
-  useEffect(() => { void refreshOptions(); }, [refreshOptions]);
+  useEffect(() => { Promise.resolve().then(() => refreshProfile()); }, [refreshProfile]);
+  useEffect(() => { Promise.resolve().then(() => refreshReceipts()); }, [refreshReceipts]);
+  useEffect(() => { Promise.resolve().then(() => refreshOptions()); }, [refreshOptions]);
 
   const csrf = async () => {
     const response = await fetch("/api/v1/auth/csrf", { cache: "no-store" });
