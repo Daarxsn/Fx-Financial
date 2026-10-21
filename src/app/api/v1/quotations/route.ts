@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
     if (query) {
       const escaped = query.replace(/[\\%_]/g, "\\$&");
       clauses.push("(q.quotation_number LIKE ? OR c.name LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(q.customer_snapshot, '$.name')) LIKE ?)");
-      params.push(\`%\${escaped}%\`, \`%\${escaped}%\`, \`%\${escaped}%\`);
+      params.push("%" + escaped + "%", "%" + escaped + "%", "%" + escaped + "%");
     }
     const where = "WHERE " + clauses.join(" AND ");
     const [rows] = await pool.query<(RowDataPacket & {
