@@ -1460,7 +1460,7 @@ try {
     body: JSON.stringify({ ...quotationPayload, notes: "Pack 2 immutable quotation snapshot regression",
       lines: quotationPayload.lines.map(line => ({ ...line, taxCode: phase6bTaxCode })) }),
   }, quotationFinanceSession.jar);
-  assert.equal(snapshotQuote.response.status, 201, "quotation snapshot fixture is created");
+  assert.equal(snapshotQuote.response.status, 201, "quotation snapshot fixture is created; response=" + JSON.stringify(snapshotQuote.body.error ?? snapshotQuote.body));
   const snapshotQuoteId = snapshotQuote.body.data.id;
   const snapshotOriginalName = quotationCustomerName;
   const sentSnapshotQuote = await call("/api/v1/quotations/" + snapshotQuoteId + "/status", {
