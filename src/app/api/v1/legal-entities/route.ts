@@ -8,6 +8,7 @@ import { assertCsrf } from "@/lib/auth/csrf";
 import { apiError, jsonNoStore } from "@/lib/http/api-response";
 import { legalEntityCreateSchema } from "@/lib/validation/configuration";
 import { captureLegalEntityConfigVersion, loadEntity, publicLegalEntity, recordAudit } from "@/lib/configuration/service";
+import { seedEntityPolicyDecisions } from "@/lib/configuration/policy-decisions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -72,6 +73,7 @@ export async function POST(request: NextRequest) {
       const row=await loadEntity(conn,id);
       if(!row) throw new Error("Configuration creation failed");
       const version=await captureLegalEntityConfigVersion(conn,row,actor.userId,input.changeReason);
+      await seedEntityPolicyDecisions(conn,id);
       await recordAudit(conn,actor.userId,"legal_entity.created","legal_entity",id,input.changeReason,null,
         { ...publicLegalEntity(row), configVersion: version.versionNumber });
       output=publicLegalEntity(row);

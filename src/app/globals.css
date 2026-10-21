@@ -854,3 +854,19 @@ h1, h2, h3, h4, .eyebrow, .section-heading h2, .card-heading h2, .module-card h3
   .payment-summary__metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .payment-summary__metrics > div { padding: 8px; }
 }
+
+/* Pack 4 governance and correction review workspace. */
+.policy-decision-workspace,.correction-review-workspace{display:flex;flex-direction:column;gap:15px;min-width:0}
+.policy-decision-group{display:flex;flex-direction:column;gap:10px;min-width:0}
+.policy-decision-group__heading{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.policy-decision-group__heading h2{margin:0;font-size:15px;color:var(--ink-strong)}
+.policy-decision-group__heading p{margin:0;font-size:11px;color:var(--muted)}
+.policy-decision-card{padding:18px;min-width:0}
+.policy-decision-card__heading{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.policy-decision-card__heading h3{margin:4px 0;color:var(--ink-strong);font-size:14px}
+.policy-decision-card__recommendation{color:var(--muted-strong);font-size:12px;line-height:1.6;max-width:100ch}
+.correction-request-card{padding:18px;min-width:0}
+.correction-request-card__head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.correction-request-card h3{margin:4px 0;color:var(--ink-strong);font-size:14px}
+.correction-request-card__reason{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--muted-strong);font-size:12px;line-height:1.6}
+@media(max-width:650px){.policy-decision-card,.correction-request-card{padding:13px}.policy-decision-card__heading{flex-wrap:wrap}}

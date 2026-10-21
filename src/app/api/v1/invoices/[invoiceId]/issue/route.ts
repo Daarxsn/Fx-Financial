@@ -7,6 +7,7 @@ import { requirePermission } from "@/lib/auth/authorize";
 import { apiError, jsonNoStore } from "@/lib/http/api-response";
 import { ConfigurationConflictError, ConfigurationNotReadyError } from "@/lib/configuration/errors";
 import { captureDocumentConfigurationSnapshot, jsonValue } from "@/lib/configuration/service";
+import { unresolvedInvoicePolicyDecisions } from "@/lib/configuration/policy-decisions";
 import { calculateInvoice, defaultDueDate, assertValidDueDate } from "@/lib/finance/invoice-calculation";
 import { calendarDateSchema } from "@/lib/validation/configuration";
 import { z } from "zod";
@@ -125,6 +126,15 @@ export async function POST(request: NextRequest, context: { params: Promise<{ in
     }
     if (invoice.document_type !== "INVOICE" && invoice.document_type !== "CREDIT_NOTE" && invoice.document_type !== "DEBIT_NOTE") {
       throw new ConfigurationConflictError("Only invoice, credit-note and debit-note records can be issued through this endpoint.");
+    }
+    const unresolvedPolicyDecisions = await unresolvedInvoicePolicyDecisions(conn, invoice.legal_entity_id);
+    if (unresolvedPolicyDecisions.length) {
+      await conn.rollback();
+      return jsonNoStore({ error: {
+        code: "POLICY_APPROVAL_REQUIRED",
+        message: "Issuance is blocked until required global and legal-entity decisions are approved or explicitly marked not applicable with evidence.",
+        details: { unresolvedDecisions: unresolvedPolicyDecisions },
+      } }, 409);
     }
     const [keyRows] = await conn.execute<(RowDataPacket & { id: string })[]>(
       // Use a non-locking advisory read for the unique key. A missing-key locking read
