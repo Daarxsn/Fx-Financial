@@ -1369,6 +1369,35 @@ try {
   }, quotationFinanceSession.jar);
   assert.equal(quotationReplay.response.status, 200, "same quotation idempotency key and payload replay the existing draft");
   assert.equal(quotationReplay.body.data.id, quotationId);
+  assert.equal(quotationReplay.body.data.idempotentReplay, true);
+  const conflictingQuotationReplay = await call("/api/v1/quotations", {
+    method: "POST", headers: { "Idempotency-Key": quotationKey },
+    body: JSON.stringify({ ...quotationPayload, notes: "Different payload using the same key" }),
+  }, quotationFinanceSession.jar);
+  assert.equal(conflictingQuotationReplay.response.status, 409,
+    "reusing the quotation idempotency key with a changed payload is rejected");
+  assert.equal(conflictingQuotationReplay.body.error.code, "DUPLICATE_SUBMISSION");
+  const concurrentQuotationKey = "q-concurrent-" + randomUUID();
+  const concurrentQuotationResults = await Promise.all([
+    call("/api/v1/quotations", {
+      method: "POST", headers: { "Idempotency-Key": concurrentQuotationKey },
+      body: JSON.stringify({ ...quotationPayload, notes: "Pack 2 concurrent identical create regression" }),
+    }, quotationFinanceSession.jar),
+    call("/api/v1/quotations", {
+      method: "POST", headers: { "Idempotency-Key": concurrentQuotationKey },
+      body: JSON.stringify({ ...quotationPayload, notes: "Pack 2 concurrent identical create regression" }),
+    }, quotationFinanceSession.jar),
+  ]);
+  assert.deepEqual(concurrentQuotationResults.map(result => result.response.status).sort((a, b) => a - b), [200, 201],
+    "concurrent identical quotation create requests produce one creation and one idempotent replay");
+  assert.deepEqual(concurrentQuotationResults.map(result => result.body.data.idempotentReplay).sort(), [false, true]);
+  assert.equal(concurrentQuotationResults[0].body.data.id, concurrentQuotationResults[1].body.data.id,
+    "concurrent quotation retries resolve to the same committed draft");
+  const [[concurrentQuotationCount]] = await db.execute(
+    "SELECT COUNT(*) AS total FROM quotations WHERE idempotency_key=?", [concurrentQuotationKey],
+  );
+  assert.equal(Number(concurrentQuotationCount.total), 1,
+    "concurrent identical quotation creates persist exactly one quotation row");
 
   const quotationDetail = await call("/api/v1/quotations/" + quotationId, {}, quotationFinanceSession.jar);
   assert.equal(quotationDetail.response.status, 200);

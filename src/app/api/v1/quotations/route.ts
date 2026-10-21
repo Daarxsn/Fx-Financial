@@ -23,9 +23,17 @@ function validationError(error: unknown) {
   }
   return apiError(error);
 }
+function databaseErrorCode(error: unknown): string | undefined {
+  return typeof error === "object" && error !== null && "code" in error
+    ? String((error as { code?: unknown }).code ?? "") || undefined
+    : undefined;
+}
 function duplicateEntry(error: unknown) {
-  return typeof error === "object" && error !== null && "code" in error &&
-    (error as { code?: string }).code === "ER_DUP_ENTRY";
+  return databaseErrorCode(error) === "ER_DUP_ENTRY";
+}
+function idempotencyRace(error: unknown) {
+  const code = databaseErrorCode(error);
+  return code === "ER_DUP_ENTRY" || code === "ER_LOCK_DEADLOCK" || code === "ER_LOCK_WAIT_TIMEOUT";
 }
 function dateText(value: Date | string | null): string | null {
   if (value === null) return null;
@@ -130,6 +138,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   let conn: Awaited<ReturnType<typeof pool.getConnection>> | undefined;
+  let requestIdempotencyKey: string | undefined;
+  let requestFingerprint: string | undefined;
   try {
     await assertCsrf(request);
     const actor = await requirePermission("quotations:write");
@@ -137,8 +147,10 @@ export async function POST(request: NextRequest) {
     if (!/^[\x21-\x7e]{16,128}$/.test(idempotencyKey)) {
       return jsonNoStore({ error: { code: "VALIDATION_ERROR", message: "Idempotency-Key must contain 16–128 visible ASCII characters." } }, 400);
     }
+    requestIdempotencyKey = idempotencyKey;
     const input = quotationCreateSchema.parse(await request.json());
     const fingerprint = createHash("sha256").update(canonicalJson(input)).digest("hex");
+    requestFingerprint = fingerprint;
     conn = await pool.getConnection();
     await conn.beginTransaction();
     const [existing] = await conn.execute<(RowDataPacket & { id: string; idempotency_payload_sha256: string | null; status: string })[]>(
@@ -176,6 +188,35 @@ export async function POST(request: NextRequest) {
     } }, 201);
   } catch (error) {
     if (conn) await conn.rollback().catch(() => undefined);
+    // Concurrent identical create requests may race on the unique key, and MySQL may select one
+    // transaction as a deadlock victim. Reconcile with the committed winner instead of making the
+    // client think that a successful create failed.
+    if (requestIdempotencyKey && requestFingerprint && idempotencyRace(error)) {
+      try {
+        let winner: { id: string; idempotency_payload_sha256: string | null; status: string } | undefined;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const [winnerRows] = await pool.execute<(RowDataPacket & {
+            id: string; idempotency_payload_sha256: string | null; status: string;
+          })[]>(
+            "SELECT id,idempotency_payload_sha256,status FROM quotations WHERE idempotency_key=? LIMIT 1",
+            [requestIdempotencyKey],
+          );
+          if (winnerRows.length) {
+            winner = winnerRows[0];
+            break;
+          }
+          if (attempt < 4) await new Promise(resolve => setTimeout(resolve, 25 * (attempt + 1)));
+        }
+        if (winner) {
+          if (winner.idempotency_payload_sha256 !== requestFingerprint) {
+            return jsonNoStore({ error: { code: "DUPLICATE_SUBMISSION", message: "This Idempotency-Key was already used for a different quotation payload." } }, 409);
+          }
+          return jsonNoStore({ data: { id: winner.id, status: winner.status, idempotentReplay: true } }, 200);
+        }
+      } catch {
+        // Preserve the safe fallback error contract if winner reconciliation cannot complete.
+      }
+    }
     if (duplicateEntry(error)) return jsonNoStore({ error: { code: "DUPLICATE_SUBMISSION", message: "This quotation was submitted more than once. Refresh the list before retrying." } }, 409);
     return validationError(error);
   } finally { conn?.release(); }
