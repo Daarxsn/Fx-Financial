@@ -137,6 +137,8 @@ A chunk is accepted only when all applicable statements below are true:
 
 **Gate 1:** Customer/catalog workflows are accepted, scoped and reliable. Historical invoice/quotation references survive archive and edits.
 
+**Pack 1 current-state evidence (2026-10-21):** The current main CI run [39551159277](https://github.com/Daarxsn/Fx-Financial/actions/runs/39551159277) passed on `ef0522c2a334fb2c0f48bfd9efb97d85285dfffc`. It includes the Phase 7 customer/catalog UI foundation tests, API/authentication/master-data integration suite, lint, TypeScript, production build, and Playwright acceptance. This establishes automated CI evidence, not completion of the remaining manual/provider gates below. Do not mark Pack 1 locked until migrations 011–012 are verified against the intended Aiven development/test database and the manual browser/accessibility checklist is recorded. Production launch additionally requires the listed finance/tax/business decisions and production operations gates.
+
 ### Pack 2 — Lock invoice + quotation workflows before payments depend on them
 
 **Goal:** one consistent, auditable path from draft to legally approved issue.
