@@ -1450,8 +1450,28 @@ try {
   const storedSupplierSnapshot = typeof storedQuotationSnapshotRows[0].supplier_snapshot === "string"
     ? JSON.parse(storedQuotationSnapshotRows[0].supplier_snapshot) : storedQuotationSnapshotRows[0].supplier_snapshot;
   assert.equal(storedCustomerSnapshot.name, snapshotOriginalName, "sending stores customer identity at send time");
+  assert.ok(storedCustomerSnapshot.customerId === quotationCustomerId, "customer snapshot carries the stable customer reference");
   assert.ok(storedSupplierSnapshot && typeof storedSupplierSnapshot === "object", "sending stores issuer identity");
   assert.ok(storedQuotationSnapshotRows[0].quotation_number, "official quotation number is allocated only when sent");
+  const [quotationConfigSnapshotRows] = await db.execute(
+    "SELECT configuration_snapshot,configuration_sha256,numbering_config_id,template_id FROM document_configuration_snapshots WHERE resource_type='QUOTATION' AND resource_id=?",
+    [snapshotQuoteId],
+  );
+  assert.equal(quotationConfigSnapshotRows.length, 1, "sent quotation must have exactly one immutable configuration snapshot");
+  assert.equal(quotationConfigSnapshotRows[0].numbering_config_id, quotationNumberingResult.body.data.id,
+    "sent quotation snapshot references the approved quotation-specific numbering series");
+  assert.equal(quotationConfigSnapshotRows[0].template_id, phase6bQuotationTemplateId,
+    "sent quotation snapshot references the approved quotation template");
+  assert.match(String(quotationConfigSnapshotRows[0].configuration_sha256), /^[0-9a-f]{64}$/,
+    "sent quotation snapshot has a SHA-256 integrity digest");
+  const storedQuotationConfiguration = typeof quotationConfigSnapshotRows[0].configuration_snapshot === "string"
+    ? JSON.parse(quotationConfigSnapshotRows[0].configuration_snapshot) : quotationConfigSnapshotRows[0].configuration_snapshot;
+  assert.ok(storedQuotationConfiguration.legalEntityConfigVersion?.id,
+    "sent quotation stores its legal-entity configuration version");
+  assert.ok(storedQuotationConfiguration.selectedTaxRules?.some(row => row.id === phase6bTaxRuleId),
+    "sent quotation snapshot includes its selected approved tax rule");
+  assert.ok(storedQuotationConfiguration.selectedTaxRegistrations?.some(row => row.id === phase6bRegistrationId),
+    "sent quotation snapshot includes the matching approved tax registration");
   const [customerSnapshotBeforeRename] = await db.execute(
     "SELECT name,record_version FROM customers WHERE id=?", [quotationCustomerId],
   );
