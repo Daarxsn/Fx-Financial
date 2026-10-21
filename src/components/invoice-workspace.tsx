@@ -11,6 +11,7 @@ type Item={id:string;itemCode:string|null;itemType:string;name:string;descriptio
 type TaxRule={id:string;legalEntityId:string;taxCode:string;displayName:string;ratePercent:string;calculationMode:"EXCLUSIVE"|"INCLUSIVE";effectiveFrom:string;effectiveUntil:string|null};
 type Options={legalEntities:Entity[];customers:Customer[];catalogItems:Item[];taxRules:TaxRule[]};
 type Invoice= {id:string;legalEntityId:string;brandId:string|null;customerId:string;customerName:string;documentType:string;invoiceNumber:string|null;lifecycleStatus:string;paymentStatus:string;currency:string;subtotal:string;discountTotal:string;taxableValue:string;taxTotal:string;grandTotal:string;paidAmount:string;outstandingBalance:string;invoiceDate:string|null;dueDate:string|null;paymentTermsDays:number;recordVersion:number;createdAt:string;updatedAt:string;lines?:Array<Record<string,unknown>>;notes?:string|null};
+type InvoicePayment = { id:string; invoiceId:string; receiptReference:string; customerId:string; amount:string; allocatedAmount:string; allocationCount:number; currency:string; paymentDate:string|null; method:string; reference:string|null; status:"RECORDED"|"REVERSED"; notes:string|null; createdAt:string; reversedAt:string|null; reversalReason:string|null };
 type Api={data?:unknown;meta?:{pagination?:{total:number;limit:number;offset:number;hasMore:boolean}};error?:{message?:string;code?:string;fields?:Record<string,string>}};
 const freshLine=():LineDraft=>({key:crypto.randomUUID(),catalogItemId:"",lineKind:"ITEM",description:"",unitCode:"unit",quantity:"1.0000",unitPrice:"0.0000",discountType:"AMOUNT",discountValue:"0.0000",taxCode:""});
 const today=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");};
@@ -35,8 +36,13 @@ export function InvoiceWorkspace(){
  const [form,setForm]=useState({legalEntityId:"",brandId:"",customerId:"",currency:"",invoiceDate:today(),dueDate:"",paymentTermsDays:"0",notes:""});
  const [lines,setLines]=useState<LineDraft[]>([freshLine()]);const [dirty,setDirty]=useState(false);
  const [createKey,setCreateKey]=useState(()=>crypto.randomUUID()+crypto.randomUUID());const [issueKeys,setIssueKeys]=useState<Record<string,string>>({});
+ const [paymentHistory,setPaymentHistory]=useState<InvoicePayment[]>([]);const [paymentHistoryLoading,setPaymentHistoryLoading]=useState(false);
+ const [paymentForm,setPaymentForm]=useState({amount:"",paymentDate:today(),method:"BANK_TRANSFER",reference:"",notes:""});
+ const [paymentKey,setPaymentKey]=useState(()=>crypto.randomUUID()+crypto.randomUUID());
+ const [reversingPaymentId,setReversingPaymentId]=useState("");const [reversalReason,setReversalReason]=useState("");const [reversalKey,setReversalKey]=useState(()=>crypto.randomUUID()+crypto.randomUUID());
  const limit=25;const canCreate=permissions.includes("invoices:draft:create");const canUpdate=permissions.includes("invoices:draft:update");const canIssue=permissions.includes("invoices:issue");
  const canRead=permissions.includes("invoices:read");
+ const canReadPayments=permissions.includes("payments:read");const canRecordPayment=permissions.includes("payments:record");const canReversePayment=permissions.includes("payments:reverse");
  const missingSetup=!optionsLoading&&canCreate&&(!options.legalEntities.length||!options.customers.length);
  const selectedEntity=options.legalEntities.find(e=>e.id===form.legalEntityId);
  const rules=useMemo(()=>options.taxRules.filter(r=>r.legalEntityId===form.legalEntityId&&(!form.invoiceDate||r.effectiveFrom<=form.invoiceDate)&&(!r.effectiveUntil||r.effectiveUntil>=form.invoiceDate)),[options.taxRules,form.legalEntityId,form.invoiceDate]);
@@ -63,14 +69,49 @@ export function InvoiceWorkspace(){
  useEffect(()=>{Promise.resolve().then(()=>refresh());},[refresh]);
  useEffect(()=>{Promise.resolve().then(()=>refreshOptions());},[refreshOptions]);
  const csrf=async()=>{const r=await fetch("/api/v1/auth/csrf",{cache:"no-store"});const b=await r.json() as {data?:{csrfToken?:string}};if(!r.ok||!b.data?.csrfToken)throw new Error("Request validation expired. Refresh the page and try again.");return b.data.csrfToken;};
- const updateForm=(key:keyof typeof form,value:string)=>{setForm(old=>({...old,[key]:value}));setDirty(true);setCreateKey(crypto.randomUUID()+crypto.randomUUID());};
+ const refreshPaymentHistory=async(id:string)=>{
+   if(!permissions.includes("payments:read")){setPaymentHistory([]);return;}
+   setPaymentHistoryLoading(true);
+   try{const r=await getRequest("/api/v1/invoices/"+id+"/payments");if(!r.response.ok)throw new Error(r.body.error?.message??"Payment history could not be loaded.");setPaymentHistory(Array.isArray(r.body.data)?r.body.data as InvoicePayment[]:[]);}
+   catch(e){setError(e instanceof Error?e.message:"Payment history could not be loaded.");}
+   finally{setPaymentHistoryLoading(false);}
+  };
+  const updatePaymentForm=(field:keyof typeof paymentForm,value:string)=>{setPaymentForm(old=>({...old,[field]:value}));setPaymentKey(crypto.randomUUID()+crypto.randomUUID());};
+  const recordInvoicePayment=async(e:FormEvent<HTMLFormElement>)=>{
+   e.preventDefault();if(!selected||selected.lifecycleStatus!=="ISSUED")return;
+   setSaving(true);setError("");setSuccess("");
+   try{
+    const token=await csrf();
+    const r=await getRequest("/api/v1/invoices/"+selected.id+"/payments",{method:"POST",headers:{"X-CSRF-Token":token,"Idempotency-Key":paymentKey},
+     body:JSON.stringify({amount:paymentForm.amount,paymentDate:paymentForm.paymentDate,method:paymentForm.method,
+      ...(paymentForm.reference.trim()?{reference:paymentForm.reference.trim()}:{}),...(paymentForm.notes.trim()?{notes:paymentForm.notes.trim()}:{})})});
+    if(!r.response.ok)throw new Error(r.body.error?.message??"Payment could not be recorded.");
+    const receiptReference=str(record(r.body.data).receiptReference)||"receipt";
+    setPaymentForm(old=>({...old,amount:"",reference:"",notes:""}));setPaymentKey(crypto.randomUUID()+crypto.randomUUID());
+    await refresh();await openInvoice(selected.id,true);setSuccess("Payment "+receiptReference+" recorded and fully allocated to this invoice.");
+   }catch(e){setError(e instanceof Error?e.message:"Payment could not be recorded.");}finally{setSaving(false);}
+  };
+  const reverseInvoicePayment=async(e:FormEvent<HTMLFormElement>)=>{
+   e.preventDefault();if(!selected||!reversingPaymentId||reversalReason.trim().length<3){setError("Enter a reversal reason of at least 3 characters.");return;}
+   setSaving(true);setError("");setSuccess("");
+   try{
+    const token=await csrf();
+    const r=await getRequest("/api/v1/payments/"+reversingPaymentId+"/reverse",{method:"POST",headers:{"X-CSRF-Token":token,"Idempotency-Key":reversalKey},body:JSON.stringify({reason:reversalReason.trim()})});
+    if(!r.response.ok)throw new Error(r.body.error?.message??"Payment reversal failed.");
+    const oldPayment=paymentHistory.find(item=>item.id===reversingPaymentId);
+    setReversingPaymentId("");setReversalReason("");setReversalKey(crypto.randomUUID()+crypto.randomUUID());
+    await refresh();await openInvoice(selected.id,true);
+    setSuccess("Receipt "+(oldPayment?.receiptReference??"")+" reversed. Its history remains retained and linked balances were recalculated.");
+   }catch(e){setError(e instanceof Error?e.message:"Payment reversal failed.");}finally{setSaving(false);}
+  };
+  const updateForm=(key:keyof typeof form,value:string)=>{setForm(old=>({...old,[key]:value}));setDirty(true);setCreateKey(crypto.randomUUID()+crypto.randomUUID());};
  const updateLine=(key:string,patch:Partial<LineDraft>)=>{setLines(old=>old.map(line=>line.key===key?{...line,...patch}:line));setDirty(true);setCreateKey(crypto.randomUUID()+crypto.randomUUID());};
- const startNew=()=>{const entity=options.legalEntities[0];const customer=options.customers[0];setSelected(null);setForm({legalEntityId:entity?.id??"",brandId:"",customerId:customer?.id??"",currency:entity?.currency??"",invoiceDate:today(),dueDate:"",paymentTermsDays:String(customer?.paymentTermsDays??0),notes:""});setLines([freshLine()]);setDirty(true);setEditor(true);setError("");setSuccess("");setCreateKey(crypto.randomUUID()+crypto.randomUUID());};
- const openInvoice=async(id:string)=>{
-  setError("");setSuccess("");setSaving(true);
+ const startNew=()=>{const entity=options.legalEntities[0];const customer=options.customers[0];setSelected(null);setPaymentHistory([]);setReversingPaymentId("");setForm({legalEntityId:entity?.id??"",brandId:"",customerId:customer?.id??"",currency:entity?.currency??"",invoiceDate:today(),dueDate:"",paymentTermsDays:String(customer?.paymentTermsDays??0),notes:""});setLines([freshLine()]);setDirty(true);setEditor(true);setError("");setSuccess("");setCreateKey(crypto.randomUUID()+crypto.randomUUID());};
+ const openInvoice=async(id:string,preserveMessages=false)=>{
+  if(!preserveMessages){setError("");setSuccess("");}setSaving(true);
   try{const r=await getRequest("/api/v1/invoices/"+id);if(!r.response.ok)throw new Error(r.body.error?.message??"Invoice could not be opened.");
    const v=record(r.body.data) as unknown as Invoice;setSelected(v);setForm({legalEntityId:v.legalEntityId,brandId:v.brandId??"",customerId:v.customerId,currency:v.currency,invoiceDate:v.invoiceDate??today(),dueDate:v.dueDate??"",paymentTermsDays:String(v.paymentTermsDays??0),notes:v.notes??""});
-   setLines(linesFrom(v.lines));setDirty(false);setEditor(v.lifecycleStatus==="DRAFT"&&canUpdate);
+   setLines(linesFrom(v.lines));setDirty(false);setEditor(v.lifecycleStatus==="DRAFT"&&canUpdate);await refreshPaymentHistory(id);
   }catch(e){setError(e instanceof Error?e.message:"Invoice could not be opened.");}finally{setSaving(false);}
  };
  const makePayload=()=>({legalEntityId:form.legalEntityId,brandId:form.brandId||null,customerId:form.customerId,currency:form.currency,invoiceDate:form.invoiceDate||null,dueDate:form.dueDate||null,paymentTermsDays:Number(form.paymentTermsDays),notes:form.notes||null,
@@ -137,7 +178,33 @@ export function InvoiceWorkspace(){
    </div>
    {Array.isArray(selected.lines)&&selected.lines.length?<div className="data-table-scroll"><table className="data-table"><thead><tr><th>Line</th><th>Qty</th><th>Unit rate</th><th>Discount</th><th>Tax</th><th>Total</th></tr></thead><tbody>{selected.lines.map((v,index)=>{const l=record(v);return <tr key={str(l.id)||index}><td><strong>{str(l.description)}</strong><div className="invoice-workspace-muted">{str(l.unitCode)} · {str(l.lineKind)}</div></td><td>{str(l.quantity)}</td><td>{currency(selected.currency,str(l.unitPrice))}</td><td>{str(l.discountType)==="PERCENT"?str(l.discountValue)+"%":currency(selected.currency,str(l.discountValue))}</td><td>{currency(selected.currency,str(l.taxAmount))}{str(l.taxCode)?" · "+str(l.taxCode):""}</td><td>{currency(selected.currency,str(l.lineTotal))}</td></tr>;})}</tbody></table></div>:<p className="form-hint">No line details returned.</p>}
    <div className="invoice-editor__actions">{selected.lifecycleStatus==="DRAFT"&&canUpdate?<Button variant="secondary" onClick={()=>{setEditor(true);setDirty(false);}}>Edit draft</Button>:null}{selected.lifecycleStatus==="DRAFT"&&canIssue?<Button disabled={Boolean(issuing)} onClick={()=>void issue(selected)}>{issuing===selected.id?"Issuing…":"Issue invoice"}</Button>:null}</div>
-  </div>:null}
+      <section className="master-data-panel" aria-labelledby="invoice-payments-title">
+     <div className="master-data-panel__heading"><div><h3 id="invoice-payments-title">Payments and receipts</h3><p>Paid/outstanding values are calculated from recorded allocations. Reversals preserve their ledger history.</p></div><a href="/payments">Open payment ledger</a></div>
+     <div className="invoice-editor__calculation"><div><span>Paid</span><strong>{currency(selected.currency,selected.paidAmount)}</strong></div><div className="invoice-editor__grand"><span>Outstanding</span><strong>{currency(selected.currency,selected.outstandingBalance)}</strong></div></div>
+     {!canReadPayments?<InlineAlert tone="warning" title="Payment history access is not assigned">Assign payments:read to this account to view payment history.</InlineAlert>:null}
+     {canReadPayments&&paymentHistoryLoading?<LoadingState label="Loading payment history…"/>:null}
+     {canReadPayments&&!paymentHistoryLoading?<div className="data-table-scroll"><table className="data-table"><thead><tr><th>Receipt</th><th>Date / method</th><th>Amount</th><th>Allocated</th><th>Status</th><th>Reversal</th><th>Action</th></tr></thead><tbody>
+      {!paymentHistory.length?<tr><td colSpan={7}><EmptyState title="No payments recorded" description="Record a payment when funds are received. Each receipt and allocation will appear here."/></td></tr>:null}
+      {paymentHistory.map(payment=><tr key={payment.id}><td><strong>{payment.receiptReference}</strong>{payment.allocationCount>1?<div className="invoice-workspace-muted">{payment.allocationCount} allocation chunks</div>:null}</td><td>{payment.paymentDate||"—"} · {payment.method}</td><td>{currency(payment.currency,payment.amount)}</td><td>{currency(payment.currency,payment.allocatedAmount)}</td><td><StatusBadge tone={payment.status==="RECORDED"?"success":"danger"}>{payment.status}</StatusBadge></td><td>{payment.reversalReason||"—"}</td><td>{canReversePayment&&payment.status==="RECORDED"?<Button size="sm" variant="danger" disabled={saving||Boolean(reversingPaymentId)} onClick={()=>{setReversingPaymentId(payment.id);setReversalReason("");setReversalKey(crypto.randomUUID()+crypto.randomUUID());}}>Reverse full receipt</Button>:null}</td></tr>)}
+     </tbody></table></div>:null}
+     {canRecordPayment&&selected.lifecycleStatus==="ISSUED"&&selected.outstandingBalance!=="0.0000"?<section className="master-data-panel master-data-panel--narrow" aria-labelledby="invoice-record-payment-title">
+      <div className="master-data-panel__heading"><div><h4 id="invoice-record-payment-title">Record payment against this invoice</h4><p>Creates a receipt and fully allocates it to this issued invoice. For standalone or partial receipts, use the payment ledger.</p></div></div>
+      <form onSubmit={recordInvoicePayment}><div className="invoice-form-grid">
+       <div className="invoice-form-field"><label className="form-label" htmlFor="invoice-payment-amount">Amount</label><input id="invoice-payment-amount" className="form-control" required inputMode="decimal" value={paymentForm.amount} onChange={e=>updatePaymentForm("amount",e.target.value)} placeholder="0.0000"/></div>
+       <div className="invoice-form-field"><label className="form-label" htmlFor="invoice-payment-date">Payment date</label><input id="invoice-payment-date" className="form-control" type="date" required value={paymentForm.paymentDate} onChange={e=>updatePaymentForm("paymentDate",e.target.value)}/></div>
+       <div className="invoice-form-field"><label className="form-label" htmlFor="invoice-payment-method">Method</label><select id="invoice-payment-method" className="form-control" value={paymentForm.method} onChange={e=>updatePaymentForm("method",e.target.value)}><option value="BANK_TRANSFER">Bank transfer</option><option value="CASH">Cash</option><option value="UPI">UPI</option><option value="CARD">Card</option><option value="CHEQUE">Cheque</option><option value="OTHER">Other</option></select></div>
+       <div className="invoice-form-field"><label className="form-label" htmlFor="invoice-payment-reference">Reference (optional)</label><input id="invoice-payment-reference" className="form-control" maxLength={160} value={paymentForm.reference} onChange={e=>updatePaymentForm("reference",e.target.value)}/></div>
+       <div className="invoice-form-field invoice-form-field--wide"><label className="form-label" htmlFor="invoice-payment-notes">Notes (optional)</label><textarea id="invoice-payment-notes" className="form-control form-control--textarea" maxLength={2000} value={paymentForm.notes} onChange={e=>updatePaymentForm("notes",e.target.value)}/></div>
+      </div><p className="form-hint">Outstanding limit: {currency(selected.currency,selected.outstandingBalance)}. The server validates amount and concurrent changes.</p>
+      <div className="invoice-editor__actions"><Button type="submit" disabled={saving}>{saving?"Recording payment…":"Record and allocate payment"}</Button></div></form>
+     </section>:null}
+     {reversingPaymentId&&canReversePayment?<section className="master-data-panel master-data-panel--narrow" aria-labelledby="invoice-payment-reversal-title"><div className="master-data-panel__heading"><div><h4 id="invoice-payment-reversal-title">Reverse entire receipt?</h4><p>This is a full receipt reversal. If the receipt is linked to multiple invoices, all its allocations are reversed.</p></div></div>
+      <form onSubmit={reverseInvoicePayment}><div className="invoice-form-field"><label className="form-label" htmlFor="invoice-payment-reversal-reason">Reason (required)</label><textarea id="invoice-payment-reversal-reason" className="form-control form-control--textarea" required minLength={3} maxLength={1000} value={reversalReason} onChange={e=>{setReversalReason(e.target.value);setReversalKey(crypto.randomUUID()+crypto.randomUUID());}}/></div>
+       <div className="invoice-editor__actions"><Button type="button" variant="secondary" disabled={saving} onClick={()=>setReversingPaymentId("")}>Keep receipt</Button><Button type="submit" variant="danger" disabled={saving||reversalReason.trim().length<3}>{saving?"Reversing…":"Confirm full reversal"}</Button></div>
+      </form>
+     </section>:null}
+    </section>
+</div>:null}
   {editor?<div className="invoice-editor">
    <div className="invoice-editor__heading"><div><p className="page-eyebrow">{selected?"DRAFT EDITOR":"NEW DRAFT"}</p><h2>{selected?"Edit invoice draft":"Create invoice draft"}</h2><p>Save to validate and calculate totals on the server. This form does not calculate authoritative totals in the browser.</p></div><Button variant="ghost" onClick={()=>setEditor(false)}>Close</Button></div>
    {selectedEntity&&!["APPROVED_CONFIGURED","APPROVED_NOT_APPLICABLE"].includes(selectedEntity.taxSetupStatus)?<InlineAlert tone="warning" title="Tax setup is not approved/configured">You may prepare a draft without tax only when no code is selected; issuance remains blocked until a finance-approved tax decision is recorded.</InlineAlert>:null}
