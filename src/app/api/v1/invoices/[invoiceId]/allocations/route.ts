@@ -57,8 +57,8 @@ export async function POST(request:NextRequest,context:Context){
   if(invoice.document_type!=="INVOICE"||invoice.lifecycle_status!=="ISSUED"){
    await conn.rollback();return jsonNoStore({error:{code:"PAYMENT_NOT_ALLOWED",message:"Allocations can only be made to issued invoices."}},409);
   }
-  const [oldAllocations]=await conn.execute<(RowDataPacket & {id:string;payment_id:string;invoice_id:string;amount:string|number})[]>(
-   "SELECT id,payment_id,invoice_id,amount FROM payment_allocations WHERE idempotency_key=? LIMIT 1 FOR UPDATE",[key]);
+  const [oldAllocations]=await conn.execute<(RowDataPacket & {id:string;payment_id:string;invoice_id:string;amount:string|number;created_at:Date|string})[]>(
+   "SELECT id,payment_id,invoice_id,amount,created_at FROM payment_allocations WHERE idempotency_key=? LIMIT 1",[key]);
   if(oldAllocations.length){
    const old=oldAllocations[0];
    if(old.invoice_id!==invoiceId||old.payment_id!==input.paymentId||units(old.amount)!==units(input.amount)){
@@ -73,7 +73,7 @@ export async function POST(request:NextRequest,context:Context){
    const allocated=await allocatedOnReceipt(conn,p.id);
    await conn.commit();
    return jsonNoStore({data:{id:old.id,paymentId:p.id,receiptReference:p.receipt_reference??"RCPT-"+p.id.replaceAll("-","").toUpperCase(),
-    invoiceId,amount:money(units(old.amount)),currency:p.currency,allocatedAmount:money(allocated),
+    invoiceId,amount:money(units(old.amount)),currency:p.currency,createdAt:old.created_at,allocatedAmount:money(allocated),
     unallocatedAmount:p.status==="RECORDED"?money(units(p.amount)-allocated):"0.0000",
     paidAmount:money(paid),outstandingBalance:money(outstanding),idempotentReplay:true},meta:{}},200);
   }
@@ -81,6 +81,25 @@ export async function POST(request:NextRequest,context:Context){
    "SELECT id,legal_entity_id,customer_id,amount,currency,status,receipt_reference FROM payments WHERE id=? LIMIT 1 FOR UPDATE",[input.paymentId]);
   if(!paymentRows.length){await conn.rollback();return jsonNoStore({error:{code:"NOT_FOUND",message:"Receipt not found in your assigned scope."}},404);}
   const payment=paymentRows[0];
+  // A request with the same idempotency key may have committed while this transaction
+  // waited for the receipt lock. Recheck after serialization, not with a gap-lock read.
+  const [racedAllocations]=await conn.execute<(RowDataPacket & {
+   id:string;payment_id:string;invoice_id:string;amount:string|number;created_at:Date|string
+  })[]>("SELECT id,payment_id,invoice_id,amount,created_at FROM payment_allocations WHERE idempotency_key=? LIMIT 1",[key]);
+  if(racedAllocations.length){
+   const raced=racedAllocations[0];
+   if(raced.invoice_id!==invoiceId||raced.payment_id!==input.paymentId||units(raced.amount)!==units(input.amount)){
+    await conn.rollback();return jsonNoStore({error:{code:"DUPLICATE_SUBMISSION",message:"This Idempotency-Key was already used for a different allocation."}},409);
+   }
+   const racedPaid=await paidOnInvoice(conn,invoiceId);
+   const racedOutstanding=units(invoice.grand_total)>racedPaid?units(invoice.grand_total)-racedPaid:0n;
+   const racedAllocated=await allocatedOnReceipt(conn,payment.id);
+   await conn.commit();
+   return jsonNoStore({data:{id:raced.id,paymentId:payment.id,receiptReference:payment.receipt_reference??"RCPT-"+payment.id.replaceAll("-","").toUpperCase(),
+    invoiceId,amount:money(units(raced.amount)),currency:payment.currency,createdAt:raced.created_at,
+    allocatedAmount:money(racedAllocated),unallocatedAmount:payment.status==="RECORDED"?money(units(payment.amount)-racedAllocated):"0.0000",
+    paidAmount:money(racedPaid),outstandingBalance:money(racedOutstanding),idempotentReplay:true},meta:{}},200);
+  }
   if(!payment.legal_entity_id||payment.legal_entity_id!==invoice.legal_entity_id||
      payment.customer_id!==invoice.customer_id||payment.currency!==invoice.currency||
      !actor.legalEntityIds.includes(payment.legal_entity_id)){
@@ -108,6 +127,8 @@ export async function POST(request:NextRequest,context:Context){
   await conn.execute(
    "INSERT INTO payment_allocations (id,payment_id,invoice_id,amount,idempotency_key,created_by) VALUES (?,?,?,?,?,?)",
    [allocationId,payment.id,invoiceId,money(requested),key,actor.userId]);
+  const [createdAllocationRows]=await conn.execute<(RowDataPacket & {created_at:Date|string})[]>(
+   "SELECT created_at FROM payment_allocations WHERE id=? LIMIT 1",[allocationId]);
   await conn.execute(
    "INSERT INTO audit_events (id,actor_id,action,entity_type,entity_id,outcome,before_json,after_json) VALUES (?,?,'payment.allocated','invoice',?,'SUCCESS',?,?)",
    [randomUUID(),actor.userId,invoiceId,
@@ -117,8 +138,8 @@ export async function POST(request:NextRequest,context:Context){
   await conn.commit();
   const nextAllocated=allocated+requested;
   return jsonNoStore({data:{id:allocationId,paymentId:payment.id,receiptReference:payment.receipt_reference??"RCPT-"+payment.id.replaceAll("-","").toUpperCase(),
-   invoiceId,amount:money(requested),currency:payment.currency,allocatedAmount:money(nextAllocated),
-   unallocatedAmount:money(units(payment.amount)-nextAllocated),paidAmount:money(alreadyPaid+requested),
+   invoiceId,amount:money(requested),currency:payment.currency,createdAt:createdAllocationRows[0]?.created_at??new Date().toISOString(),
+   allocatedAmount:money(nextAllocated),unallocatedAmount:money(units(payment.amount)-nextAllocated),paidAmount:money(alreadyPaid+requested),
    outstandingBalance:money(total>alreadyPaid+requested?total-alreadyPaid-requested:0n),idempotentReplay:false},meta:{}},201);
  }catch(error){
   if(conn)await conn.rollback().catch(()=>undefined);

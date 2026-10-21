@@ -31,7 +31,7 @@ export async function POST(request:NextRequest,context:Context){
   const input=schema.parse(await request.json());
   conn=await pool.getConnection();await conn.beginTransaction();
   const [eventRows]=await conn.execute<(RowDataPacket & {id:string;payment_id:string;reason:string;amount:string|number;currency:string})[]>(
-   "SELECT id,payment_id,reason,amount,currency FROM payment_reversal_events WHERE idempotency_key=? LIMIT 1 FOR UPDATE",[key]);
+   "SELECT id,payment_id,reason,amount,currency FROM payment_reversal_events WHERE idempotency_key=? LIMIT 1",[key]);
   if(eventRows.length){
    const event=eventRows[0];
    if(event.payment_id!==paymentId||event.reason!==input.reason){
@@ -81,6 +81,16 @@ export async function POST(request:NextRequest,context:Context){
    await conn.rollback();return jsonNoStore({error:{code:"NOT_FOUND",message:"Payment not found in your assigned scope."}},404);
   }
   if(payment.status!=="RECORDED"){
+   const [racedEvents]=await conn.execute<(RowDataPacket & {id:string;payment_id:string;reason:string})[]>(
+    "SELECT id,payment_id,reason FROM payment_reversal_events WHERE idempotency_key=? LIMIT 1",[key]);
+   if(racedEvents.length&&racedEvents[0].payment_id===paymentId&&racedEvents[0].reason===input.reason){
+    await conn.commit();
+    return jsonNoStore({data:{id:payment.id,receiptReference:payment.receipt_reference??"RCPT-"+payment.id.replaceAll("-","").toUpperCase(),
+     legalEntityId:payment.legal_entity_id,customerId:payment.customer_id,amount:money(units(payment.amount)),currency:payment.currency,
+     paymentDate:payment.payment_date instanceof Date?payment.payment_date.toISOString().slice(0,10):String(payment.payment_date).slice(0,10),
+     method:payment.method,reference:payment.reference,status:payment.status,reversedAt:payment.reversed_at,reversalReason:payment.reversal_reason,
+     reversalEventId:racedEvents[0].id,idempotentReplay:true},meta:{}},200);
+   }
    await conn.rollback();return jsonNoStore({error:{code:"PAYMENT_ALREADY_REVERSED",message:"This receipt has already been reversed."}},409);
   }
   const [currentAllocations]=await conn.execute<Allocation[]>(

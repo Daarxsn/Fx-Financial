@@ -77,6 +77,7 @@ type PaymentRow = RowDataPacket & {
   reversal_reason: string | null;
   invoice_id: string | null;
   allocated_amount: string | number | null;
+  allocation_count?: number;
 };
 
 async function getPaymentByKey(
@@ -127,19 +128,23 @@ export async function GET(_request: NextRequest, context: Context) {
       return jsonNoStore({ error: { code: "NOT_FOUND", message: "Invoice not found in your assigned scope." } }, 404);
     }
     const [rows] = await pool.execute<PaymentRow[]>(
-      `SELECT p.id,p.customer_id,p.amount,p.currency,DATE_FORMAT(p.payment_date,'%Y-%m-%d') AS payment_date,
-        p.method,p.reference,p.status,p.notes,p.created_at,p.reversed_at,p.reversal_reason,
-        pa.invoice_id,pa.amount AS allocated_amount
-       FROM payment_allocations pa
-       JOIN payments p ON p.id=pa.payment_id
-       WHERE pa.invoice_id=?
+      `SELECT p.id,p.legal_entity_id,p.receipt_reference,p.customer_id,p.amount,p.currency,
+        DATE_FORMAT(p.payment_date,'%Y-%m-%d') AS payment_date,p.method,p.reference,p.status,p.notes,
+        p.created_at,p.reversed_at,p.reversal_reason,? AS invoice_id,
+        COALESCE(SUM(pa.amount),0) AS allocated_amount,COUNT(pa.id) AS allocation_count
+       FROM payment_allocations pa JOIN payments p ON p.id=pa.payment_id
+       WHERE pa.invoice_id=? GROUP BY p.id
        ORDER BY p.payment_date DESC,p.created_at DESC,p.id DESC`,
-      [invoiceId],
+      [invoiceId, invoiceId],
     );
     return jsonNoStore({ data: rows.map((row) => ({
       id: row.id,
+      invoiceId,
+      receiptReference: row.receipt_reference ?? "RCPT-" + row.id.replaceAll("-", "").toUpperCase(),
+      customerId: row.customer_id,
       amount: fromUnits(toUnits(row.amount)),
       allocatedAmount: fromUnits(toUnits(row.allocated_amount ?? row.amount)),
+      allocationCount: Number(row.allocation_count ?? 1),
       currency: row.currency,
       paymentDate: dateText(row.payment_date),
       method: row.method,
@@ -149,7 +154,7 @@ export async function GET(_request: NextRequest, context: Context) {
       createdAt: row.created_at,
       reversedAt: row.reversed_at,
       reversalReason: row.reversal_reason,
-    })) });
+    })), meta: {} });
   } catch (error) {
     return apiError(error);
   }
@@ -206,10 +211,12 @@ export async function POST(request: NextRequest, context: Context) {
       const balances = await getBalances(conn, invoiceId, invoiceTotal);
       await conn.commit();
       return jsonNoStore({ data: {
-        id: existing.id, invoiceId, receiptReference: existing.receipt_reference ?? "RCPT-" + existing.id.replaceAll("-", "").toUpperCase(), amount, currency: invoice.currency, paymentDate: input.paymentDate,
+        id: existing.id, invoiceId, customerId: invoice.customer_id,
+        receiptReference: existing.receipt_reference ?? "RCPT-" + existing.id.replaceAll("-", "").toUpperCase(),
+        amount, currency: invoice.currency, paymentDate: input.paymentDate,
         method: input.method, status: existing.status, paidAmount: fromUnits(balances.paid),
         outstandingBalance: fromUnits(balances.outstanding), paymentStatus: balances.status, idempotentReplay: true,
-      } }, 200);
+      }, meta: {} }, 200);
     }
 
     if (invoice.document_type !== "INVOICE" || invoice.lifecycle_status !== "ISSUED") {
@@ -253,11 +260,12 @@ export async function POST(request: NextRequest, context: Context) {
     );
     await conn.commit();
     return jsonNoStore({ data: {
-      id: paymentId, invoiceId, receiptReference, amount, currency: invoice.currency, paymentDate: input.paymentDate,
+      id: paymentId, invoiceId, customerId: invoice.customer_id, receiptReference,
+      amount, currency: invoice.currency, paymentDate: input.paymentDate,
       method: input.method, status: "RECORDED", paidAmount: fromUnits(nextPaid),
       outstandingBalance: fromUnits(nextOutstanding), paymentStatus: paymentStatus(invoiceTotal, nextPaid),
       idempotentReplay: false,
-    } }, 201);
+    }, meta: {} }, 201);
   } catch (error) {
     if (conn) await conn.rollback().catch(() => undefined);
     if (isDuplicateEntry(error)) {
