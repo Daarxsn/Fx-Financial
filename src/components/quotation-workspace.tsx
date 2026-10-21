@@ -48,10 +48,6 @@ const freshLine = (): LineDraft => ({
 const record = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const str = (value: unknown): string => typeof value === "string" || typeof value === "number" ? String(value) : "";
-const dateValue = (value: unknown): string => {
-  const text = str(value);
-  return text.length >= 10 ? text.slice(0, 10) : "";
-};
 const linesFrom = (value: unknown): LineDraft[] => Array.isArray(value) && value.length
   ? value.map(item => {
     const line = record(item);
@@ -94,7 +90,6 @@ export function QuotationWorkspace() {
   const limit = 25;
   const canRead = permissions.includes("quotations:read");
   const canWrite = permissions.includes("quotations:write");
-  const selectedEntity = options.legalEntities.find(entity => entity.id === form.legalEntityId);
   const applicableTaxRules = useMemo(
     () => options.taxRules.filter(rule => rule.legalEntityId === form.legalEntityId &&
       (!form.quotationDate || rule.effectiveFrom <= form.quotationDate) &&

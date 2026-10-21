@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
-import { randomUUID } from "node:crypto";
 import { pool } from "@/lib/db/pool";
 import { requirePermission } from "@/lib/auth/authorize";
 import { assertCsrf } from "@/lib/auth/csrf";

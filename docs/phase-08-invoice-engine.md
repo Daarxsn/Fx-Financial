@@ -59,9 +59,34 @@ The full CI run on `ea0803f57efe81114e8ee82325fca62a3f0aacbc` passed with these 
 
 - **Issue-time customer identity:** invoice detail and list use the frozen `customer_snapshot` name when available. The MySQL-backed API test renames the live customer after issuance and verifies the issued invoice continues to show its issue-time name in both detail and list.
 - **Quotation conversion date safety:** conversion derives the invoice date from the legal entity's configured timezone and fails closed if the timezone is invalid. The regression test verifies the accepted quotation stays accepted and no invoice draft is created.
-- **Concurrent invoice issuance:** simultaneous same-key, same-document-date requests return one original result and one idempotent replay. Both responses share the same official invoice number and immutable configuration snapshot hash; existing checks verify a single issue snapshot A separate test reuses the consumed key on a different draft and verifies a conflict with no second number allocation or snapshot.
+- **Concurrent invoice issuance:** simultaneous same-key, same-document-date requests return one original result and one idempotent replay. Both responses share the same official invoice number and immutable configuration snapshot hash; existing checks verify a single issue snapshot . A separate test reuses the consumed key on a different draft and verifies a conflict with no second number allocation or snapshot.
 
 These checks do not replace configured Aiven integration evidence, finance/legal policy approvals, or manual production-like browser acceptance. Invoice cancellation/correction behavior remains a policy gate until finance/legal approves how issued documents are corrected and numbered.
+
+## Pack 2 Part A — Invoice lifecycle acceptance (2026-10-21)
+
+The invoice lifecycle has been accepted for engineering progression on main at functional baseline f9c2a307549b6e1873b64c1020ec09dd68ad8deb ([successful full CI run 39567709020](https://github.com/Daarxsn/Fx-Financial/actions/runs/39567709020)).
+
+- The MySQL/API suite covers draft creation/replay/conflict, exact server-calculated totals, updates with optimistic concurrency, stale-write rejection, issue-time recalculation and safe same-key replay.
+- Issuance preserves official numbering and immutable configuration snapshots and rejects reusing an issue key on a different draft. The API suite verifies no second sequence allocation or snapshot on conflict, and parallel issuance creates distinct official numbers and a snapshot per invoice.
+- Historical customer name display is frozen after issue; later customer and catalog edits cannot silently change issued invoice history.
+- The invoice workspace Playwright flow creates a draft using approved test configuration, edits the rate and verifies the recalculated total, issues the invoice, then checks the official number and one SHA-256 configuration snapshot in MySQL.
+- The cross-draft issue-key advisory read is non-locking to avoid missing-key gap-lock deadlocks; the unique constraint is authoritative, and a verified collision becomes a safe 409.
+
+Invoice cancellation/correction remains intentionally blocked from implementation until finance/legal defines the appropriate credit/debit-note, tax and numbering treatment.
+
+## Pack 2 Part B — Quotation lifecycle acceptance (2026-10-21)
+
+The quotation workflow has been accepted for engineering progression on the same green CI baseline.
+
+- Protected status transitions implement draft → sent → accepted/rejected/cancelled/expired as allowed by current status and validity.
+- SENT freezes the approved numbering/configuration snapshot plus supplier and customer identity details. The detail/list keep the customer name from the snapshot even after live master data changes.
+- The validity date is compared using the legal entity timezone; an invalid timezone fails closed. Integration tests verify an expired quotation cannot be accepted or converted.
+- Conversion is transactional and idempotent, uses fresh server-side invoice validation/calculation, links the source quote to one invoice draft and does not auto-issue it. Parallel same-key attempts produce one draft; replay returns the linked result; another key after conversion is rejected.
+- Playwright uses the real quotations workspace to create, send, accept and convert a quote; MySQL assertions verify status CONVERTED, the linked invoice, a DRAFT lifecycle state and the exact expected total.
+- Status/conversion success feedback remains visible after detail refresh. The invoice form now assigns unique IDs and programmatically associated labels to each control.
+
+**Current acceptance evidence:** [full CI run 39567709020](https://github.com/Daarxsn/Fx-Financial/actions/runs/39567709020), including database migrations/seeding/restore, API/security integration, calculation tests, static UI acceptance, lint, TypeScript, production build and the Playwright suite. The browser suite passed 29 checks across the customer/catalog and new invoice/quotation journeys, and verified no horizontal overflow at 1365px, 768px and 390px.
 
 ## Payment recording status (Pack 0)
 
@@ -69,6 +94,6 @@ The payment-recording API is part of the current implementation baseline. Pack 0
 
 ## Remaining rollout gates
 
-- Manual browser acceptance at real desktop and mobile viewports, keyboard usability and finance-user sign-off remain operator checks.
+- Automated Playwright acceptance covers invoice/quotation workspace flows and desktop/tablet/mobile overflow. Manual acceptance by a business user on real devices, keyboard/screen-reader behavior, visual contrast/theme review, and finance-user sign-off remain operator checks.
 - Migrations 013–015 passed in the disposable MySQL 8 CI service; they have not been applied to the configured Aiven instance in this work.
 - Finance/tax owners still need to approve actual production tax rules, registrations, invoice numbering/configuration and policy for any future multi-currency requirements.

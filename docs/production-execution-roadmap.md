@@ -139,21 +139,47 @@ A chunk is accepted only when all applicable statements below are true:
 
 **Pack 1 current-state evidence (2026-10-21):** The current main CI run [39551159277](https://github.com/Daarxsn/Fx-Financial/actions/runs/39551159277) passed on `ef0522c2a334fb2c0f48bfd9efb97d85285dfffc`. It includes the Phase 7 customer/catalog UI foundation tests, API/authentication/master-data integration suite, lint, TypeScript, production build, and Playwright acceptance. This establishes automated CI evidence, not completion of the remaining manual/provider gates below. Do not mark Pack 1 locked until migrations 011–012 are verified against the intended Aiven development/test database and the manual browser/accessibility checklist is recorded. Production launch additionally requires the listed finance/tax/business decisions and production operations gates.
 
-### Pack 2 — Lock invoice + quotation workflows before payments depend on them
+### Pack 2 — Invoice + quotation lifecycle (two-part acceptance)
 
-**Goal:** one consistent, auditable path from draft to legally approved issue.
+**Goal:** establish one reliable, auditable path from invoice draft to controlled issuance and from quotation draft through customer decision to a linked invoice draft.
 
-| Chunk | Work | Acceptance evidence |
-|---|---|---|
-| 2.1 | Re-audit invoice list/create/detail/update/issue and quotation create/update/list/detail/status/conversion endpoints against OpenAPI and actual workspace UI. | Implemented-vs-planned route checklist; no assumed completeness. |
-| 2.2 | Add/repair lifecycle tests: create, edit draft, validation errors, optimistic-lock conflict, idempotent retry and issue retry. | API and integration tests cover success, duplicates and conflicts. |
-| 2.3 | Confirm issued invoices contain complete immutable snapshots of issuer, customer, line labels/units/prices, tax mode/rule, totals, terms, due date, selected brand/template and numbering evidence. | Snapshot tests prove edits to customer/catalog/entity settings cannot mutate issued history. |
-| 2.4 | Stress concurrent invoice issuance and number allocation for one entity/series/year. | No duplicate official numbers; transaction rollback leaves no partial issue. |
-| 2.5 | Test quotation conversion for correct source linkage, approved customer/entity context, fresh server recalculation, currency/tax revalidation, idempotency and repeat attempts. | One source quotation cannot silently create duplicates; converted draft remains editable until issue. |
-| 2.6 | Repair invoice/quotation UI errors, keyboard access, stale-state handling and responsive detail views; include role-restricted users. | Browser run verifies normal and forbidden transitions. |
-| 2.7 | Implement any identified cancellation/correction requirement only after the finance/tax decision gate in Pack 4 is supplied. Until then, keep unsupported actions blocked. | No issue-number reuse or silent rewrite of issued data. |
+#### Part A — Invoice lifecycle
 
-**Gate 2:** Invoice and quotation flows are functionally coherent and tested. A draft is not an issued document, and conversion is not an automatic issue.
+- Re-audited invoice list, draft create/edit, detail and issue handlers against the secured API contract and the actual workspace.
+- Hardened cross-draft issuance idempotency under concurrency: the advisory uniqueness check no longer performs a missing-key gap-lock read; the database unique constraint remains authoritative, and a proven conflicting key is reconciled to a safe 409 response.
+- Extended real-browser acceptance through draft creation, edit/recalculation and issuance; verified authoritative totals, official numbering and exactly one integrity-hashed issue-configuration snapshot.
+- Existing MySQL/API regressions continue to cover four-place exact-decimal calculations, idempotent retry/conflict, stale-version rejection, server-side issue recalculation, issue-time customer snapshot display, catalog-edit immutability, multi-invoice number allocation and snapshot count.
+
+**Part A evidence:** completed CI baseline commit f9c2a307549b6e1873b64c1020ec09dd68ad8deb; [full successful CI run 39567709020](https://github.com/Daarxsn/Fx-Financial/actions/runs/39567709020).
+
+#### Part B — Quotation lifecycle
+
+- Verified draft create/edit/list/detail with idempotency and optimistic record versions; stale writes and stale transitions are rejected.
+- Verified DRAFT → SENT → ACCEPTED → CONVERTED through real protected API transitions and the actual browser workspace.
+- Sending requires an active scoped legal entity/customer, at least one line and valid entity timezone. It reserves the approved quotation number and records immutable configuration, issuer/supplier and customer snapshots. The UI accurately states that this transition does not send an email or generate a PDF.
+- Expiry is evaluated against the legal entity timezone. Invalid timezone configuration fails closed; expired quotes are not accepted or converted.
+- Conversion revalidates current entity/customer/currency/tax configuration, recalculates through the shared exact-decimal invoice engine, links the source quotation, creates one editable invoice draft, and never issues it automatically.
+- Existing integration tests cover conversion retry races (one invoice draft), same-key replay, different-key conflict, record-version checks, unchanged totals, audit events and invalid-timezone fail-closed behavior.
+- Quotation status/conversion feedback now remains visible after the detail state is refreshed.
+
+**Part B evidence:** the same complete CI run verified the MySQL-backed API suite, OpenAPI, lint, TypeScript, production build, and Playwright browser acceptance.
+
+#### Pack 2 final acceptance record — 2026-10-21
+
+- [x] Part A — invoice lifecycle and issuance hardening.
+- [x] Part B — quotation lifecycle and linked invoice-draft conversion.
+- [x] Exact-decimal calculations and idempotency/concurrency regression coverage.
+- [x] API integration, immutability, snapshot and scope/authentication checks.
+- [x] Invoice workspace browser create/edit/issue flow and database snapshot/number verification.
+- [x] Quotation workspace browser create/send/accept/convert flow; database verification confirms a CONVERTED quotation linked to one editable DRAFT invoice.
+- [x] Browser acceptance at desktop (1365px), tablet (768px) and mobile (390px); no horizontal overflow and no uncaught browser JavaScript errors.
+- [x] Full CI passed on functional baseline f9c2a307549b6e1873b64c1020ec09dd68ad8deb: [CI 39567709020](https://github.com/Daarxsn/Fx-Financial/actions/runs/39567709020).
+
+**Engineering disposition:** Pack 2 is accepted and locked for continued engineering on main. The final lock record/quality cleanup commit must also retain green CI. A later change to issue, snapshot, quotation-transition, conversion or money-calculation behavior reopens the affected acceptance gate until the relevant tests and full CI pass.
+
+**Important release boundary:** this lock means the software slice is integrated and tested; it is not a claim that the whole product has production go-live approval. Finance/legal policy for invoice cancellation/correction must be approved before implementing those actions. Business/tax sign-off, the configured Aiven development verification and provider-level restore drill, production secrets/database grants/HTTPS configuration, and manual real-device/assistive-technology acceptance remain separate pre-production gates. PDF/private-storage and outbound email delivery remain later product work, not an implied Pack 2 capability.
+
+**Gate 2:** Invoice and quotation workflows are accepted for engineering progression. Pack 3 may build on this locked baseline after the final lock-record commit's CI is green. A draft is not an issued document; quotation conversion is not automatic issuance.
 
 ### Pack 3 — Finish manual payments and receipts
 
