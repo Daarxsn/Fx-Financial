@@ -1339,7 +1339,7 @@ try {
   // Phase 10: quotation draft creation, idempotency, read, versioned editing and cancellation.
   const quotationDate = new Date().toISOString().slice(0,10);
   const quotationFinanceAdmin = await seedUser("finance_admin", "quotation-" + suffix + "@example.invalid", "ACTIVE",
-    "Quotation Strong Password #5!", [testLegalEntityId]);
+    "Quotation Strong Password #5!", [entityA.id]);
   const quotationFinanceSession = await login(quotationFinanceAdmin);
   const quotationCustomerName = "Phase 10 Customer " + suffix;
   const quotationCustomer = await call("/api/v1/customers", {
@@ -1351,7 +1351,7 @@ try {
   const quotationValidUntil = new Date(Date.parse(quotationDate + "T00:00:00.000Z") + 30 * 86400000).toISOString().slice(0,10);
   const quotationKey = "q-" + randomUUID();
   const quotationPayload = {
-    legalEntityId: testLegalEntityId, brandId: null, customerId: quotationCustomerId, currency: "INR",
+    legalEntityId: entityA.id, brandId: null, customerId: quotationCustomerId, currency: "INR",
     invoiceDate: quotationDate, dueDate: null, validUntil: quotationValidUntil, paymentTermsDays: 30,
     notes: "Phase 10 quotation API integration test",
     lines: [{ lineKind: "ITEM", description: "Quotation test service", unitCode: "hour", quantity: "2.0000",
