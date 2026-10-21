@@ -492,7 +492,7 @@ try {
   for (const key of ["D-01","D-05","D-08","D-10"]) await approveP4Decision(key);
   await approveP4Decision("D-09");
   const p4EntityDecisionKeys = ["D-02","D-03","D-04","D-06","D-07"];
-  for (const entityId of [entityA.id,entityB.id]) {
+  for (const entityId of [testLegalEntityId,entityA.id,entityB.id]) {
     for (const key of p4EntityDecisionKeys) await approveP4Decision(key,entityId);
     await approveP4Decision("D-11",entityId,"NOT_APPLICABLE");
   }
