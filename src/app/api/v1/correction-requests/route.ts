@@ -30,6 +30,9 @@ function safeRequest(row:RequestRow){
   createdAt:row.created_at,updatedAt:row.updated_at};
 }
 function canReadQueue(actor:SessionPrincipal){return actor.permissions.includes("approvals:read");}
+function duplicateEntry(error:unknown):boolean{
+ return typeof error==="object"&&error!==null&&"code" in error&&(error as {code?:string}).code==="ER_DUP_ENTRY";
+}
 
 export async function GET(request:NextRequest){
  try{
@@ -96,6 +99,14 @@ export async function POST(request:NextRequest){
    await conn.rollback();return jsonNoStore({error:{code:"NOT_FOUND",message:"Invoice was not found in your assigned scope."}},404);
   }
   const invoice=invoiceRows[0];
+  const [pendingRequests]=await conn.execute<(RowDataPacket&{id:string})[]>(
+   "SELECT id FROM invoice_correction_requests WHERE invoice_id=? AND status='PENDING_REVIEW' LIMIT 1",
+   [invoice.id],
+  );
+  if(pendingRequests.length){
+   await conn.rollback();
+   return jsonNoStore({error:{code:"CORRECTION_ALREADY_PENDING",message:"This issued invoice already has a pending correction request. Review it before opening another request."}},409);
+  }
   if(invoice.document_type!=="INVOICE"){
    await conn.rollback();return jsonNoStore({error:{code:"CORRECTION_SOURCE_UNSUPPORTED",message:"Correction requests must reference an issued source invoice."}},409);
   }
@@ -115,5 +126,9 @@ export async function POST(request:NextRequest){
   await conn.commit();
   return jsonNoStore({data:{id:requestId,invoiceId:invoice.id,invoiceNumber:invoice.invoice_number,legalEntityId:invoice.legal_entity_id,
    correctionType:input.correctionType,status:"PENDING_REVIEW",reason:input.reason,requestedBy:actor.userId,idempotentReplay:false}},201);
- }catch(error){if(conn)await conn.rollback().catch(()=>undefined);return apiError(error);}finally{conn?.release();}
+ }catch(error){
+  if(conn)await conn.rollback().catch(()=>undefined);
+  if(duplicateEntry(error))return jsonNoStore({error:{code:"CORRECTION_ALREADY_PENDING",message:"A correction request with this idempotency key or a pending request for this invoice already exists."}},409);
+  return apiError(error);
+ }finally{conn?.release();}
 }
