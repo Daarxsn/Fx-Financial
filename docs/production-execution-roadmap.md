@@ -108,6 +108,20 @@ A chunk is accepted only when all applicable statements below are true:
 
 **Gate 0:** The newest main commit has green CI, exact-decimal regression passes, and the roadmap reflects current code. Do not build further layers over a failing baseline.
 
+#### Pack 0 lock record — 2026-10-21
+
+**Disposition: PACK 0 ACCEPTED AND BASELINE LOCKED for continued engineering.** This lock applies to the stabilization baseline only; it is not a production go-live approval for the invoice product.
+
+- [x] **0.1 Baseline verified:** `main` is `e7a317c30124ca36815ade6080e1b4a9cf52064a`; CI run [39550457133](https://github.com/Daarxsn/Fx-Financial/actions/runs/39550457133) completed successfully against that exact SHA.
+- [x] **0.2 Money/payment code review:** exact-decimal quotation subtraction uses the shared fixed-point helper; the payment route uses scaled-integer arithmetic, authorization/scope checks, CSRF protection, row locking, transactional writes, outstanding-balance validation and idempotency.
+- [x] **0.3 Regression verification:** the successful CI run completed MySQL 8 migration/seed/repeatability and dump/restore checks, safe health failure checks, OpenAPI validation, auth/authorization/API integration tests (including the new payment API regressions), Phase 6B snapshot checks, calculation tests, UI validation, lint, TypeScript, production build and Playwright browser acceptance.
+- [x] **0.4 Current-state documentation reconciled:** README, this roadmap, Phase 08, the implementation tracker, the dated repository audit and closure gates now distinguish current repository facts from earlier historical snapshots.
+- [x] **0.5 Single progress record established:** this section is the Pack 0 source of truth and records the accepted commit, CI evidence and unresolved non-Pack-0 gates.
+
+**Baseline lock rule:** Pack 1 may start from this commit. Do not amend this accepted baseline in place; any later fix must be a new, tested commit on `main`. Reopen Pack 0 if CI fails, money arithmetic changes, database migration/seed invariants regress, authorization/idempotency safety regresses, or a critical defect is found.
+
+**Still open before production go-live (not Pack 0 blockers):** formal business/finance/tax sign-off; production legal-entity/tax/numbering configuration; Aiven/provider-level backup restore drill and approved RPO/RTO; production secrets, HTTPS origin and database grants; manual desktop/mobile and accessibility acceptance; and completion/approval of PDF/private storage, email, payment reversals/receipts/reconciliation, reminders, reporting and operational monitoring. These are not marked complete by a green CI run.
+
 ### Pack 1 — Close customer/catalog to acceptance quality
 
 **Goal:** finish the existing master-data slice before layering more financial features on it.

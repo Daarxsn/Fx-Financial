@@ -2,6 +2,8 @@
 
 # Phase 00–06 Implementation Tracker
 
+> **Current-state correction (2026-10-21; preserve historical evidence below):** The older phase entries below describe the code and CI assertions at their recorded dates; their earlier migration/permission counts must not be read as current counts. The current `main` baseline is `e7a317c30124ca36815ade6080e1b4a9cf52064a`; CI [39550457133](https://github.com/Daarxsn/Fx-Financial/actions/runs/39550457133) passed. Current repository/CI counts are **18 migrations, 24 permission definitions, seven roles, and 77 baseline role-permission mappings**. The Pack 0 stabilization gate is accepted and locked for continued engineering. This does not close the separately listed business, finance/tax, provider recovery, production configuration, PDF/storage/email or manual acceptance gates.
+
 **Phase 7 gate:** Phase 7 is now in progress directly on `main` by explicit user instruction. Continue to preserve Phase 1–6 financial/security safeguards, keep production/business/legal acceptance gates visible, and do not mark Phases 1–6 signed-off merely because Phase 7 has begun.
 
 This tracker records verified implementation evidence. Do not mark infrastructure or application behavior complete solely because documentation or source files exist.

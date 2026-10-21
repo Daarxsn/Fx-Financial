@@ -1,5 +1,7 @@
 # Repository Audit — Phases 00–06
 
+> **Current-state correction (2026-10-21):** This audit's findings below remain a historical snapshot of the repository as of 2026-10-16 and are not a description of the latest main tree. The current Pack 0 baseline is `e7a317c30124ca36815ade6080e1b4a9cf52064a`, with successful CI [39550457133](https://github.com/Daarxsn/Fx-Financial/actions/runs/39550457133). Since the audit date, the current tree has advanced to **18 migrations, 24 permission definitions, seven roles and 77 baseline role-permission mappings**, and includes a manual invoice payment-recording API plus endpoint-level regression tests. The old counts and code inventory below are intentionally preserved as historical evidence; use `docs/production-execution-roadmap.md` for current status. This correction does not claim production sign-off.
+
 **Audit date:** 2026-10-16  
 **Audited baseline:** `main` at `b8297972f31ab18d87632dfa718c4ef49c70d35e` (2026-10-16)  
 **Merged closure work:** PRs #4, #5 and #6 are merged to `main`. The unique audit branch history was integrated in merge commit `b8297972f31ab18d87632dfa718c4ef49c70d35e`, with the compatible brand-picker/palette work ported while retaining exact supplied WebP assets. Latest CI and lockfile/bootstrap passed on the audited revision (runs `38893456152` and `38893456184`).  

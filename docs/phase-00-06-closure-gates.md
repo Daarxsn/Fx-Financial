@@ -1,5 +1,7 @@
 # Phases 01–06 closure gates (2026-10-16)
 
+> **Current-state correction (2026-10-21):** This checklist was captured on 2026-10-16. Its earlier 22-permission count and commit links are historical, not current. Current `main` is `e7a317c30124ca36815ade6080e1b4a9cf52064a`; CI [39550457133](https://github.com/Daarxsn/Fx-Financial/actions/runs/39550457133) passed with 18 migrations, 24 permission definitions, seven roles and 77 baseline role-permission mappings. Pack 0's stabilization baseline is now locked for further engineering. All business/finance/tax, provider recovery, production configuration, manual visual acceptance and unfinished feature gates listed below remain open unless separately evidenced.
+
 This is the pre-Phase-07 release checklist. Do not use this page to infer business approval.
 
 ## Verified in the developer's dedicated development environment
