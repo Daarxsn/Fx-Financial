@@ -3388,7 +3388,14 @@ components:
           type: object
           required: [pagination]
           properties:
-            pagination: { $ref: "#/components/schemas/Pagination" }
+            pagination:
+              type: object
+              required: [limit, offset, total, hasMore]
+              properties:
+                limit: { type: integer, minimum: 1, maximum: 100 }
+                offset: { type: integer, minimum: 0, maximum: 1000000 }
+                total: { type: integer, minimum: 0 }
+                hasMore: { type: boolean }
     CorrectionRequestResponse:
       type: object
       required: [data, meta]
