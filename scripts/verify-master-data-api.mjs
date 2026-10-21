@@ -2257,6 +2257,16 @@ try {
   assert.equal(formulaCatalogDetail.body.data.defaultUnitPrice, "9.1250", "catalog price keeps exact four-place decimal formatting");
 
   // Pack 2: a sent invoice line is immutable even when its linked catalogue defaults are edited later.
+  const pack2SnapshotCatalogItem = await call("/api/v1/catalog/items", {
+    method: "POST",
+    body: JSON.stringify({
+      itemCode: "P2-SNAPSHOT-" + suffix.toUpperCase(), itemType: "SERVICE",
+      name: "Pack 2 Snapshot Service " + suffix, customerDescription: "Original catalogue description",
+      unitCode: "unit", defaultUnitPrice: "12.3400", currency: "INR", defaultTaxCode: phase6bTaxCode,
+    }),
+  }, financeSession.jar);
+  assert.equal(pack2SnapshotCatalogItem.response.status, 201,
+    "Pack 2 snapshot fixture creates a fresh active catalogue item through the API: " + JSON.stringify(pack2SnapshotCatalogItem.body.error ?? null));
   const pack2CatalogSnapshotDraft = await call("/api/v1/invoices", {
     method: "POST",
     headers: { "Idempotency-Key": "p2-catalog-snapshot-draft-" + randomUUID() },
@@ -2264,8 +2274,8 @@ try {
       legalEntityId: entityA.id, brandId: null, customerId: quotationCustomerId, currency: "INR",
       invoiceDate: issueDate, dueDate: null, paymentTermsDays: 30, notes: "Pack 2 catalog snapshot regression",
       lines: [{
-        catalogItemId: item.body.data.id, lineKind: "ITEM", description: item.body.data.name,
-        unitCode: item.body.data.unitCode, quantity: "1.0000", unitPrice: "12.3400",
+        catalogItemId: pack2SnapshotCatalogItem.body.data.id, lineKind: "ITEM", description: pack2SnapshotCatalogItem.body.data.name,
+        unitCode: pack2SnapshotCatalogItem.body.data.unitCode, quantity: "1.0000", unitPrice: "12.3400",
         discountType: "AMOUNT", discountValue: "0.0000", taxCode: phase6bTaxCode,
       }],
     }),
@@ -2289,14 +2299,14 @@ try {
     [pack2CatalogSnapshotInvoiceId],
   );
   assert.equal(catalogLineBeforeRows.length, 1);
-  assert.equal(catalogLineBeforeRows[0].catalog_item_id, item.body.data.id, "issued line keeps the catalogue source link");
-  assert.equal(catalogLineBeforeRows[0].description, item.body.data.name);
+  assert.equal(catalogLineBeforeRows[0].catalog_item_id, pack2SnapshotCatalogItem.body.data.id, "issued line keeps the catalogue source link");
+  assert.equal(catalogLineBeforeRows[0].description, pack2SnapshotCatalogItem.body.data.name);
   assert.equal(String(catalogLineBeforeRows[0].unit_price), "12.3400");
   const [catalogVersionRows] = await db.execute(
-    "SELECT record_version FROM catalog_items WHERE id=?", [item.body.data.id],
+    "SELECT record_version FROM catalog_items WHERE id=?", [pack2SnapshotCatalogItem.body.data.id],
   );
   assert.equal(catalogVersionRows.length, 1);
-  const catalogUpdateAfterIssue = await call("/api/v1/catalog/items/" + item.body.data.id, {
+  const catalogUpdateAfterIssue = await call("/api/v1/catalog/items/" + pack2SnapshotCatalogItem.body.data.id, {
     method: "PATCH",
     body: JSON.stringify({
       expectedVersion: Number(catalogVersionRows[0].record_version),
@@ -2312,9 +2322,9 @@ try {
   assert.equal(pack2CatalogSnapshotDetailAfterEdit.response.status, 200);
   const historicLine = pack2CatalogSnapshotDetailAfterEdit.body.data.lines?.[0];
   assert.ok(historicLine, "issued invoice detail returns the stored historical line");
-  assert.equal(historicLine.description, item.body.data.name, "catalogue name edit does not rewrite the issued line description");
+  assert.equal(historicLine.description, pack2SnapshotCatalogItem.body.data.name, "catalogue name edit does not rewrite the issued line description");
   assert.equal(String(historicLine.unitPrice), "12.3400", "catalogue price edit does not rewrite the issued line rate");
-  assert.equal(historicLine.unitCode, item.body.data.unitCode, "catalogue unit edit does not rewrite the issued line unit");
+  assert.equal(historicLine.unitCode, pack2SnapshotCatalogItem.body.data.unitCode, "catalogue unit edit does not rewrite the issued line unit");
   const [[catalogSnapshotAfter]] = await db.execute(
     "SELECT configuration_sha256 FROM document_configuration_snapshots WHERE resource_type='INVOICE' AND resource_id=?",
     [pack2CatalogSnapshotInvoiceId],
