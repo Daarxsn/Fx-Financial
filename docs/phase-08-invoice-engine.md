@@ -14,6 +14,8 @@ The implemented API is:
 - `GET /api/v1/invoices/{invoiceId}`: read lines, stored calculation results and outstanding balance in the caller's scope.
 - `PATCH /api/v1/invoices/{invoiceId}`: update drafts only, with `expectedVersion` optimistic concurrency and server recalculation.
 - `POST /api/v1/invoices/{invoiceId}/issue`: the existing controlled issuance endpoint now recalculates from persisted line inputs and approved effective tax configuration before preserving issue-time evidence and allocating the official number.
+- `GET /api/v1/invoices/{invoiceId}/payments`: list payment allocations for an invoice within the caller's legal-entity scope.
+- `POST /api/v1/invoices/{invoiceId}/payments`: record a manual payment against an issued invoice, with exact-decimal amount validation, invoice locking, outstanding-balance enforcement, idempotency-key conflict detection, transactionally persisted allocation, and audit evidence. Receipts, reversal workflows, general payment allocation, and a dedicated payment workspace are not yet complete.
 
 ## Calculation policy: invoice-calculation-v1
 
@@ -60,6 +62,10 @@ The full CI run on `ea0803f57efe81114e8ee82325fca62a3f0aacbc` passed with these 
 - **Concurrent invoice issuance:** simultaneous same-key, same-document-date requests return one original result and one idempotent replay. Both responses share the same official invoice number and immutable configuration snapshot hash; existing checks verify a single issue snapshot A separate test reuses the consumed key on a different draft and verifies a conflict with no second number allocation or snapshot.
 
 These checks do not replace configured Aiven integration evidence, finance/legal policy approvals, or manual production-like browser acceptance. Invoice cancellation/correction behavior remains a policy gate until finance/legal approves how issued documents are corrected and numbered.
+
+## Payment recording status (Pack 0)
+
+The payment-recording API is part of the current implementation baseline. Pack 0 adds MySQL-backed endpoint regression coverage for concurrent identical retries (one creation and one replay), conflicting idempotency-key reuse, zero-value rejection, overpayment rejection, payment-history retrieval, and exact outstanding-balance arithmetic. This does not establish production readiness for reversals, receipts, general allocation, reconciliation, or payment UI.
 
 ## Remaining rollout gates
 

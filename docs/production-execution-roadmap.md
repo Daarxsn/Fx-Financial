@@ -42,13 +42,14 @@ The finished product must support:
 
 ## 3. Verified starting position
 
-At the time this plan was prepared, latest observed `main` was:
+Pack 0 starting baseline checked on 2026-10-21:
 
-- `df758b645b6d8152f6b76feb43db70f46718e9b9` — `feat: record invoice payments with safe allocations`
-- Parent `f9ff69512f38dc01ec7eb7e55a741f6d18374753` adds a high-value exact-decimal regression test for the quotation list.
-- Parent `68cce99e329f090e3bcd2ec830f691b8fcb72c94` fixes quotation taxable-value arithmetic to use exact-decimal subtraction.
-
-The CI run for `df758b6` was in progress during inspection. CI runs for the two preceding commits were cancelled by later pushes, so their changes are **not independently CI-certified yet**. The last known fully successful run on the prior baseline was `bb4911e3b762dd9b87bd3ddc850cdfa9377817d2` (run [39375989948](https://github.com/Daarxsn/Fx-Financial/actions/runs/39375989948)). Check the latest run before feature work continues.
+- Starting `main`: `921dcf71c2d5b1847abbabfcdb8c57920614832e` — `docs: refresh pack 2 issuance regression baseline`.
+- Baseline CI run [39394867060](https://github.com/Daarxsn/Fx-Financial/actions/runs/39394867060) completed **successfully** against that exact SHA.
+- CI steps verified MySQL 8 migration/seed repeatability and dump/restore, safe health failures, OpenAPI, authentication/authorization/API contracts, Phase 6B snapshots, exact-decimal invoice calculations, UI checks, lint, TypeScript, production build, and Playwright browser acceptance.
+- Current schema contains 18 forward-only migrations. The CI baseline asserts 24 permission definitions, seven roles, and 77 role-permission mappings.
+- Exact-decimal quotation taxable-value subtraction is implemented by `subtractMoney`, with a high-value `DECIMAL(19,4)` regression test.
+- The manual payment-recording endpoint exists and uses exact scaled-integer arithmetic, invoice row locking, scoped authorization, CSRF protection, transaction boundaries, and idempotency. Its pre-Pack-0 integration coverage relied on direct SQL for balance setup rather than exercising the endpoint; this pack adds direct API tests for retries, conflicting keys, overpayments, zero values, history, and exact balances.
 
 ### Core already present (still subject to current regression checks)
 
@@ -58,8 +59,8 @@ The CI run for `df758b6` was in progress during inspection. CI runs for the two 
 - Customer and item/service catalogue CRUD, archive, search/pagination and CSV import/export.
 - Invoice draft/create/edit/list/detail, server-calculated amounts, controlled issue path, idempotency and optimistic concurrency.
 - Quotation workflow and conversion foundation exists on `main`; its remaining workflow and UI/API coverage must be re-audited rather than assumed complete.
-- A newly committed invoice payment-recording API exists. It is not yet confirmed by the current CI, a reversal endpoint, payment workspace UI, full integration tests, or business reconciliation.
-- Scaled-integer/`BigInt` money calculations are established. Recent quotation-list precision fix and regression test are awaiting a clean CI pass.
+- The invoice payment-recording API is present in the green baseline CI. Pack 0 adds direct endpoint integration coverage; payment reversals, receipts, payment workspace UI, reconciliation, and business acceptance remain open.
+- Scaled-integer/`BigInt` money calculations are established. The exact-decimal quotation-list fix and high-value regression test are covered by the green baseline CI.
 
 ### Not yet production-complete
 
@@ -73,7 +74,7 @@ The CI run for `df758b6` was in progress during inspection. CI runs for the two 
 - Durable email outbox, email delivery, reminders/jobs, reports/export completion, production hosting/monitoring and operational runbooks.
 - Production UAT and explicit go-live approval.
 
-**Documentation warning:** some older documents still refer to earlier migration, permission, and seed counts. The currently checked-in CI workflow asserts 18 migrations, 24 permission definitions, seven roles, and 77 role-permission mappings. Reconcile these historical inconsistencies in the first work packet; do not copy old counts into new documentation.
+**Documentation warning:** older audit/tracker documents may retain historically accurate counts from earlier revisions. For current-state reporting, use the current migration tree and CI baseline: 18 migrations, 24 permission definitions, seven roles, and 77 baseline role-permission mappings. Do not rewrite historical records; add dated corrections where current-state wording is stale.
 
 ## 4. Definition of done for every chunk
 

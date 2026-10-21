@@ -887,20 +887,62 @@ try {
   }
   console.log("PASS: issued invoice detail and list preserve the issue-time customer name after later customer master-data edits.");
 
-  const phase8PaymentId=randomUUID();
-  await db.execute(
-    "INSERT INTO payments (id,customer_id,amount,currency,payment_date,method,status,recorded_by) VALUES (?,?,?,'INR',CURDATE(),'OTHER','RECORDED',?)",
-    [phase8PaymentId,created.body.data.id,"25.1234",phase6aFinance.userId],
-  );
-  await db.execute(
-    "INSERT INTO payment_allocations (id,payment_id,invoice_id,amount) VALUES (?,?,?,?)",
-    [randomUUID(),phase8PaymentId,issuedInvoiceId,"25.1234"],
-  );
+  // Pack 0: exercise the payment-recording API, not just direct SQL fixtures.
+  const phase8PaymentKey="phase8-payment-"+randomUUID();
+  const phase8PaymentPayload={
+    amount:"25.1234",paymentDate:issueDate,method:"bank transfer",
+    reference:"CI-PAY-"+phase6bSuffix,notes:"Pack 0 payment API regression",
+  };
+  const concurrentPaymentResults=await Promise.all([
+    call("/api/v1/invoices/"+issuedInvoiceId+"/payments",{
+      method:"POST",headers:{"Idempotency-Key":phase8PaymentKey},body:JSON.stringify(phase8PaymentPayload),
+    },phase6aSession.jar),
+    call("/api/v1/invoices/"+issuedInvoiceId+"/payments",{
+      method:"POST",headers:{"Idempotency-Key":phase8PaymentKey},body:JSON.stringify(phase8PaymentPayload),
+    },phase6aSession.jar),
+  ]);
+  assert.deepEqual(concurrentPaymentResults.map(result=>result.response.status).sort((a,b)=>a-b),[200,201],
+    "concurrent identical payment requests create one payment and replay the original result");
+  assert.deepEqual(concurrentPaymentResults.map(result=>result.body.data.idempotentReplay).sort(),[false,true],
+    "payment idempotency permits exactly one creation for a concurrent retry");
+  const recordedPayment=concurrentPaymentResults.find(result=>result.body?.data?.idempotentReplay===false);
+  assert.ok(recordedPayment,"one concurrent payment response is the original creation");
+  assert.equal(recordedPayment.body.data.amount,"25.1234");
+  assert.equal(recordedPayment.body.data.paidAmount,"25.1234");
+  assert.equal(recordedPayment.body.data.outstandingBalance,"92.8766",
+    "payment API computes exact outstanding balance without binary floating-point arithmetic");
+  assert.equal(recordedPayment.body.data.paymentStatus,"PARTIALLY_PAID");
+  assert.equal(recordedPayment.body.data.status,"RECORDED");
+  const conflictingPaymentReplay=await call("/api/v1/invoices/"+issuedInvoiceId+"/payments",{
+    method:"POST",headers:{"Idempotency-Key":phase8PaymentKey},
+    body:JSON.stringify({...phase8PaymentPayload,amount:"26.1234"}),
+  },phase6aSession.jar);
+  assert.equal(conflictingPaymentReplay.response.status,409,
+    "reusing a payment idempotency key with a different amount is rejected");
+  assert.equal(conflictingPaymentReplay.body.error.code,"DUPLICATE_SUBMISSION");
+  const overpayment=await call("/api/v1/invoices/"+issuedInvoiceId+"/payments",{
+    method:"POST",headers:{"Idempotency-Key":"phase8-overpay-"+randomUUID()},
+    body:JSON.stringify({...phase8PaymentPayload,amount:"1000.0000"}),
+  },phase6aSession.jar);
+  assert.equal(overpayment.response.status,409,"payments greater than the outstanding balance are rejected");
+  assert.equal(overpayment.body.error.code,"PAYMENT_EXCEEDS_BALANCE");
+  assert.equal(overpayment.body.error.details.outstandingBalance,"92.8766");
+  const zeroPayment=await call("/api/v1/invoices/"+issuedInvoiceId+"/payments",{
+    method:"POST",headers:{"Idempotency-Key":"phase8-zero-"+randomUUID()},
+    body:JSON.stringify({...phase8PaymentPayload,amount:"0.0000"}),
+  },phase6aSession.jar);
+  assert.equal(zeroPayment.response.status,422,"zero-value payments are rejected");
+  const paymentHistory=await call("/api/v1/invoices/"+issuedInvoiceId+"/payments",{},phase6aSession.jar);
+  assert.equal(paymentHistory.response.status,200);
+  assert.equal(paymentHistory.body.data.length,1,"concurrent retries produce exactly one payment allocation");
+  assert.equal(paymentHistory.body.data[0].amount,"25.1234");
+  assert.equal(paymentHistory.body.data[0].allocatedAmount,"25.1234");
   const phase8Outstanding=await call("/api/v1/invoices/"+issuedInvoiceId,{},phase6aSession.jar);
   assert.equal(phase8Outstanding.response.status,200);
   assert.equal(phase8Outstanding.body.data.paidAmount,"25.1234");
-  assert.equal(phase8Outstanding.body.data.outstandingBalance,"92.8766","outstanding balance uses exact decimal subtraction, not binary floating point");
+  assert.equal(phase8Outstanding.body.data.outstandingBalance,"92.8766");
   assert.equal(phase8Outstanding.body.data.paymentStatus,"PARTIALLY_PAID");
+  console.log("PASS: payment API validates inputs, enforces balance, preserves exact decimals, records one allocation under concurrent retries, and rejects conflicting idempotency keys.");
 
   assert.match(issueResult.body.data.invoiceNumber,/^P6B-/);
   assert.match(issueResult.body.data.configurationSha256,/^[0-9a-f]{64}$/);
