@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { z } from "zod";
 import { pool } from "@/lib/db/pool";
-import { requireActiveSession, type SessionPrincipal } from "@/lib/auth/session";
+import { requireSession, type SessionPrincipal } from "@/lib/auth/session";
 import { AuthorizationError, requirePermission } from "@/lib/auth/authorize";
 import { assertCsrf } from "@/lib/auth/csrf";
 import { apiError, jsonNoStore } from "@/lib/http/api-response";
@@ -36,7 +36,7 @@ function duplicateEntry(error:unknown):boolean{
 
 export async function GET(request:NextRequest){
  try{
-  const actor=await requireActiveSession();
+  const actor=await requireSession();
   const queue=canReadQueue(actor);
   if(!queue&&!actor.permissions.includes("invoices:draft:update"))throw new AuthorizationError("FORBIDDEN");
   const scopes=[...new Set(actor.legalEntityIds)];
