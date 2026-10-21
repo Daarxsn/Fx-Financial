@@ -16,6 +16,19 @@ export const dynamic = "force-dynamic";
 
 const issueSchema = z.object({ documentDate: calendarDateSchema }).strict();
 
+function safeIssueErrorMetadata(error: unknown): { errorName: string; databaseCode?: string } {
+  if (!error || typeof error !== "object") return { errorName: "UnknownError" };
+  const candidate = error as { name?: unknown; code?: unknown };
+  const errorName = typeof candidate.name === "string" && /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(candidate.name)
+    ? candidate.name
+    : "UnknownError";
+  // Database error codes are finite diagnostic categories. Never log the raw exception/message, SQL, or parameters.
+  const databaseCode = typeof candidate.code === "string" && /^[A-Z0-9_]{1,64}$/.test(candidate.code)
+    ? candidate.code
+    : undefined;
+  return { errorName, ...(databaseCode ? { databaseCode } : {}) };
+}
+
 type InvoiceRow = RowDataPacket & {
   id: string;
   legal_entity_id: string;
@@ -236,6 +249,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ in
     } });
   } catch (error) {
     if (conn) try { await conn.rollback(); } catch { /* preserve original error */ }
+    console.error("Invoice issuance failed", safeIssueErrorMetadata(error));
     return apiError(error);
   } finally {
     conn?.release();

@@ -2376,7 +2376,8 @@ try {
     }, quotationFinanceSession.jar),
   ));
   assert.deepEqual(pack2ConcurrentIssueResults.map(result => result.response.status), [200, 200],
-    "two distinct invoices can issue successfully under concurrent requests");
+    "two distinct invoices can issue successfully under concurrent requests; responses=" +
+      JSON.stringify(pack2ConcurrentIssueResults.map(result => ({ status: result.response.status, body: result.body }))));
   assert.deepEqual(pack2ConcurrentIssueResults.map(result => result.body.data.idempotentReplay), [false, false],
     "each distinct invoice is issued once rather than treated as an idempotent replay");
   const pack2ConcurrentNumbers = pack2ConcurrentIssueResults.map(result => result.body.data.invoiceNumber);
