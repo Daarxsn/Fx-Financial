@@ -1089,16 +1089,45 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/payments/options:
+    get:
+      tags: [Payments]
+      summary: Load scoped receipt-entry options
+      operationId: listPaymentOptions
+      x-implementation-status: implemented
+      responses:
+        "200":
+          description: Active legal entities in caller scope and active customers
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [legalEntities, customers]
+                    properties:
+                      legalEntities: { type: array, items: { type: object } }
+                      customers: { type: array, items: { type: object } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/payments:
     get:
       tags: [Payments]
-      summary: Search receipts in permitted customer/entity scope
+      summary: Search receipts in the caller's legal-entity scope
       operationId: listPayments
-      x-implementation-status: planned
+      x-implementation-status: implemented
       parameters:
+        - in: query
+          name: legalEntityId
+          schema: { $ref: "#/components/schemas/Uuid" }
         - in: query
           name: customerId
           schema: { $ref: "#/components/schemas/Uuid" }
+        - in: query
+          name: status
+          schema: { type: string, enum: [RECORDED, REVERSED] }
         - in: query
           name: paymentDateFrom
           schema: { type: string, format: date }
@@ -1109,18 +1138,20 @@ paths:
         - { $ref: "#/components/parameters/Offset" }
       responses:
         "200":
-          description: Payment receipt page
+          description: Scoped receipt page with allocation and unallocated amounts
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PaymentListResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
     post:
       tags: [Payments]
-      summary: Record a receipt without claiming bank settlement
+      summary: Record a standalone receipt without asserting bank settlement
       operationId: recordPayment
-      x-implementation-status: planned
+      x-implementation-status: implemented
       parameters:
+        - { $ref: "#/components/parameters/CsrfToken" }
         - in: header
           name: Idempotency-Key
           required: true
@@ -1132,37 +1163,97 @@ paths:
             schema: { $ref: "#/components/schemas/PaymentInput" }
       responses:
         "201":
-          description: Receipt recorded
+          description: Receipt recorded with immutable reference and party snapshots
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PaymentResponse" }
+        "200":
+          description: Idempotent replay of the same receipt creation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/payments/{paymentId}:
+    parameters:
+      - { $ref: "#/components/parameters/PaymentId" }
+    get:
+      tags: [Payments]
+      summary: Retrieve a scoped receipt, allocations and reversal events
+      operationId: getPayment
+      x-implementation-status: implemented
+      responses:
+        "200":
+          description: Receipt detail and retained ledger history
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/invoices/{invoiceId}/payments:
     parameters:
       - { $ref: "#/components/parameters/InvoiceId" }
     get:
       tags: [Payments]
-      summary: List receipts/allocations for an invoice
+      summary: List receipt and allocation history for an invoice
       operationId: listInvoicePayments
-      x-implementation-status: planned
+      x-implementation-status: implemented
       responses:
         "200":
-          description: Allocations and receipt references
+          description: Receipt history grouped by receipt, with allocation amounts and reversal status
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/PaymentAllocationListResponse" }
+              schema: { $ref: "#/components/schemas/PaymentListResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
     post:
       tags: [Payments]
-      summary: Allocate part of an existing receipt to an invoice
-      operationId: allocatePayment
-      x-implementation-status: planned
+      summary: Record a receipt and fully allocate it to an issued invoice
+      operationId: recordInvoicePayment
+      x-implementation-status: implemented
       parameters:
+        - { $ref: "#/components/parameters/CsrfToken" }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, minLength: 16, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InvoicePaymentInput" }
+      responses:
+        "201":
+          description: Receipt recorded and fully allocated within the invoice balance
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentResponse" }
+        "200":
+          description: Idempotent replay of the original payment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/invoices/{invoiceId}/allocations:
+    parameters:
+      - { $ref: "#/components/parameters/InvoiceId" }
+    post:
+      tags: [Payments]
+      summary: Allocate part of an existing receipt to an issued invoice
+      operationId: allocatePayment
+      x-implementation-status: implemented
+      parameters:
+        - { $ref: "#/components/parameters/CsrfToken" }
         - in: header
           name: Idempotency-Key
           required: true
@@ -1174,10 +1265,16 @@ paths:
             schema: { $ref: "#/components/schemas/PaymentAllocationInput" }
       responses:
         "201":
-          description: Allocation created within receipt and invoice balance constraints
+          description: Allocation created within receipt and invoice balance limits
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PaymentAllocationResponse" }
+        "200":
+          description: Idempotent replay of the same allocation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentAllocationResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -1190,8 +1287,9 @@ paths:
       tags: [Payments]
       summary: Reverse a recorded receipt with reason and audit history
       operationId: reversePayment
-      x-implementation-status: planned
+      x-implementation-status: implemented
       parameters:
+        - { $ref: "#/components/parameters/CsrfToken" }
         - in: header
           name: Idempotency-Key
           required: true
@@ -1203,10 +1301,11 @@ paths:
             schema: { $ref: "#/components/schemas/ReasonInput" }
       responses:
         "200":
-          description: Receipt reversed; source history is preserved
+          description: Receipt reversed; source allocation and reversal history is preserved
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PaymentResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -2657,8 +2756,9 @@ components:
     PaymentInput:
       type: object
       additionalProperties: false
-      required: [customerId, amount, currency, paymentDate, method]
+      required: [legalEntityId, customerId, amount, currency, paymentDate, method]
       properties:
+        legalEntityId: { $ref: "#/components/schemas/Uuid" }
         customerId: { $ref: "#/components/schemas/Uuid" }
         amount: { type: string, pattern: '^(?=.*[1-9])(?:0|[1-9][0-9]{0,14})(\.[0-9]{1,4})?$' }
         currency: { type: string, pattern: '^[A-Z]{3}$' }
@@ -2666,6 +2766,354 @@ components:
         method: { type: string, minLength: 1, maxLength: 40 }
         reference: { type: [string, "null"], maxLength: 160 }
         notes: { type: [string, "null"], maxLength: 5000 }
+    InvoicePaymentInput:
+      type: object
+      additionalProperties: false
+      required: [amount, paymentDate, method]
+      properties:
+        amount: { type: string, pattern: '^(?=.*[1-9])(?:0|[1-9][0-9]{0,14})(\\.[0-9]{1,4})?
+      required: [id, customerId, amount, currency, paymentDate, status]
+      properties:
+        id: { $ref: "#/components/schemas/Uuid" }
+        customerId: { $ref: "#/components/schemas/Uuid" }
+        amount: { $ref: "#/components/schemas/Money" }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        paymentDate: { type: string, format: date }
+        method: { type: string }
+        reference: { type: [string, "null"] }
+        status: { type: string, enum: [RECORDED, REVERSED] }
+    PaymentResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: "#/components/schemas/Payment" }
+        meta: { $ref: "#/components/schemas/Meta" }
+    PaymentListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Payment" }
+        meta: { $ref: "#/components/schemas/Meta" }
+    PaymentAllocationInput:
+      type: object
+      additionalProperties: false
+      required: [paymentId, amount]
+      properties:
+        paymentId: { $ref: "#/components/schemas/Uuid" }
+        amount: { type: string, pattern: '^(?=.*[1-9])(?:0|[1-9][0-9]{0,14})(\.[0-9]{1,4})?$' }
+    PaymentAllocation:
+      type: object
+      required: [id, paymentId, invoiceId, amount, createdAt]
+      properties:
+        id: { $ref: "#/components/schemas/Uuid" }
+        paymentId: { $ref: "#/components/schemas/Uuid" }
+        invoiceId: { $ref: "#/components/schemas/Uuid" }
+        amount: { $ref: "#/components/schemas/Money" }
+        createdAt: { type: string, format: date-time }
+    PaymentAllocationResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: "#/components/schemas/PaymentAllocation" }
+        meta: { $ref: "#/components/schemas/Meta" }
+    PaymentAllocationListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/PaymentAllocation" }
+        meta: { $ref: "#/components/schemas/Meta" }
+    ReasonInput:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+    Approval:
+      type: object
+      required: [id, resourceType, actionKey, status, requestedBy, requestedAt]
+      properties:
+        id: { $ref: "#/components/schemas/Uuid" }
+        legalEntityId: { $ref: "#/components/schemas/Uuid" }
+        resourceType: { type: string, enum: [INVOICE, QUOTATION] }
+        resourceId: { $ref: "#/components/schemas/Uuid" }
+        actionKey: { type: string }
+        status: { type: string, enum: [PENDING, APPROVED, REJECTED, WITHDRAWN, CANCELLED] }
+        requestedBy: { $ref: "#/components/schemas/Uuid" }
+        decidedBy: { oneOf: [{ $ref: "#/components/schemas/Uuid" }, { type: "null" }] }
+        requestedAt: { type: string, format: date-time }
+        decidedAt: { type: [string, "null"], format: date-time }
+    ApprovalResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: "#/components/schemas/Approval" }
+        meta: { $ref: "#/components/schemas/Meta" }
+    ApprovalListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Approval" }
+        meta: { $ref: "#/components/schemas/Meta" }
+    EmailOutboxResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [id, status, queuedAt]
+          properties:
+            id: { $ref: "#/components/schemas/Uuid" }
+            status: { type: string, enum: [QUEUED, PROCESSING, SENT, FAILED, CANCELLED] }
+            queuedAt: { type: string, format: date-time }
+        meta: { $ref: "#/components/schemas/Meta" }
+    ReminderListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            required: [id, invoiceId, scheduledAt, status]
+            properties:
+              id: { $ref: "#/components/schemas/Uuid" }
+              invoiceId: { $ref: "#/components/schemas/Uuid" }
+              scheduledAt: { type: string, format: date-time }
+              status: { type: string, enum: [SCHEDULED, PROCESSING, SENT, SKIPPED, FAILED, CANCELLED] }
+        meta: { $ref: "#/components/schemas/Meta" }
+    ReceivablesReportResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [currency, invoicedTotal, adjustmentTotal, allocatedPaymentsTotal, outstandingTotal, asOfDate]
+          properties:
+            currency: { type: string, pattern: '^[A-Z]{3}$' }
+            invoicedTotal: { $ref: "#/components/schemas/Money" }
+            adjustmentTotal: { $ref: "#/components/schemas/Money" }
+            allocatedPaymentsTotal: { $ref: "#/components/schemas/Money" }
+            outstandingTotal: { $ref: "#/components/schemas/Money" }
+            asOfDate: { type: string, format: date }
+        meta: { $ref: "#/components/schemas/Meta" }
+    ExportResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [id, status, createdAt]
+          properties:
+            id: { $ref: "#/components/schemas/Uuid" }
+            status: { type: string, enum: [QUEUED, PROCESSING, READY, FAILED, EXPIRED] }
+            createdAt: { type: string, format: date-time }
+        meta: { $ref: "#/components/schemas/Meta" }
+    AuditEvent:
+      type: object
+      required: [id, action, entityType, entityId, outcome, createdAt]
+      properties:
+        id: { $ref: "#/components/schemas/Uuid" }
+        actorId: { oneOf: [{ $ref: "#/components/schemas/Uuid" }, { type: "null" }] }
+        action: { type: string }
+        entityType: { type: string }
+        entityId: { $ref: "#/components/schemas/Uuid" }
+        outcome: { type: string, enum: [SUCCESS, FAILURE] }
+        correlationId: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+    AuditEventListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/AuditEvent" }
+        meta: { $ref: "#/components/schemas/Meta" }
+
+    CsrfResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [csrfToken]
+          properties:
+            csrfToken: { type: string, minLength: 32, maxLength: 128 }
+        meta: { $ref: "#/components/schemas/Meta" }
+    LoginInput:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, minLength: 3, maxLength: 320 }
+        password: { type: string, minLength: 1, maxLength: 256, writeOnly: true }
+    AuthUser:
+      type: object
+      required: [id, email, displayName, roles, permissions, legalEntityIds]
+      properties:
+        id: { $ref: "#/components/schemas/Uuid" }
+        email: { type: string, format: email }
+        displayName: { type: string }
+        roles:
+          type: array
+          items: { $ref: "#/components/schemas/RoleKey" }
+        permissions:
+          type: array
+          items: { type: string }
+        legalEntityIds:
+          type: array
+          items: { $ref: "#/components/schemas/Uuid" }
+    RoleKey:
+      type: string
+      enum: [system_admin, finance_admin, invoice_creator, invoice_issuer, payment_recorder, approver, auditor]
+    LoginResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [user, expiresAt]
+          properties:
+            user: { $ref: "#/components/schemas/AuthUser" }
+            expiresAt: { type: integer, format: int64, description: Unix timestamp in seconds; absolute session limit is eight hours. }
+        meta: { $ref: "#/components/schemas/Meta" }
+    LogoutResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [loggedOut]
+          properties:
+            loggedOut: { type: boolean }
+            sessionsRevoked: { type: boolean }
+        meta: { $ref: "#/components/schemas/Meta" }
+    ActivationInput:
+      type: object
+      additionalProperties: false
+      required: [token, password]
+      properties:
+        token: { type: string, minLength: 32, maxLength: 256, writeOnly: true }
+        password: { type: string, minLength: 12, maxLength: 128, writeOnly: true, description: New password is hashed using scrypt before persistence. }
+    ActivationResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [activated, message]
+          properties:
+            activated: { type: boolean, const: true }
+            message: { type: string }
+        meta: { $ref: "#/components/schemas/Meta" }
+    UserInvitationInput:
+      type: object
+      additionalProperties: false
+      required: [email, displayName, roleKeys]
+      properties:
+        email: { type: string, format: email, maxLength: 320 }
+        displayName: { type: string, minLength: 1, maxLength: 160 }
+        roleKeys:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/RoleKey" }
+        legalEntityIds:
+          type: array
+          maxItems: 100
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/Uuid" }
+    UserInvitationResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [userId, email, displayName, roleKeys, legalEntityIds, activationToken, expiresInHours, delivery]
+          properties:
+            userId: { $ref: "#/components/schemas/Uuid" }
+            email: { type: string, format: email }
+            displayName: { type: string }
+            roleKeys:
+              type: array
+              items: { $ref: "#/components/schemas/RoleKey" }
+            legalEntityIds:
+              type: array
+              items: { $ref: "#/components/schemas/Uuid" }
+            activationToken: { type: string, minLength: 32, description: Single-use bearer secret returned once; never log or persist it in frontend storage. }
+            expiresInHours: { type: integer, const: 24 }
+            delivery: { type: string, const: manual-secure-channel, description: No email provider is currently configured; caller must deliver the token securely. }
+        meta: { $ref: "#/components/schemas/Meta" }
+    UserAccessUpdateInput:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        accountStatus: { type: string, enum: [ACTIVE, SUSPENDED, DEACTIVATED] }
+        roleKeys:
+          type: array
+          minItems: 1
+          maxItems: 7
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/RoleKey" }
+        legalEntityIds:
+          type: array
+          maxItems: 100
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/Uuid" }
+    UserRecord:
+      type: object
+      required: [id, email, displayName, accountStatus, roleKeys, legalEntityCount, createdAt]
+      properties:
+        id: { $ref: "#/components/schemas/Uuid" }
+        email: { type: string, format: email }
+        displayName: { type: string }
+        accountStatus: { type: string, enum: [INVITED, ACTIVE, SUSPENDED, DEACTIVATED] }
+        roleKeys:
+          type: array
+          items: { $ref: "#/components/schemas/RoleKey" }
+        legalEntityCount: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+        lastLoginAt: { type: [string, "null"], format: date-time }
+    UserResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [id, email, displayName, accountStatus, roleKeys, legalEntityIds, sessionsRevokedOnPrivilegeChange]
+          properties:
+            id: { $ref: "#/components/schemas/Uuid" }
+            email: { type: string, format: email }
+            displayName: { type: string }
+            accountStatus: { type: string, enum: [INVITED, ACTIVE, SUSPENDED, DEACTIVATED] }
+            roleKeys:
+              type: array
+              items: { $ref: "#/components/schemas/RoleKey" }
+            legalEntityIds:
+              type: array
+              items: { $ref: "#/components/schemas/Uuid" }
+            sessionsRevokedOnPrivilegeChange: { type: boolean }
+        meta: { $ref: "#/components/schemas/Meta" }
+    UserListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/UserRecord" }
+        meta:
+          $ref: "#/components/schemas/Meta"
+ }
+        paymentDate: { type: string, format: date }
+        method: { type: string, minLength: 1, maxLength: 40 }
+        reference: { type: [string, "null"], maxLength: 160 }
+        notes: { type: [string, "null"], maxLength: 2000 }
     Payment:
       type: object
       required: [id, customerId, amount, currency, paymentDate, status]
