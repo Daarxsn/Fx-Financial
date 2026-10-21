@@ -64,6 +64,8 @@ function jsonObject(value: unknown): Record<string, unknown> {
 
 export async function POST(request: NextRequest, context: { params: Promise<{ invoiceId: string }> }) {
   let conn: Awaited<ReturnType<typeof pool.getConnection>> | undefined;
+  let requestInvoiceId: string | undefined;
+  let requestIdempotencyKey: string | undefined;
   try {
     await assertCsrf(request);
     const actor = await requirePermission("invoices:issue");
@@ -71,10 +73,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ in
     if (!/^[0-9a-f-]{36}$/i.test(invoiceId)) {
       return jsonNoStore({ error: { code: "VALIDATION_ERROR", message: "invoiceId must be a UUID." } }, 400);
     }
+    requestInvoiceId = invoiceId;
     const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() ?? "";
     if (!/^[\x21-\x7e]{16,128}$/.test(idempotencyKey)) {
       return jsonNoStore({ error: { code: "VALIDATION_ERROR", message: "Idempotency-Key must contain 16–128 visible ASCII characters." } }, 400);
     }
+    requestIdempotencyKey = idempotencyKey;
     const parsedBody = issueSchema.parse(await request.json());
     const documentDate = parsedBody.documentDate;
 
@@ -257,18 +261,18 @@ export async function POST(request: NextRequest, context: { params: Promise<{ in
     } });
   } catch (error) {
     if (conn) try { await conn.rollback(); } catch { /* preserve original error */ }
-    if (isDuplicateInvoiceKeyError(error)) {
+    if (isDuplicateInvoiceKeyError(error) && requestInvoiceId && requestIdempotencyKey) {
       // A simultaneous request may win the unique legal-entity/idempotency-key constraint
       // after this request's advisory check. Translate only a proven key collision to 409;
       // unrelated unique-key errors keep the safe generic error path.
       try {
         const [sourceRows] = await pool.execute<(RowDataPacket & { legal_entity_id: string })[]>(
-          "SELECT legal_entity_id FROM invoices WHERE id=? LIMIT 1", [invoiceId],
+          "SELECT legal_entity_id FROM invoices WHERE id=? LIMIT 1", [requestInvoiceId],
         );
         if (sourceRows.length) {
           const [owners] = await pool.execute<(RowDataPacket & { id: string })[]>(
             "SELECT id FROM invoices WHERE legal_entity_id=? AND issue_idempotency_key=? AND id<>? LIMIT 1",
-            [sourceRows[0].legal_entity_id, idempotencyKey, invoiceId],
+            [sourceRows[0].legal_entity_id, requestIdempotencyKey, requestInvoiceId],
           );
           if (owners.length) {
             return jsonNoStore({ error: {
