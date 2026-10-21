@@ -31,6 +31,17 @@ function dateText(value: Date | string | null): string | null {
   if (value === null) return null;
   return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
 }
+function customerNameFromSnapshot(value: unknown, fallback: string): string {
+  let parsed = value;
+  if (typeof parsed === "string") {
+    try { parsed = JSON.parse(parsed); } catch { return fallback; }
+  }
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    const name = (parsed as Record<string, unknown>).name;
+    if (typeof name === "string" && name.trim()) return name;
+  }
+  return fallback;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -66,20 +77,33 @@ export async function GET(request: NextRequest) {
       clauses.push(`${effectiveStatus}=?`);
       params.push(...expiryParams, status);
     }
+    const customerId = request.nextUrl.searchParams.get("customerId");
+    if (customerId && !/^[0-9a-f-]{36}$/i.test(customerId)) {
+      return jsonNoStore({ error: { code: "VALIDATION_ERROR", message: "customerId must be a UUID." } }, 400);
+    }
+    if (customerId) {
+      clauses.push("q.customer_id=?");
+      params.push(customerId);
+    }
     const query = (request.nextUrl.searchParams.get("query") ?? "").trim().slice(0, 100);
+    if (query) {
+      const escaped = query.replace(/[\\%_]/g, "\\    const query = (request.nextUrl.searchParams.get("query") ?? "").trim().slice(0, 100);
     if (query) {
       const escaped = query.replace(/[\\%_]/g, "\\$&");
       clauses.push("(q.quotation_number LIKE ? OR c.name LIKE ?)");
       params.push(`%${escaped}%`, `%${escaped}%`);
+    }");
+      clauses.push("(q.quotation_number LIKE ? OR c.name LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(q.customer_snapshot, '$.name')) LIKE ?)");
+      params.push(`%${escaped}%`, `%${escaped}%`, `%${escaped}%`);
     }
     const where = "WHERE " + clauses.join(" AND ");
     const [rows] = await pool.query<(RowDataPacket & {
-      id: string; legal_entity_id: string; brand_id: string | null; customer_id: string; customer_name: string;
+      id: string; legal_entity_id: string; brand_id: string | null; customer_id: string; customer_name: string; customer_snapshot: unknown;
       quotation_number: string | null; status: string; valid_until: Date | string | null; issue_date: Date | string | null;
       currency: string; subtotal: string; discount_total: string; tax_total: string; grand_total: string;
       record_version: number; converted_invoice_id: string | null; created_at: Date | string; updated_at: Date | string;
     })[]>(
-      `SELECT q.id,q.legal_entity_id,q.brand_id,q.customer_id,c.name AS customer_name,q.quotation_number,
+      `SELECT q.id,q.legal_entity_id,q.brand_id,q.customer_id,c.name AS customer_name,q.customer_snapshot,q.quotation_number,
         ${effectiveStatus} AS status,q.valid_until,q.issue_date,q.currency,q.subtotal,q.discount_total,q.tax_total,q.grand_total,
         q.record_version,q.converted_invoice_id,q.created_at,q.updated_at
        FROM quotations q JOIN customers c ON c.id=q.customer_id ${where}
@@ -92,7 +116,7 @@ export async function GET(request: NextRequest) {
     return jsonNoStore({
       data: rows.map(q => ({
         id: q.id, legalEntityId: q.legal_entity_id, brandId: q.brand_id, customerId: q.customer_id,
-        customerName: q.customer_name, quotationNumber: q.quotation_number, status: q.status,
+        customerName: customerNameFromSnapshot(q.customer_snapshot, q.customer_name), quotationNumber: q.quotation_number, status: q.status,
         issueDate: dateText(q.issue_date), validUntil: dateText(q.valid_until), currency: q.currency,
         subtotal: String(q.subtotal), discountTotal: String(q.discount_total),
         taxableValue: subtractMoney(q.subtotal, q.discount_total),

@@ -1405,6 +1405,91 @@ try {
   assert.equal(cancelledQuotation.response.status, 200);
   assert.equal(cancelledQuotation.body.data.status, "CANCELLED");
 
+  // Pack 2: use public lifecycle endpoints to prove sent quotation identity is immutable.
+  const snapshotQuote = await call("/api/v1/quotations", {
+    method: "POST", headers: { "Idempotency-Key": "q-snapshot-" + randomUUID() },
+    body: JSON.stringify({ ...quotationPayload, notes: "Pack 2 immutable quotation snapshot regression" }),
+  }, quotationFinanceSession.jar);
+  assert.equal(snapshotQuote.response.status, 201, "quotation snapshot fixture is created");
+  const snapshotQuoteId = snapshotQuote.body.data.id;
+  const snapshotOriginalName = quotationCustomerName;
+  const sentSnapshotQuote = await call("/api/v1/quotations/" + snapshotQuoteId + "/status", {
+    method: "POST", body: JSON.stringify({ status: "SENT", expectedVersion: 1 }),
+  }, quotationFinanceSession.jar);
+  assert.equal(sentSnapshotQuote.response.status, 200,
+    "a valid quotation can be sent through its protected lifecycle endpoint: " + JSON.stringify(sentSnapshotQuote.body.error ?? null));
+  assert.equal(sentSnapshotQuote.body.data.status, "SENT");
+  assert.equal(sentSnapshotQuote.body.data.recordVersion, 2);
+  const [storedQuotationSnapshotRows] = await db.execute(
+    "SELECT customer_snapshot,supplier_snapshot,quotation_number FROM quotations WHERE id=?", [snapshotQuoteId],
+  );
+  assert.equal(storedQuotationSnapshotRows.length, 1);
+  const storedCustomerSnapshot = typeof storedQuotationSnapshotRows[0].customer_snapshot === "string"
+    ? JSON.parse(storedQuotationSnapshotRows[0].customer_snapshot) : storedQuotationSnapshotRows[0].customer_snapshot;
+  const storedSupplierSnapshot = typeof storedQuotationSnapshotRows[0].supplier_snapshot === "string"
+    ? JSON.parse(storedQuotationSnapshotRows[0].supplier_snapshot) : storedQuotationSnapshotRows[0].supplier_snapshot;
+  assert.equal(storedCustomerSnapshot.name, snapshotOriginalName, "sending stores customer identity at send time");
+  assert.ok(storedSupplierSnapshot && typeof storedSupplierSnapshot === "object", "sending stores issuer identity");
+  assert.ok(storedQuotationSnapshotRows[0].quotation_number, "official quotation number is allocated only when sent");
+  const [customerSnapshotBeforeRename] = await db.execute(
+    "SELECT name,record_version FROM customers WHERE id=?", [quotationCustomerId],
+  );
+  assert.equal(customerSnapshotBeforeRename.length, 1);
+  const snapshotCustomerOriginalName = String(customerSnapshotBeforeRename[0].name);
+  const renamedSnapshotCustomerName = snapshotCustomerOriginalName + " updated after quotation sent";
+  try {
+    const renameSnapshotCustomer = await call("/api/v1/customers/" + quotationCustomerId, {
+      method: "PATCH", body: JSON.stringify({ expectedVersion: Number(customerSnapshotBeforeRename[0].record_version), name: renamedSnapshotCustomerName }),
+    }, quotationFinanceSession.jar);
+    assert.equal(renameSnapshotCustomer.response.status, 200,
+      "customer rename succeeds through the customer API after sending a quotation");
+    const snapshotDetailAfterRename = await call("/api/v1/quotations/" + snapshotQuoteId, {}, quotationFinanceSession.jar);
+    assert.equal(snapshotDetailAfterRename.response.status, 200);
+    assert.equal(snapshotDetailAfterRename.body.data.customerName, snapshotOriginalName,
+      "sent quotation detail displays the stored customer snapshot after the live customer changes");
+    assert.equal(snapshotDetailAfterRename.body.data.customerSnapshot.name, snapshotOriginalName);
+    const snapshotListByOriginalName = await call(
+      "/api/v1/quotations?status=SENT&query=" + encodeURIComponent(snapshotOriginalName) + "&customerId=" + quotationCustomerId + "&limit=25&offset=0",
+      {}, quotationFinanceSession.jar,
+    );
+    assert.equal(snapshotListByOriginalName.response.status, 200);
+    const snapshotListRow = snapshotListByOriginalName.body.data.find(row => row.id === snapshotQuoteId);
+    assert.ok(snapshotListRow, "sent quotation remains searchable by its frozen customer name and customerId");
+    assert.equal(snapshotListRow.customerName, snapshotOriginalName,
+      "sent quotation list displays the customer name frozen at send time");
+    const snapshotListByNewName = await call(
+      "/api/v1/quotations?status=SENT&query=" + encodeURIComponent(renamedSnapshotCustomerName) + "&limit=25&offset=0",
+      {}, quotationFinanceSession.jar,
+    );
+    assert.equal(snapshotListByNewName.response.status, 200);
+    const matchingRenamedSnapshot = snapshotListByNewName.body.data.find(row => row.id === snapshotQuoteId);
+    assert.ok(matchingRenamedSnapshot, "search by current customer name still finds the historical quotation");
+    assert.equal(matchingRenamedSnapshot.customerName, snapshotOriginalName,
+      "searching by a current name does not rewrite the historical display name");
+    const attemptedSentQuoteEdit = await call("/api/v1/quotations/" + snapshotQuoteId, {
+      method: "PATCH", body: JSON.stringify({ ...quotationPayload, expectedVersion: 2 }),
+    }, quotationFinanceSession.jar);
+    assert.equal(attemptedSentQuoteEdit.response.status, 409, "sent quotation cannot be edited through draft update API");
+    assert.equal(attemptedSentQuoteEdit.body.error.code, "QUOTATION_NOT_EDITABLE");
+    const acceptSnapshotQuote = await call("/api/v1/quotations/" + snapshotQuoteId + "/status", {
+      method: "POST", body: JSON.stringify({ status: "ACCEPTED", expectedVersion: 2 }),
+    }, quotationFinanceSession.jar);
+    assert.equal(acceptSnapshotQuote.response.status, 200, "sent quotation can be accepted with its current version");
+    assert.equal(acceptSnapshotQuote.body.data.status, "ACCEPTED");
+    assert.equal(acceptSnapshotQuote.body.data.recordVersion, 3);
+    const staleAcceptedStatus = await call("/api/v1/quotations/" + snapshotQuoteId + "/status", {
+      method: "POST", body: JSON.stringify({ status: "CANCELLED", expectedVersion: 2, reason: "stale regression" }),
+    }, quotationFinanceSession.jar);
+    assert.equal(staleAcceptedStatus.response.status, 409, "stale status transition cannot overwrite a newer accepted state");
+    assert.equal(staleAcceptedStatus.body.error.code, "VERSION_CONFLICT");
+    const snapshotDetailAfterAccept = await call("/api/v1/quotations/" + snapshotQuoteId, {}, quotationFinanceSession.jar);
+    assert.equal(snapshotDetailAfterAccept.body.data.status, "ACCEPTED");
+    assert.equal(snapshotDetailAfterAccept.body.data.customerName, snapshotOriginalName);
+  } finally {
+    await db.execute("UPDATE customers SET name=?,record_version=record_version+1 WHERE id=?",
+      [snapshotCustomerOriginalName, quotationCustomerId]);
+  }
+
   // Pack 2: list, detail and status transitions must agree on the legal entity's business date.
   const businessDateParts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit",
@@ -1460,11 +1545,18 @@ try {
   assert.equal(conversionQuotation.response.status, 201,
     "conversion fixture quotation is created as a draft: " + JSON.stringify(conversionQuotation.body.error ?? null));
   const conversionQuotationId = conversionQuotation.body.data.id;
-  const [acceptedFixture] = await db.execute(
-    "UPDATE quotations SET status='ACCEPTED' WHERE id=? AND status='DRAFT'",
-    [conversionQuotationId],
-  );
-  assert.equal(acceptedFixture.affectedRows, 1, "CI fixture moves the quotation into the accepted state");
+  const sendConversionQuote = await call("/api/v1/quotations/" + conversionQuotationId + "/status", {
+    method: "POST", body: JSON.stringify({ status: "SENT", expectedVersion: 1 }),
+  }, quotationFinanceSession.jar);
+  assert.equal(sendConversionQuote.response.status, 200,
+    "conversion fixture follows the public DRAFT to SENT transition: " + JSON.stringify(sendConversionQuote.body.error ?? null));
+  assert.equal(sendConversionQuote.body.data.status, "SENT");
+  const acceptConversionQuote = await call("/api/v1/quotations/" + conversionQuotationId + "/status", {
+    method: "POST", body: JSON.stringify({ status: "ACCEPTED", expectedVersion: 2 }),
+  }, quotationFinanceSession.jar);
+  assert.equal(acceptConversionQuote.response.status, 200,
+    "conversion fixture follows the public SENT to ACCEPTED transition: " + JSON.stringify(acceptConversionQuote.body.error ?? null));
+  assert.equal(acceptConversionQuote.body.data.status, "ACCEPTED");
   const conversionIdempotencyKey = "q-convert-result-" + randomUUID();
   const concurrentConversions = await Promise.all([
     call("/api/v1/quotations/" + conversionQuotationId + "/convert", {
@@ -1531,10 +1623,15 @@ try {
   }, quotationFinanceSession.jar);
   assert.equal(invalidZoneQuote.response.status, 201, "invalid-timezone conversion fixture is created");
   const invalidZoneQuoteId = invalidZoneQuote.body.data.id;
-  const [acceptedInvalidZoneRows] = await db.execute(
-    "UPDATE quotations SET status='ACCEPTED' WHERE id=? AND status='DRAFT'", [invalidZoneQuoteId],
-  );
-  assert.equal(acceptedInvalidZoneRows.affectedRows, 1);
+  const sendInvalidZoneQuote = await call("/api/v1/quotations/" + invalidZoneQuoteId + "/status", {
+    method: "POST", body: JSON.stringify({ status: "SENT", expectedVersion: 1 }),
+  }, quotationFinanceSession.jar);
+  assert.equal(sendInvalidZoneQuote.response.status, 200,
+    "invalid-timezone fixture follows the normal send transition before changing test configuration");
+  const acceptInvalidZoneQuote = await call("/api/v1/quotations/" + invalidZoneQuoteId + "/status", {
+    method: "POST", body: JSON.stringify({ status: "ACCEPTED", expectedVersion: 2 }),
+  }, quotationFinanceSession.jar);
+  assert.equal(acceptInvalidZoneQuote.response.status, 200);
   const [priorTimeZoneRows] = await db.execute(
     "SELECT time_zone FROM legal_entities WHERE id=?", [testLegalEntityId],
   );

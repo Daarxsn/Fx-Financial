@@ -24,6 +24,14 @@ function parseJson(value: unknown): unknown {
   if (typeof value !== "string") return value;
   try { return JSON.parse(value); } catch { return null; }
 }
+function customerNameFromSnapshot(value: unknown, fallback: string): string {
+  const parsed = parseJson(value);
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    const name = (parsed as Record<string, unknown>).name;
+    if (typeof name === "string" && name.trim()) return name;
+  }
+  return fallback;
+}
 function validationError(error: unknown) {
   if (error instanceof QuotationValidationError || error instanceof InvoiceDraftValidationError) {
     return jsonNoStore({ error: { code: "VALIDATION_ERROR", message: error.message } }, 422);
@@ -72,7 +80,7 @@ export async function GET(_request: NextRequest, context: Context) {
     const status = row.status === "SENT" && expired === true ? "EXPIRED" : row.status;
     return jsonNoStore({ data: {
       id: row.id, legalEntityId: row.legal_entity_id, brandId: row.brand_id, customerId: row.customer_id,
-      customerName: row.customer_name, quotationNumber: row.quotation_number, status,
+      customerName: customerNameFromSnapshot(row.customer_snapshot, row.customer_name), quotationNumber: row.quotation_number, status,
       issueDate: dateText(row.issue_date), validUntil, currency: row.currency,
       subtotal: String(row.subtotal), discountTotal: String(row.discount_total),
       taxableValue: subtractMoney(String(row.subtotal), String(row.discount_total)),
