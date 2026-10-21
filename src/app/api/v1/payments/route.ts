@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
     const scopes = [...new Set(actor.legalEntityIds)];
     if (!scopes.length) return jsonNoStore({ data: [], meta: { pagination: { limit, offset, total: 0, hasMore: false } } });
     const where = ["p.legal_entity_id IN (" + scopes.map(() => "?").join(",") + ")"];
-    const values: unknown[] = [...scopes];
+    const values: string[] = [...scopes];
     const entity = query.get("legalEntityId");
     const customer = query.get("customerId");
     const status = query.get("status");
