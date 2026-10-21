@@ -27,6 +27,14 @@ function dateText(value: Date | string | null): string | null {
   if (value === null) return null;
   return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
 }
+function snapshotValue(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (typeof value === "string") {
+    try { const parsed: unknown = JSON.parse(value); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>; }
+    catch { /* malformed legacy snapshot is unavailable rather than fabricated */ }
+  }
+  return null;
+}
 function duplicate(error: unknown) {
   return typeof error === "object" && error !== null && "code" in error &&
     (error as { code?: string }).code === "ER_DUP_ENTRY";
@@ -49,6 +57,7 @@ async function serializeReceipt(row: RowDataPacket & {
   id: string; legal_entity_id: string | null; customer_id: string; amount: string | number; currency: string;
   payment_date: Date | string; method: string; reference: string | null; status: string; notes: string | null;
   receipt_reference: string | null; reversed_at: Date | string | null; reversal_reason: string | null;
+  customer_snapshot: unknown; legal_entity_snapshot: unknown;
   created_at: Date | string; allocated_amount: string | number;
 }) {
   const amount = units(row.amount);
@@ -79,6 +88,8 @@ async function serializeReceipt(row: RowDataPacket & {
     createdAt: row.created_at,
     reversedAt: row.reversed_at,
     reversalReason: row.reversal_reason,
+    customerSnapshot: snapshotValue(row.customer_snapshot),
+    legalEntitySnapshot: snapshotValue(row.legal_entity_snapshot),
     allocations: allocations.map(item => ({
       id: item.id, invoiceId: item.invoice_id, invoiceNumber: item.invoice_number,
       invoiceStatus: item.invoice_status, amount: money(units(item.amount)), createdAt: item.created_at,
@@ -132,9 +143,10 @@ export async function GET(request: NextRequest) {
       id: string; legal_entity_id: string | null; customer_id: string; amount: string | number; currency: string;
       payment_date: Date | string; method: string; reference: string | null; status: string; notes: string | null;
       receipt_reference: string | null; reversed_at: Date | string | null; reversal_reason: string | null;
+      customer_snapshot: unknown; legal_entity_snapshot: unknown;
       created_at: Date | string; allocated_amount: string | number;
     })[]>(
-      "SELECT p.id,p.legal_entity_id,p.customer_id,p.amount,p.currency,DATE_FORMAT(p.payment_date,'%Y-%m-%d') AS payment_date," +
+      "SELECT p.id,p.legal_entity_id,p.customer_id,p.customer_snapshot,p.legal_entity_snapshot,p.amount,p.currency,DATE_FORMAT(p.payment_date,'%Y-%m-%d') AS payment_date," +
       "p.method,p.reference,p.status,p.notes,p.receipt_reference,p.reversed_at,p.reversal_reason,p.created_at," +
       "COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa WHERE pa.payment_id=p.id),0) AS allocated_amount " +
       "FROM payments p WHERE " + predicate + " ORDER BY p.payment_date DESC,p.created_at DESC,p.id DESC LIMIT ? OFFSET ?",
@@ -160,15 +172,21 @@ export async function POST(request: NextRequest) {
     if (!actor.legalEntityIds.includes(input.legalEntityId)) return jsonNoStore({ error: { code: "NOT_FOUND", message: "Legal entity not found in your assigned scope." } }, 404);
     conn = await pool.getConnection();
     await conn.beginTransaction();
-    const [entities] = await conn.execute<(RowDataPacket & { id: string })[]>(
-      "SELECT id FROM legal_entities WHERE id=? AND is_active=TRUE LIMIT 1 FOR UPDATE", [input.legalEntityId],
+    const [entities] = await conn.execute<(RowDataPacket & {
+      id:string;legal_name:string;display_name:string;currency:string;country_code:string|null;time_zone:string|null;
+      invoice_email:string|null;invoice_phone:string|null;address_json:unknown;
+    })[]>(
+      "SELECT id,legal_name,display_name,currency,country_code,time_zone,invoice_email,invoice_phone,address_json " +
+      "FROM legal_entities WHERE id=? AND is_active=TRUE LIMIT 1 FOR UPDATE", [input.legalEntityId],
     );
     if (!entities.length) {
       await conn.rollback();
       return jsonNoStore({ error: { code: "NOT_FOUND", message: "Legal entity is unavailable." } }, 404);
     }
-    const [customers] = await conn.execute<(RowDataPacket & { id: string })[]>(
-      "SELECT id FROM customers WHERE id=? AND is_active=TRUE LIMIT 1 FOR UPDATE", [input.customerId],
+    const [customers] = await conn.execute<(RowDataPacket & {
+      id:string;name:string;email:string|null;phone:string|null;billing_address_json:unknown;tax_identifier:string|null;
+    })[]>(
+      "SELECT id,name,email,phone,billing_address_json,tax_identifier FROM customers WHERE id=? AND is_active=TRUE LIMIT 1 FOR UPDATE", [input.customerId],
     );
     if (!customers.length) {
       await conn.rollback();
@@ -177,10 +195,10 @@ export async function POST(request: NextRequest) {
     const [existingRows] = await conn.execute<(RowDataPacket & {
       id: string; legal_entity_id: string | null; customer_id: string; amount: string | number; currency: string;
       payment_date: Date | string; method: string; reference: string | null; notes: string | null;
-      status: string; receipt_reference: string | null;
+      status: string; receipt_reference: string | null; customer_snapshot: unknown; legal_entity_snapshot: unknown;
     })[]>(
       "SELECT id,legal_entity_id,customer_id,amount,currency,DATE_FORMAT(payment_date,'%Y-%m-%d') AS payment_date," +
-      "method,reference,notes,status,receipt_reference FROM payments WHERE idempotency_key=? LIMIT 1 FOR UPDATE", [key],
+      "method,reference,notes,status,receipt_reference,customer_snapshot,legal_entity_snapshot FROM payments WHERE idempotency_key=? LIMIT 1 FOR UPDATE", [key],
     );
     if (existingRows.length) {
       const row = existingRows[0];
@@ -203,16 +221,22 @@ export async function POST(request: NextRequest) {
         legalEntityId: row.legal_entity_id, customerId: row.customer_id, amount: money(amount),
         allocatedAmount: money(allocated), unallocatedAmount: row.status === "RECORDED" ? money(amount - allocated) : "0.0000",
         currency: row.currency, paymentDate: input.paymentDate, method: row.method, reference: row.reference,
-        notes: row.notes, status: row.status, idempotentReplay: true,
+        notes: row.notes, customerSnapshot:snapshotValue(row.customer_snapshot),legalEntitySnapshot:snapshotValue(row.legal_entity_snapshot),
+        status: row.status, idempotentReplay: true,
       }, meta: {} }, 200);
     }
     const paymentId = randomUUID();
     const receiptReference = "RCPT-" + paymentId.replaceAll("-", "").toUpperCase();
     await conn.execute(
-      "INSERT INTO payments (id,legal_entity_id,receipt_reference,customer_id,amount,currency,payment_date,method,reference,status,notes,recorded_by,idempotency_key) " +
-      "VALUES (?,?,?,?,?,?,?,?,?,'RECORDED',?,?,?)",
-      [paymentId,input.legalEntityId,receiptReference,input.customerId,money(units(input.amount)),input.currency,
-        input.paymentDate,input.method,input.reference,input.notes,actor.userId,key],
+      "INSERT INTO payments (id,legal_entity_id,receipt_reference,customer_id,customer_snapshot,legal_entity_snapshot,amount,currency,payment_date,method,reference,status,notes,recorded_by,idempotency_key) " +
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,'RECORDED',?,?,?)",
+      [paymentId,input.legalEntityId,receiptReference,input.customerId,
+        JSON.stringify({customerId:customers[0].id,name:customers[0].name,email:customers[0].email,phone:customers[0].phone,
+          billingAddress:snapshotValue(customers[0].billing_address_json),taxIdentifier:customers[0].tax_identifier}),
+        JSON.stringify({legalName:entities[0].legal_name,displayName:entities[0].display_name,address:snapshotValue(entities[0].address_json),
+          countryCode:entities[0].country_code,currency:entities[0].currency,timeZone:entities[0].time_zone,
+          invoiceEmail:entities[0].invoice_email,invoicePhone:entities[0].invoice_phone}),
+        money(units(input.amount)),input.currency,input.paymentDate,input.method,input.reference,input.notes,actor.userId,key],
     );
     await conn.execute(
       "INSERT INTO audit_events (id,actor_id,action,entity_type,entity_id,outcome,before_json,after_json) " +
@@ -227,7 +251,13 @@ export async function POST(request: NextRequest) {
       id:paymentId,receiptReference,legalEntityId:input.legalEntityId,customerId:input.customerId,
       amount:money(units(input.amount)),allocatedAmount:"0.0000",unallocatedAmount:money(units(input.amount)),
       currency:input.currency,paymentDate:input.paymentDate,method:input.method,reference:input.reference,
-      notes:input.notes,status:"RECORDED",idempotentReplay:false,
+      notes:input.notes,
+      customerSnapshot:{customerId:customers[0].id,name:customers[0].name,email:customers[0].email,phone:customers[0].phone,
+        billingAddress:snapshotValue(customers[0].billing_address_json),taxIdentifier:customers[0].tax_identifier},
+      legalEntitySnapshot:{legalName:entities[0].legal_name,displayName:entities[0].display_name,address:snapshotValue(entities[0].address_json),
+        countryCode:entities[0].country_code,currency:entities[0].currency,timeZone:entities[0].time_zone,
+        invoiceEmail:entities[0].invoice_email,invoicePhone:entities[0].invoice_phone},
+      status:"RECORDED",idempotentReplay:false,
     }, meta:{} }, 201);
   } catch (error) {
     if (conn) await conn.rollback().catch(() => undefined);
