@@ -1832,7 +1832,10 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
   /api/v1/correction-requests/{requestId}/decision:
     parameters:
-      - { $ref: "#/components/parameters/UuidPath", name: requestId }
+      - in: path
+        name: requestId
+        required: true
+        schema: { $ref: "#/components/schemas/Uuid" }
     post:
       tags: [Governance]
       summary: Independently approve or reject a correction request with a reason
@@ -3391,11 +3394,18 @@ components:
       required: [data, meta]
       properties:
         data:
-          allOf:
-            - { $ref: "#/components/schemas/CorrectionRequestRecord" }
-            - type: object
-              properties:
-                idempotentReplay: { type: boolean }
+          type: object
+          required: [id, invoiceId, legalEntityId, correctionType, status, reason, requestedBy]
+          properties:
+            id: { $ref: "#/components/schemas/Uuid" }
+            invoiceId: { $ref: "#/components/schemas/Uuid" }
+            legalEntityId: { $ref: "#/components/schemas/Uuid" }
+            invoiceNumber: { type: [string, "null"] }
+            correctionType: { $ref: "#/components/schemas/CorrectionType" }
+            status: { $ref: "#/components/schemas/CorrectionRequestStatus" }
+            reason: { type: string }
+            requestedBy: { $ref: "#/components/schemas/Uuid" }
+            idempotentReplay: { type: boolean }
         meta: { $ref: "#/components/schemas/Meta" }
     CorrectionDecisionInput:
       type: object
