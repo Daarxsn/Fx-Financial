@@ -422,6 +422,36 @@ try {
    assert.equal(p3DirectRows[0].status, "RECORDED");
    pass("Invoice details record a fully allocated payment through the permission-gated receipt API.");
 
+   // Pack 4 Part B browser flow: the issued record stays unchanged while correction is pending.
+   const correctionPanel=page.locator(".correction-panel");
+   await correctionPanel.getByRole("heading",{name:"Issued-document correction",exact:true}).waitFor();
+   await page.locator("#invoice-correction-type").selectOption("CANCEL");
+   await page.locator("#invoice-correction-reason").fill("Browser acceptance requests cancellation after reviewing the issued invoice.");
+   await correctionPanel.getByRole("button",{name:"Submit correction request",exact:true}).click();
+   await page.getByText("Correction request recorded for independent review; the issued invoice remains unchanged.",{exact:true}).waitFor();
+   const [browserCorrectionRows]=await db.execute(
+     "SELECT id,status,correction_type FROM invoice_correction_requests WHERE invoice_id=? ORDER BY created_at DESC LIMIT 1",
+     [invoiceByLineRows[0].id]);
+   assert.equal(browserCorrectionRows.length,1);
+   assert.equal(browserCorrectionRows[0].status,"PENDING_REVIEW");
+   assert.equal(browserCorrectionRows[0].correction_type,"CANCEL");
+   const [browserSourceAfterRequest]=await db.execute("SELECT lifecycle_status,invoice_number FROM invoices WHERE id=?",[invoiceByLineRows[0].id]);
+   assert.equal(browserSourceAfterRequest[0].lifecycle_status,"ISSUED");
+   assert.equal(browserSourceAfterRequest[0].invoice_number,invoiceByLineRows[0].invoice_number);
+   pass("Invoice UI submits a reasoned correction request without mutating the issued document.");
+
+   await page.goto(baseUrl + "/approvals");
+   await page.getByRole("heading",{name:"Issued-document correction review",exact:true}).waitFor();
+   await page.locator(".correction-request-card").filter({hasText:invoiceByLineRows[0].invoice_number}).waitFor();
+   pass("Approvals workspace lists the scoped correction request with review rationale and history.");
+
+   await page.goto(baseUrl + "/policy-decisions");
+   await page.getByRole("heading",{name:"Business and finance decisions",exact:true}).waitFor();
+   await page.getByText("Issued-document cancellation and correction",{exact:true}).first().waitFor();
+   pass("Policy decision workspace renders issuer-scoped decision rows and correction-policy evidence fields.");
+
+
+
     await page.goto(baseUrl + "/");
     await page.getByRole("heading", { name: "Receivables snapshot", exact: true }).waitFor();
     await page.getByText("Outstanding balance", { exact: true }).first().waitFor();
