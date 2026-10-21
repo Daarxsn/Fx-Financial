@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { cloneElement, isValidElement, useCallback, useEffect, useId, useMemo, useState, type FormEvent, type ReactElement, type ReactNode } from "react";
 import { Button, EmptyState, InlineAlert, LoadingState, StatusBadge } from "@/components/ui";
 
 type LineKind="ITEM"|"CHARGE"; type DiscountType="AMOUNT"|"PERCENT";
@@ -21,7 +21,7 @@ const linesFrom=(v:unknown):LineDraft[]=>Array.isArray(v)&&v.length?v.map(x=>{co
  description:str(r.description),unitCode:str(r.unitCode)||"unit",quantity:str(r.quantity)||"1.0000",unitPrice:str(r.unitPrice)||"0.0000",
  discountType:r.discountType==="PERCENT"?"PERCENT":"AMOUNT",discountValue:str(r.discountValue)||"0.0000",taxCode:str(r.taxCode),
 };}):[freshLine()];
-function Field({label,children,wide=false,hint}:{label:string;children:ReactNode;wide?:boolean;hint?:string}){return <div className={wide?"invoice-form-field invoice-form-field--wide":"invoice-form-field"}><label className="form-label">{label}</label>{children}{hint?<p className="form-hint">{hint}</p>:null}</div>;}
+function Field({label,children,wide=false,hint}:{label:string;children:ReactNode;wide?:boolean;hint?:string}){const fieldId=useId();const control=isValidElement(children)?cloneElement(children as ReactElement<{id?:string}>,{id:fieldId}):children;return <div className={wide?"invoice-form-field invoice-form-field--wide":"invoice-form-field"}><label className="form-label" htmlFor={fieldId}>{label}</label>{control}{hint?<p className="form-hint">{hint}</p>:null}</div>;}
 
 export function InvoiceWorkspace(){
  const [permissions,setPermissions]=useState<string[]>([]);

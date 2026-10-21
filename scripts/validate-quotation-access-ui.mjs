@@ -11,6 +11,7 @@ const [invoice, quotation, shell, access, accessPage, home, css, proxy] = await 
   readFile("src/proxy.ts", "utf8"),
 ]);
 const checks = [
+  ["invoice form labels are programmatically associated with unique controls", invoice.includes("const fieldId=useId()") && invoice.includes('htmlFor={fieldId}') && invoice.includes('cloneElement(children as ReactElement<{id?:string}>,{id:fieldId})')],
   ["invoice workspace explicitly explains missing read permission", invoice.includes("Invoice access is not assigned") && invoice.includes("invoices:read")],
   ["invoice workspace explicitly explains missing draft-create permission", invoice.includes("Invoice creation permission required") && invoice.includes("invoices:draft:create")],
   ["invoice workspace explains legal entity/customer setup prerequisites", invoice.includes("Invoice creation is not configured") && invoice.includes("active legal entity")],

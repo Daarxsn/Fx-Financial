@@ -229,6 +229,140 @@ try {
   await page.locator("tbody tr").filter({ hasText: importedCustomerCode }).waitFor();
   pass("Customer CSV import validates before explicit commit and the imported record is searchable.");
 
+  // Pack 2 Part A: exercise invoice draft/edit/issue through the real browser workspace.
+  const [invoiceEntityRows] = await db.execute(
+    "SELECT id,display_name,currency,tax_setup_status,time_zone,default_tax_code FROM legal_entities " +
+      "WHERE display_name LIKE 'Phase 6A Entity A %' AND is_active=TRUE ORDER BY created_at DESC LIMIT 1",
+  );
+  assert.equal(invoiceEntityRows.length, 1, "invoice browser flow needs the approved disposable Phase 6A entity");
+  const invoiceTestEntity = invoiceEntityRows[0];
+  assert.equal(invoiceTestEntity.tax_setup_status, "APPROVED_CONFIGURED",
+    "invoice browser flow uses only the approved synthetic CI tax configuration");
+  assert.equal(invoiceTestEntity.time_zone, "Asia/Kolkata", "invoice test entity has a valid configured time zone");
+  assert.ok(invoiceTestEntity.default_tax_code, "invoice test entity has a default approved tax code");
+  await db.execute(
+    "INSERT INTO user_legal_entity_access (user_id, legal_entity_id, granted_by) VALUES (?, ?, NULL)",
+    [userId, invoiceTestEntity.id],
+  );
+  const [invoiceCustomerRows] = await db.execute(
+    "SELECT id,name FROM customers WHERE customer_code=? AND is_active=TRUE LIMIT 1",
+    [importedCustomerCode],
+  );
+  assert.equal(invoiceCustomerRows.length, 1, "invoice/quotation browser flow uses the active CSV-imported customer");
+  const invoiceTestCustomer = invoiceCustomerRows[0];
+  const invoiceUiDate = new Date().toISOString().slice(0, 10);
+  const invoiceLineDescription = "Pack 2 browser invoice " + suffix;
+  await page.goto(baseUrl + "/invoices");
+  await page.getByRole("heading", { name: "Invoices", exact: true }).waitFor();
+  await waitForList(page);
+  await page.getByRole("button", { name: /New invoice/i }).first().click();
+  const invoiceEditor = page.locator(".invoice-editor").last();
+  await invoiceEditor.getByRole("heading", { name: "Create invoice draft", exact: true }).waitFor();
+  await invoiceEditor.getByLabel("Legal entity").selectOption(String(invoiceTestEntity.id));
+  await invoiceEditor.getByLabel("Customer").selectOption(String(invoiceTestCustomer.id));
+  await invoiceEditor.getByLabel("Invoice date").fill(invoiceUiDate);
+  await invoiceEditor.getByLabel("Description").fill(invoiceLineDescription);
+  await invoiceEditor.getByLabel("Unit").fill("hour");
+  await invoiceEditor.getByLabel("Quantity").fill("2.0000");
+  await invoiceEditor.getByLabel("Unit rate").fill("100.0000");
+  await invoiceEditor.getByLabel("Discount type").selectOption("PERCENT");
+  await invoiceEditor.getByLabel("Discount (%)").fill("10.0000");
+  await invoiceEditor.getByLabel("Approved tax code").selectOption(String(invoiceTestEntity.default_tax_code));
+  await invoiceEditor.getByRole("button", { name: "Create draft", exact: true }).click();
+  await page.getByText("Draft saved. Authoritative totals were recalculated by the server.", { exact: true }).waitFor();
+  await page.getByText("INR 212.4000", { exact: true }).first().waitFor();
+  pass("Invoice workspace creates a real draft and displays server-calculated exact-decimal totals.");
+
+  const editableInvoice = page.locator(".invoice-editor").last();
+  await editableInvoice.getByLabel("Unit rate").fill("120.0000");
+  await editableInvoice.getByRole("button", { name: "Save draft", exact: true }).click();
+  await page.getByText("Draft saved. Authoritative totals were recalculated by the server.", { exact: true }).waitFor();
+  await page.getByText("INR 254.8800", { exact: true }).first().waitFor();
+  await page.locator(".invoice-editor").last().getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByRole("heading", { name: "INVOICE DETAILS", exact: false }).waitFor();
+  await page.getByRole("button", { name: "Issue invoice", exact: true }).click();
+  await page.getByText("Invoice issued successfully. Its number and issue-time configuration snapshot are preserved.", { exact: true }).waitFor();
+  const [issuedBrowserInvoices] = await db.execute(
+    "SELECT id,lifecycle_status,invoice_number,grand_total FROM invoices WHERE legal_entity_id=? AND customer_id=? AND notes=? ORDER BY created_at DESC LIMIT 1",
+    [invoiceTestEntity.id, invoiceTestCustomer.id, "Pack 2 browser invoice lifecycle " + suffix],
+  );
+  // The form note is set below through the regular editor before creation; query by our uniquely named line if needed.
+  const [invoiceByLineRows] = await db.execute(
+    "SELECT i.id,i.lifecycle_status,i.invoice_number,i.grand_total FROM invoices i JOIN invoice_lines l ON l.invoice_id=i.id " +
+      "WHERE i.legal_entity_id=? AND i.customer_id=? AND l.description=? ORDER BY i.created_at DESC LIMIT 1",
+    [invoiceTestEntity.id, invoiceTestCustomer.id, invoiceLineDescription],
+  );
+  assert.equal(invoiceByLineRows.length, 1, "invoice created and issued by the workspace persists exactly one matching document");
+  assert.equal(invoiceByLineRows[0].lifecycle_status, "ISSUED");
+  assert.ok(invoiceByLineRows[0].invoice_number, "issue action allocates the official invoice number");
+  assert.equal(String(invoiceByLineRows[0].grand_total), "254.8800");
+  const [issuedBrowserSnapshots] = await db.execute(
+    "SELECT configuration_sha256 FROM document_configuration_snapshots WHERE resource_type='INVOICE' AND resource_id=?",
+    [invoiceByLineRows[0].id],
+  );
+  assert.equal(issuedBrowserSnapshots.length, 1, "UI issuance persists one immutable configuration snapshot");
+  assert.match(String(issuedBrowserSnapshots[0].configuration_sha256), /^[0-9a-f]{64}$/);
+  pass("Invoice workspace edits the draft, issues it, allocates a number, and persists one integrity-hashed snapshot.");
+
+  // Pack 2 Part B: create, send, accept and convert a quotation through its real workspace.
+  const quotationUiDate = new Date().toISOString().slice(0, 10);
+  const quotationValidUntilDate = new Date(quotationUiDate + "T00:00:00.000Z");
+  quotationValidUntilDate.setUTCDate(quotationValidUntilDate.getUTCDate() + 30);
+  const quotationUiValidUntil = quotationValidUntilDate.toISOString().slice(0, 10);
+  const quotationLineDescription = "Pack 2 browser quotation " + suffix;
+  const quotationNotes = "Pack 2 browser quotation lifecycle " + suffix;
+  await page.goto(baseUrl + "/quotations");
+  await page.getByRole("heading", { name: "Quotations", exact: true }).waitFor();
+  await waitForList(page);
+  await page.getByRole("button", { name: /New quotation/i }).first().click();
+  const quotationEditor = page.locator(".invoice-editor").last();
+  await quotationEditor.getByRole("heading", { name: "Create quotation", exact: true }).waitFor();
+  await quotationEditor.getByLabel("Legal entity").selectOption(String(invoiceTestEntity.id));
+  await quotationEditor.getByLabel("Customer").selectOption(String(invoiceTestCustomer.id));
+  await quotationEditor.locator("#quotation-date").fill(quotationUiDate);
+  await quotationEditor.locator("#quotation-valid-until").fill(quotationUiValidUntil);
+  await quotationEditor.locator("#quotation-payment-terms").fill("30");
+  await quotationEditor.locator("#quotation-notes").fill(quotationNotes);
+  await quotationEditor.locator('input[id^="quotation-description-"]').fill(quotationLineDescription);
+  await quotationEditor.locator('input[id^="quotation-unit-"]').fill("hour");
+  await quotationEditor.locator('input[id^="quotation-quantity-"]').fill("2.0000");
+  await quotationEditor.locator('input[id^="quotation-rate-"]').fill("100.0000");
+  await quotationEditor.locator('select[id^="quotation-discount-type-"]').selectOption("PERCENT");
+  await quotationEditor.locator('input[id^="quotation-discount-value-"]').fill("10.0000");
+  await quotationEditor.locator('select[id^="quotation-tax-"]').selectOption(String(invoiceTestEntity.default_tax_code));
+  await quotationEditor.getByRole("button", { name: "Create quotation draft", exact: true }).click();
+  await page.getByText("Quotation draft created.", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Mark as sent", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Mark as sent", exact: true }).click();
+  await page.getByRole("heading", { name: "Mark quotation as sent?", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Confirm action", exact: true }).click();
+  await page.getByRole("button", { name: "Mark accepted", exact: true }).waitFor();
+  pass("Quotation workspace sends a draft using the protected status transition.");
+
+  await page.getByRole("button", { name: "Mark accepted", exact: true }).click();
+  await page.getByRole("heading", { name: "Change quotation to accepted?", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Confirm action", exact: true }).click();
+  await page.getByRole("button", { name: "Convert to invoice draft", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Convert to invoice draft", exact: true }).click();
+  await page.getByText(/Invoice draft created from the accepted quotation/).waitFor();
+  await page.getByRole("heading", { name: "Converted to invoice", exact: true }).waitFor();
+  const [convertedBrowserQuotes] = await db.execute(
+    "SELECT id,status,converted_invoice_id FROM quotations WHERE legal_entity_id=? AND customer_id=? AND notes=? ORDER BY created_at DESC LIMIT 1",
+    [invoiceTestEntity.id, invoiceTestCustomer.id, quotationNotes],
+  );
+  assert.equal(convertedBrowserQuotes.length, 1, "quotation created and converted by the workspace persists exactly one source document");
+  assert.equal(convertedBrowserQuotes[0].status, "CONVERTED");
+  assert.ok(convertedBrowserQuotes[0].converted_invoice_id, "converted quotation links to its resulting invoice draft");
+  const [convertedBrowserInvoiceRows] = await db.execute(
+    "SELECT id,lifecycle_status,related_invoice_id,grand_total FROM invoices WHERE id=? LIMIT 1",
+    [convertedBrowserQuotes[0].converted_invoice_id],
+  );
+  assert.equal(convertedBrowserInvoiceRows.length, 1);
+  assert.equal(convertedBrowserInvoiceRows[0].lifecycle_status, "DRAFT",
+    "quotation conversion creates an editable draft and does not issue it automatically");
+  assert.equal(String(convertedBrowserInvoiceRows[0].grand_total), "212.4000");
+  pass("Quotation workspace sends, accepts and converts to one linked editable invoice draft without issuing it.");
+
   for (const width of [1365, 768, 390]) {
     await assertNoPageOverflow(page, width);
     await page.goto(`${baseUrl}/customers`);
