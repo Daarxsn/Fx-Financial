@@ -2760,28 +2760,50 @@ components:
       properties:
         legalEntityId: { $ref: "#/components/schemas/Uuid" }
         customerId: { $ref: "#/components/schemas/Uuid" }
-        amount: { type: string, pattern: '^(?=.*[1-9])(?:0|[1-9][0-9]{0,14})(\.[0-9]{1,4})?$' }
-        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        amount: { $ref: "#/components/schemas/Money" }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
         paymentDate: { type: string, format: date }
         method: { type: string, minLength: 1, maxLength: 40 }
         reference: { type: [string, "null"], maxLength: 160 }
-        notes: { type: [string, "null"], maxLength: 5000 }
+        notes: { type: [string, "null"], maxLength: 2000 }
     InvoicePaymentInput:
       type: object
       additionalProperties: false
       required: [amount, paymentDate, method]
       properties:
-        amount: { type: string, pattern: '^(?=.*[1-9])(?:0|[1-9][0-9]{0,14})(\\.[0-9]{1,4})?
+        amount: { $ref: "#/components/schemas/Money" }
+        paymentDate: { type: string, format: date }
+        method: { type: string, minLength: 1, maxLength: 40 }
+        reference: { type: [string, "null"], maxLength: 160 }
+        notes: { type: [string, "null"], maxLength: 2000 }
+    Payment:
+      type: object
       required: [id, customerId, amount, currency, paymentDate, status]
       properties:
         id: { $ref: "#/components/schemas/Uuid" }
+        receiptReference: { type: string, maxLength: 40 }
+        legalEntityId: { type: [string, "null"], format: uuid }
         customerId: { $ref: "#/components/schemas/Uuid" }
         amount: { $ref: "#/components/schemas/Money" }
-        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        allocatedAmount: { $ref: "#/components/schemas/Money" }
+        unallocatedAmount: { $ref: "#/components/schemas/Money" }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
         paymentDate: { type: string, format: date }
         method: { type: string }
         reference: { type: [string, "null"] }
         status: { type: string, enum: [RECORDED, REVERSED] }
+        notes: { type: [string, "null"] }
+        createdAt: { type: [string, "null"], format: date-time }
+        reversedAt: { type: [string, "null"], format: date-time }
+        reversalReason: { type: [string, "null"] }
+        customerSnapshot: { type: [object, "null"], additionalProperties: true }
+        legalEntitySnapshot: { type: [object, "null"], additionalProperties: true }
+        allocations:
+          type: array
+          items: { type: object, additionalProperties: true }
+        reversalEvents:
+          type: array
+          items: { type: object, additionalProperties: true }
     PaymentResponse:
       type: object
       required: [data, meta]
@@ -2796,13 +2818,6 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Payment" }
         meta: { $ref: "#/components/schemas/Meta" }
-    PaymentAllocationInput:
-      type: object
-      additionalProperties: false
-      required: [paymentId, amount]
-      properties:
-        paymentId: { $ref: "#/components/schemas/Uuid" }
-        amount: { type: string, pattern: '^(?=.*[1-9])(?:0|[1-9][0-9]{0,14})(\.[0-9]{1,4})?$' }
     PaymentAllocation:
       type: object
       required: [id, paymentId, invoiceId, amount, createdAt]
