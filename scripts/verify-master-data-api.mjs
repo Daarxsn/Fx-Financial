@@ -2256,6 +2256,145 @@ try {
   assert.equal(formulaCatalogDetail.body.data.internalDescription, formulaCatalogInternal, "privileged internal description round-trips unchanged");
   assert.equal(formulaCatalogDetail.body.data.defaultUnitPrice, "9.1250", "catalog price keeps exact four-place decimal formatting");
 
+  // Pack 2: a sent invoice line is immutable even when its linked catalogue defaults are edited later.
+  const pack2CatalogSnapshotDraft = await call("/api/v1/invoices", {
+    method: "POST",
+    headers: { "Idempotency-Key": "p2-catalog-snapshot-draft-" + randomUUID() },
+    body: JSON.stringify({
+      legalEntityId: entityA.id, brandId: null, customerId: quotationCustomerId, currency: "INR",
+      invoiceDate: issueDate, dueDate: null, paymentTermsDays: 30, notes: "Pack 2 catalog snapshot regression",
+      lines: [{
+        catalogItemId: item.body.data.id, lineKind: "ITEM", description: item.body.data.name,
+        unitCode: item.body.data.unitCode, quantity: "1.0000", unitPrice: "12.3400",
+        discountType: "AMOUNT", discountValue: "0.0000", taxCode: phase6bTaxCode,
+      }],
+    }),
+  }, quotationFinanceSession.jar);
+  assert.equal(pack2CatalogSnapshotDraft.response.status, 201,
+    "Pack 2 catalogue-snapshot invoice draft is created through the API: " + JSON.stringify(pack2CatalogSnapshotDraft.body.error ?? null));
+  const pack2CatalogSnapshotInvoiceId = pack2CatalogSnapshotDraft.body.data.id;
+  const pack2CatalogSnapshotIssue = await call("/api/v1/invoices/" + pack2CatalogSnapshotInvoiceId + "/issue", {
+    method: "POST", headers: { "Idempotency-Key": "p2-catalog-snapshot-issue-" + randomUUID() },
+    body: JSON.stringify({ documentDate: issueDate }),
+  }, quotationFinanceSession.jar);
+  assert.equal(pack2CatalogSnapshotIssue.response.status, 200,
+    "catalogue-linked invoice can be issued and snapshotted before catalogue master data is changed");
+  const [[catalogSnapshotBefore]] = await db.execute(
+    "SELECT configuration_sha256 FROM document_configuration_snapshots WHERE resource_type='INVOICE' AND resource_id=?",
+    [pack2CatalogSnapshotInvoiceId],
+  );
+  assert.ok(catalogSnapshotBefore?.configuration_sha256, "catalogue-linked issued invoice has a configuration snapshot hash");
+  const [catalogLineBeforeRows] = await db.execute(
+    "SELECT catalog_item_id,description,unit_code,unit_price,tax_code,tax_rate,tax_amount,line_total FROM invoice_lines WHERE invoice_id=? ORDER BY line_number",
+    [pack2CatalogSnapshotInvoiceId],
+  );
+  assert.equal(catalogLineBeforeRows.length, 1);
+  assert.equal(catalogLineBeforeRows[0].catalog_item_id, item.body.data.id, "issued line keeps the catalogue source link");
+  assert.equal(catalogLineBeforeRows[0].description, item.body.data.name);
+  assert.equal(String(catalogLineBeforeRows[0].unit_price), "12.3400");
+  const [catalogVersionRows] = await db.execute(
+    "SELECT record_version FROM catalog_items WHERE id=?", [item.body.data.id],
+  );
+  assert.equal(catalogVersionRows.length, 1);
+  const catalogUpdateAfterIssue = await call("/api/v1/catalog/items/" + item.body.data.id, {
+    method: "PATCH",
+    body: JSON.stringify({
+      expectedVersion: Number(catalogVersionRows[0].record_version),
+      name: "Catalogue Changed After Issue " + suffix,
+      customerDescription: "Changed master-data description after issue",
+      unitCode: "project",
+      defaultUnitPrice: "99.9900",
+    }),
+  }, financeSession.jar);
+  assert.equal(catalogUpdateAfterIssue.response.status, 200,
+    "catalogue defaults remain editable for future documents after the linked invoice has issued");
+  const pack2CatalogSnapshotDetailAfterEdit = await call("/api/v1/invoices/" + pack2CatalogSnapshotInvoiceId, {}, quotationFinanceSession.jar);
+  assert.equal(pack2CatalogSnapshotDetailAfterEdit.response.status, 200);
+  const historicLine = pack2CatalogSnapshotDetailAfterEdit.body.data.lines?.[0];
+  assert.ok(historicLine, "issued invoice detail returns the stored historical line");
+  assert.equal(historicLine.description, item.body.data.name, "catalogue name edit does not rewrite the issued line description");
+  assert.equal(String(historicLine.unitPrice), "12.3400", "catalogue price edit does not rewrite the issued line rate");
+  assert.equal(historicLine.unitCode, item.body.data.unitCode, "catalogue unit edit does not rewrite the issued line unit");
+  const [[catalogSnapshotAfter]] = await db.execute(
+    "SELECT configuration_sha256 FROM document_configuration_snapshots WHERE resource_type='INVOICE' AND resource_id=?",
+    [pack2CatalogSnapshotInvoiceId],
+  );
+  assert.equal(catalogSnapshotAfter.configuration_sha256, catalogSnapshotBefore.configuration_sha256,
+    "editing catalogue defaults does not replace or mutate the issued configuration snapshot");
+  const [catalogLineAfterRows] = await db.execute(
+    "SELECT catalog_item_id,description,unit_code,unit_price,tax_code,tax_rate,tax_amount,line_total FROM invoice_lines WHERE invoice_id=? ORDER BY line_number",
+    [pack2CatalogSnapshotInvoiceId],
+  );
+  assert.deepEqual(catalogLineAfterRows[0], catalogLineBeforeRows[0],
+    "catalogue default changes preserve the complete stored issued line and its calculated tax/totals");
+  console.log("PASS: Pack 2 issued invoice line and configuration snapshot remain unchanged after API edits to the linked catalogue item.");
+
+  // Pack 2: stress the invoice number allocator with two distinct invoices issued at the same time.
+  const pack2ConcurrentPayload = (description) => ({
+    legalEntityId: entityA.id, brandId: null, customerId: quotationCustomerId, currency: "INR",
+    invoiceDate: issueDate, dueDate: null, paymentTermsDays: 30, notes: "Pack 2 concurrent issuance regression",
+    lines: [{
+      lineKind: "ITEM", description, unitCode: "unit", quantity: "1.0000", unitPrice: "100.0000",
+      discountType: "AMOUNT", discountValue: "0.0000", taxCode: phase6bTaxCode,
+    }],
+  });
+  const pack2ConcurrentDraftResults = await Promise.all([
+    call("/api/v1/invoices", {
+      method: "POST", headers: { "Idempotency-Key": "p2-concurrent-create-a-" + randomUUID() },
+      body: JSON.stringify(pack2ConcurrentPayload("Pack 2 concurrent invoice A")),
+    }, quotationFinanceSession.jar),
+    call("/api/v1/invoices", {
+      method: "POST", headers: { "Idempotency-Key": "p2-concurrent-create-b-" + randomUUID() },
+      body: JSON.stringify(pack2ConcurrentPayload("Pack 2 concurrent invoice B")),
+    }, quotationFinanceSession.jar),
+  ]);
+  assert.deepEqual(pack2ConcurrentDraftResults.map(result => result.response.status), [201, 201],
+    "two separate concurrent invoice drafts are independently created");
+  const pack2ConcurrentInvoiceIds = pack2ConcurrentDraftResults.map(result => result.body.data.id);
+  assert.equal(new Set(pack2ConcurrentInvoiceIds).size, 2, "concurrent draft creation yields two distinct invoice IDs");
+  const [sequenceBeforePack2RaceRows] = await db.execute(
+    "SELECT next_value FROM invoice_number_sequences WHERE legal_entity_id=? AND document_type='INVOICE' AND financial_year_label=?",
+    [entityA.id, issueResult.body.data.financialYear],
+  );
+  assert.equal(sequenceBeforePack2RaceRows.length, 1, "invoice financial-year sequence exists before concurrent issuance");
+  const sequenceBeforePack2Race = BigInt(String(sequenceBeforePack2RaceRows[0].next_value));
+  const pack2ConcurrentIssueResults = await Promise.all(pack2ConcurrentInvoiceIds.map((invoiceId, index) =>
+    call("/api/v1/invoices/" + invoiceId + "/issue", {
+      method: "POST",
+      headers: { "Idempotency-Key": "p2-concurrent-issue-" + index + "-" + randomUUID() },
+      body: JSON.stringify({ documentDate: issueDate }),
+    }, quotationFinanceSession.jar),
+  ));
+  assert.deepEqual(pack2ConcurrentIssueResults.map(result => result.response.status), [200, 200],
+    "two distinct invoices can issue successfully under concurrent requests");
+  assert.deepEqual(pack2ConcurrentIssueResults.map(result => result.body.data.idempotentReplay), [false, false],
+    "each distinct invoice is issued once rather than treated as an idempotent replay");
+  const pack2ConcurrentNumbers = pack2ConcurrentIssueResults.map(result => result.body.data.invoiceNumber);
+  assert.ok(pack2ConcurrentNumbers.every(number => typeof number === "string" && number.length > 0),
+    "both concurrent issue operations allocate official document numbers");
+  assert.equal(new Set(pack2ConcurrentNumbers).size, 2, "concurrent different-invoice issuance never allocates the same invoice number");
+  for (let index = 0; index < pack2ConcurrentInvoiceIds.length; index++) {
+    const [issuedRow] = await db.execute(
+      "SELECT lifecycle_status,invoice_number FROM invoices WHERE id=?",
+      [pack2ConcurrentInvoiceIds[index]],
+    );
+    assert.equal(issuedRow[0].lifecycle_status, "ISSUED");
+    assert.equal(issuedRow[0].invoice_number, pack2ConcurrentNumbers[index]);
+    const [[snapshotCount]] = await db.execute(
+      "SELECT COUNT(*) AS total FROM document_configuration_snapshots WHERE resource_type='INVOICE' AND resource_id=?",
+      [pack2ConcurrentInvoiceIds[index]],
+    );
+    assert.equal(Number(snapshotCount.total), 1, "every concurrently issued invoice has exactly one configuration snapshot");
+  }
+  const [sequenceAfterPack2RaceRows] = await db.execute(
+    "SELECT next_value FROM invoice_number_sequences WHERE legal_entity_id=? AND document_type='INVOICE' AND financial_year_label=?",
+    [entityA.id, issueResult.body.data.financialYear],
+  );
+  const sequenceAfterPack2Race = BigInt(String(sequenceAfterPack2RaceRows[0].next_value));
+  assert.equal(sequenceAfterPack2Race, sequenceBeforePack2Race + 2n,
+    "concurrent issuance advances the shared invoice number sequence exactly once per issued invoice");
+  console.log("PASS: Pack 2 distinct-invoice concurrency allocated two unique numbers and two immutable snapshots with exactly two sequence increments.");
+
   console.log("PASS: Phase 7 CSV tests cover validation-only preview, signed validation tokens bound to user/session/resource/CSV bytes with expiry, customer and catalog formula-safe round trips, malformed/oversized/over-row-limit files, whole-file validation, row-numbered errors, atomic commit, exact decimal values and permission-aware sensitive columns.");
 
   const invalid = await call("/api/v1/customers", {
