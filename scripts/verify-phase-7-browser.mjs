@@ -393,7 +393,7 @@ try {
    await page.getByRole("button", { name: "Reverse receipt", exact: true }).click();
    await page.locator("#receipt-reversal-reason").fill("Pack 3 browser test full receipt reversal");
    await page.getByRole("button", { name: "Confirm reversal", exact: true }).click();
-   await page.getByText(/Receipt reversed\\./).waitFor();
+   await page.getByText("Receipt reversed. Its allocation history remains available and linked invoice balances have been restored.", { exact: true }).waitFor();
    const [p3BrowserReverseRows] = await db.execute("SELECT status,reversal_reason FROM payments WHERE id=? LIMIT 1",[p3BrowserReceipt.id]);
    assert.equal(p3BrowserReverseRows[0].status, "REVERSED");
    assert.equal(p3BrowserReverseRows[0].reversal_reason, "Pack 3 browser test full receipt reversal");
