@@ -2995,8 +2995,9 @@ try {
     body:JSON.stringify({invoiceId:p4CancelSource.id,correctionType:"CANCEL",reason:"Conflicting correction reason payload."}),
   },phase6aSession.jar);
   assert.equal(p4CancelConflict.response.status,409,"correction request idempotency rejects a changed payload");
+  const p4DuplicatePendingKey=randomUUID()+randomUUID();
   const p4DuplicatePending=await call("/api/v1/correction-requests",{
-    method:"POST",headers:{"Idempotency-Key":"p4-duplicate-pending-"+randomUUID()},
+    method:"POST",headers:{"Idempotency-Key":p4DuplicatePendingKey},
     body:JSON.stringify({invoiceId:p4CancelSource.id,correctionType:"DEBIT_NOTE",reason:"Attempt another correction while one is pending."}),
   },phase6aSession.jar);
   assert.equal(p4DuplicatePending.response.status,409,"one pending correction request per invoice is enforced");
