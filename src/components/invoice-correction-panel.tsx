@@ -5,7 +5,7 @@ import { Button,InlineAlert,LoadingState,StatusBadge } from "@/components/ui";
 
 type CorrectionEvent={id:string;eventType:string;previousStatus:string|null;status:string;reason:string;actorId:string;createdAt:string};
 type Correction={id:string;invoiceId:string;invoiceNumber:string|null;correctionType:"CANCEL"|"CREDIT_NOTE"|"DEBIT_NOTE";status:"PENDING_REVIEW"|"REJECTED"|"EXECUTED";reason:string;requestedBy:string;reviewedBy:string|null;reviewDecision:string|null;reviewReason:string|null;createdAt:string;history:CorrectionEvent[]};
-type Props={invoiceId:string;invoiceNumber:string|null;lifecycleStatus:string;documentType:string;canRequest:boolean;canReview:boolean};
+type Props={invoiceId:string;lifecycleStatus:string;documentType:string;canRequest:boolean;canReview:boolean};
 type ListResponse={data?:Correction[];error?:{message?:string}};
 async function csrfToken(){
  const cookie=document.cookie.split(";").map(x=>x.trim()).find(x=>x.startsWith("fx_csrf="))?.slice("fx_csrf=".length);
@@ -15,7 +15,7 @@ async function csrfToken(){
  return body.data.csrfToken as string;
 }
 const statusTone=(s:Correction["status"])=>s==="EXECUTED"?"success":s==="REJECTED"?"danger":"warning";
-export function InvoiceCorrectionPanel({invoiceId,invoiceNumber,lifecycleStatus,documentType,canRequest,canReview}:Props){
+export function InvoiceCorrectionPanel({invoiceId,lifecycleStatus,documentType,canRequest,canReview}:Props){
  const [rows,setRows]=useState<Correction[]>([]);
  const [loading,setLoading]=useState(false),[saving,setSaving]=useState(false),[error,setError]=useState(""),[success,setSuccess]=useState("");
  const [correctionType,setCorrectionType]=useState<Correction["correctionType"]>("CANCEL"),[reason,setReason]=useState(""),[idempotencyKey,setIdempotencyKey]=useState(()=>crypto.randomUUID()+crypto.randomUUID());

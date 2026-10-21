@@ -1,4 +1,3 @@
-import { NextRequest } from "next/server";
 import type { RowDataPacket } from "mysql2";
 import { pool } from "@/lib/db/pool";
 import { requirePermission } from "@/lib/auth/authorize";
@@ -7,7 +6,7 @@ import { apiError, jsonNoStore } from "@/lib/http/api-response";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 type DecisionRow=RowDataPacket&{id:string;decision_key:string;legal_entity_id:string|null;legal_entity_name:string|null;topic:string;recommended_starting_point:string;required_approver:string;requires_issue_gate:number;status:string;decision_code:string|null;decision_text:string|null;rationale:string|null;external_approver_name:string|null;external_approver_role:string|null;approval_reference:string|null;approval_date:Date|string|null;updated_at:Date|string};
-export async function GET(_request:NextRequest){
+export async function GET(){
  try{
   const actor=await requirePermission("settings:manage");
   requireFinanceConfigurationApprover(actor);

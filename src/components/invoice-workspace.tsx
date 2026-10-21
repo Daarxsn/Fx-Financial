@@ -169,7 +169,7 @@ export function InvoiceWorkspace(){
   {selected&&!editor?<div className="invoice-editor">
    <div className="invoice-editor__heading"><div><p className="page-eyebrow">{selected.lifecycleStatus==="ISSUED"?"ISSUED DOCUMENT":"INVOICE DETAILS"}</p><h2>{selected.invoiceNumber||"Draft · "+selected.id.slice(0,8)}</h2><p>{selected.customerName} · {selected.lifecycleStatus} · {selected.paymentStatus}</p></div><Button variant="ghost" onClick={()=>setSelected(null)}>Close details</Button></div>
    {selected.lifecycleStatus==="ISSUED"?<InlineAlert tone="warning" title="Issued financial record is immutable">Amounts and line descriptions cannot be edited after issuance. Use an approved correction workflow for changes.</InlineAlert>:null}
-    <InvoiceCorrectionPanel invoiceId={selected.id} invoiceNumber={selected.invoiceNumber} lifecycleStatus={selected.lifecycleStatus} documentType={selected.documentType} canRequest={canUpdate} canReview={permissions.includes("approvals:read")} />
+    <InvoiceCorrectionPanel invoiceId={selected.id} lifecycleStatus={selected.lifecycleStatus} documentType={selected.documentType} canRequest={canUpdate} canReview={permissions.includes("approvals:read")} />
    <div className="invoice-editor__calculation">
     <div><span>Subtotal (net of tax)</span><strong>{currency(selected.currency,selected.subtotal)}</strong></div>
     <div><span>Discount total</span><strong>− {currency(selected.currency,selected.discountTotal)}</strong></div>
