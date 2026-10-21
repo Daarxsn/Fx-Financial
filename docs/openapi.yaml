@@ -2303,7 +2303,7 @@ components:
         effectiveFrom: { type: string, format: date }
         effectiveUntil: { type: [string, "null"], format: date }
         isDefault: { type: boolean, default: false }
-        reason: { type: string, minLength: 1, maxLength: 1000 }
+        reason: { type: string, minLength: 3, maxLength: 1000 }
     BrandEntityMapping:
       allOf:
         - $ref: "#/components/schemas/BrandEntityMappingInput"
@@ -2818,6 +2818,13 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Payment" }
         meta: { $ref: "#/components/schemas/Meta" }
+    PaymentAllocationInput:
+      type: object
+      additionalProperties: false
+      required: [paymentId, amount]
+      properties:
+        paymentId: { $ref: "#/components/schemas/Uuid" }
+        amount: { $ref: "#/components/schemas/Money" }
     PaymentAllocation:
       type: object
       required: [id, paymentId, invoiceId, amount, createdAt]
@@ -3124,73 +3131,6 @@ components:
           items: { $ref: "#/components/schemas/UserRecord" }
         meta:
           $ref: "#/components/schemas/Meta"
- }
-        paymentDate: { type: string, format: date }
-        method: { type: string, minLength: 1, maxLength: 40 }
-        reference: { type: [string, "null"], maxLength: 160 }
-        notes: { type: [string, "null"], maxLength: 2000 }
-    Payment:
-      type: object
-      required: [id, customerId, amount, currency, paymentDate, status]
-      properties:
-        id: { $ref: "#/components/schemas/Uuid" }
-        customerId: { $ref: "#/components/schemas/Uuid" }
-        amount: { $ref: "#/components/schemas/Money" }
-        currency: { type: string, pattern: '^[A-Z]{3}$' }
-        paymentDate: { type: string, format: date }
-        method: { type: string }
-        reference: { type: [string, "null"] }
-        status: { type: string, enum: [RECORDED, REVERSED] }
-    PaymentResponse:
-      type: object
-      required: [data, meta]
-      properties:
-        data: { $ref: "#/components/schemas/Payment" }
-        meta: { $ref: "#/components/schemas/Meta" }
-    PaymentListResponse:
-      type: object
-      required: [data, meta]
-      properties:
-        data:
-          type: array
-          items: { $ref: "#/components/schemas/Payment" }
-        meta: { $ref: "#/components/schemas/Meta" }
-    PaymentAllocationInput:
-      type: object
-      additionalProperties: false
-      required: [paymentId, amount]
-      properties:
-        paymentId: { $ref: "#/components/schemas/Uuid" }
-        amount: { type: string, pattern: '^(?=.*[1-9])(?:0|[1-9][0-9]{0,14})(\.[0-9]{1,4})?$' }
-    PaymentAllocation:
-      type: object
-      required: [id, paymentId, invoiceId, amount, createdAt]
-      properties:
-        id: { $ref: "#/components/schemas/Uuid" }
-        paymentId: { $ref: "#/components/schemas/Uuid" }
-        invoiceId: { $ref: "#/components/schemas/Uuid" }
-        amount: { $ref: "#/components/schemas/Money" }
-        createdAt: { type: string, format: date-time }
-    PaymentAllocationResponse:
-      type: object
-      required: [data, meta]
-      properties:
-        data: { $ref: "#/components/schemas/PaymentAllocation" }
-        meta: { $ref: "#/components/schemas/Meta" }
-    PaymentAllocationListResponse:
-      type: object
-      required: [data, meta]
-      properties:
-        data:
-          type: array
-          items: { $ref: "#/components/schemas/PaymentAllocation" }
-        meta: { $ref: "#/components/schemas/Meta" }
-    ReasonInput:
-      type: object
-      additionalProperties: false
-      required: [reason]
-      properties:
-        reason: { type: string, minLength: 1, maxLength: 1000 }
     Approval:
       type: object
       required: [id, resourceType, actionKey, status, requestedBy, requestedAt]
