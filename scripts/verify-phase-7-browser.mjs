@@ -279,14 +279,9 @@ try {
   await page.getByText("Draft saved. Authoritative totals were recalculated by the server.", { exact: true }).waitFor();
   await page.getByText("INR 254.8800", { exact: true }).first().waitFor();
   await page.locator(".invoice-editor").last().getByRole("button", { name: "Close", exact: true }).click();
-  await page.getByRole("heading", { name: "INVOICE DETAILS", exact: false }).waitFor();
+  await page.getByText("INVOICE DETAILS", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Issue invoice", exact: true }).click();
   await page.getByText("Invoice issued successfully. Its number and issue-time configuration snapshot are preserved.", { exact: true }).waitFor();
-  const [issuedBrowserInvoices] = await db.execute(
-    "SELECT id,lifecycle_status,invoice_number,grand_total FROM invoices WHERE legal_entity_id=? AND customer_id=? AND notes=? ORDER BY created_at DESC LIMIT 1",
-    [invoiceTestEntity.id, invoiceTestCustomer.id, "Pack 2 browser invoice lifecycle " + suffix],
-  );
-  // The form note is set below through the regular editor before creation; query by our uniquely named line if needed.
   const [invoiceByLineRows] = await db.execute(
     "SELECT i.id,i.lifecycle_status,i.invoice_number,i.grand_total FROM invoices i JOIN invoice_lines l ON l.invoice_id=i.id " +
       "WHERE i.legal_entity_id=? AND i.customer_id=? AND l.description=? ORDER BY i.created_at DESC LIMIT 1",
