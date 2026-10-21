@@ -59,6 +59,8 @@ type InvoiceRow = RowDataPacket & {
   lifecycle_status: string;
   currency: string;
   grand_total: string | number;
+  customer_snapshot: unknown;
+  supplier_snapshot: unknown;
 };
 type PaymentRow = RowDataPacket & {
   id: string;
@@ -182,7 +184,7 @@ export async function POST(request: NextRequest, context: Context) {
     conn = await pool.getConnection();
     await conn.beginTransaction();
     const [invoiceRows] = await conn.execute<InvoiceRow[]>(
-      `SELECT id,legal_entity_id,customer_id,document_type,lifecycle_status,currency,grand_total
+      `SELECT id,legal_entity_id,customer_id,document_type,lifecycle_status,currency,grand_total,customer_snapshot,supplier_snapshot
          FROM invoices WHERE id=? LIMIT 1 FOR UPDATE`,
       [invoiceId],
     );
@@ -237,10 +239,12 @@ export async function POST(request: NextRequest, context: Context) {
     const receiptReference = "RCPT-" + paymentId.replaceAll("-", "").toUpperCase();
     await conn.execute(
       `INSERT INTO payments
-        (id,legal_entity_id,receipt_reference,customer_id,amount,currency,payment_date,method,reference,status,notes,recorded_by,idempotency_key)
-       VALUES (?,?,?,?,?,?,?,?,?,'RECORDED',?,?,?)`,
-      [paymentId, invoice.legal_entity_id, receiptReference, invoice.customer_id, amount, invoice.currency,
-        input.paymentDate, input.method, reference, notes, actor.userId, idempotencyKey],
+        (id,legal_entity_id,receipt_reference,customer_id,customer_snapshot,legal_entity_snapshot,amount,currency,payment_date,method,reference,status,notes,recorded_by,idempotency_key)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,'RECORDED',?,?,?)`,
+      [paymentId, invoice.legal_entity_id, receiptReference, invoice.customer_id,
+        invoice.customer_snapshot===null?null:JSON.stringify(typeof invoice.customer_snapshot==="string"?JSON.parse(invoice.customer_snapshot):invoice.customer_snapshot),
+        invoice.supplier_snapshot===null?null:JSON.stringify(typeof invoice.supplier_snapshot==="string"?JSON.parse(invoice.supplier_snapshot):invoice.supplier_snapshot),
+        amount, invoice.currency, input.paymentDate, input.method, reference, notes, actor.userId, idempotencyKey],
     );
     await conn.execute(
       "INSERT INTO payment_allocations (id,payment_id,invoice_id,amount,idempotency_key,created_by) VALUES (?,?,?,?,?,?)",

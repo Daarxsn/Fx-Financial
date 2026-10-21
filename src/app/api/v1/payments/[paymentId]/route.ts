@@ -18,6 +18,14 @@ function dateText(value: Date|string|null): string|null {
   return value instanceof Date?value.toISOString().slice(0,10):String(value).slice(0,10);
 }
 function uuid(value: string) { return /^[0-9a-f-]{36}$/i.test(value); }
+function snapshotValue(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (typeof value === "string") {
+    try { const parsed: unknown = JSON.parse(value); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>; }
+    catch { /* malformed legacy snapshots remain unavailable */ }
+  }
+  return null;
+}
 
 export async function GET(_request: NextRequest, context: Context) {
   try {
@@ -28,11 +36,12 @@ export async function GET(_request: NextRequest, context: Context) {
       id:string; legal_entity_id:string|null; derived_entity_id:string|null; entity_count:number;
       customer_id:string; amount:string|number; currency:string; payment_date:Date|string; method:string;
       reference:string|null; status:string; notes:string|null; receipt_reference:string|null;
+      customer_snapshot:unknown; legal_entity_snapshot:unknown;
       reversed_at:Date|string|null; reversal_reason:string|null; created_at:Date|string;
     })[]>(
       "SELECT p.id,p.legal_entity_id,MAX(i.legal_entity_id) AS derived_entity_id,COUNT(DISTINCT i.legal_entity_id) AS entity_count," +
       "p.customer_id,p.amount,p.currency,DATE_FORMAT(p.payment_date,'%Y-%m-%d') AS payment_date,p.method,p.reference,p.status,p.notes," +
-      "p.receipt_reference,p.reversed_at,p.reversal_reason,p.created_at " +
+      "p.receipt_reference,p.customer_snapshot,p.legal_entity_snapshot,p.reversed_at,p.reversal_reason,p.created_at " +
       "FROM payments p LEFT JOIN payment_allocations pa ON pa.payment_id=p.id LEFT JOIN invoices i ON i.id=pa.invoice_id " +
       "WHERE p.id=? GROUP BY p.id LIMIT 1", [paymentId],
     );
@@ -67,7 +76,8 @@ export async function GET(_request: NextRequest, context: Context) {
       legalEntityId:entityId,customerId:row.customer_id,amount:money(amount),allocatedAmount:money(allocated),
       unallocatedAmount:row.status==="RECORDED"?money(amount-allocated):"0.0000",currency:row.currency,
       paymentDate:dateText(row.payment_date),method:row.method,reference:row.reference,status:row.status,
-      notes:row.notes,createdAt:row.created_at,reversedAt:row.reversed_at,reversalReason:row.reversal_reason,
+      notes:row.notes,customerSnapshot:snapshotValue(row.customer_snapshot),legalEntitySnapshot:snapshotValue(row.legal_entity_snapshot),
+      createdAt:row.created_at,reversedAt:row.reversed_at,reversalReason:row.reversal_reason,
       allocations:allocationRows.map(a=>({id:a.id,invoiceId:a.invoice_id,invoiceNumber:a.invoice_number,
         invoiceStatus:a.invoice_status,amount:money(units(a.amount)),createdAt:a.created_at})),
       reversalEvents:reversalRows.map(r=>({id:r.id,amount:money(units(r.amount)),currency:r.currency,reason:r.reason,
