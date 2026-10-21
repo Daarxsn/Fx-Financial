@@ -416,7 +416,7 @@ try {
    await page.locator("#invoice-payment-reference").fill(p3DirectReference);
    await page.locator("#invoice-payment-notes").fill("Pack 3 invoice detail payment UI acceptance");
    await page.getByRole("button", { name: "Record and allocate payment", exact: true }).click();
-   await page.getByText(/Payment RCPT-[0-9A-F]{32} recorded and fully allocated to this invoice\\./).waitFor();
+   await page.getByText(/Payment RCPT-[0-9A-F]{32} recorded and fully allocated to this invoice\./).waitFor();
    const [p3DirectRows] = await db.execute("SELECT id,receipt_reference,status FROM payments WHERE reference=? ORDER BY created_at DESC LIMIT 1",[p3DirectReference]);
    assert.equal(p3DirectRows.length, 1);
    assert.equal(p3DirectRows[0].status, "RECORDED");

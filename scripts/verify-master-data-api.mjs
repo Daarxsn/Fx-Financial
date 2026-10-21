@@ -913,6 +913,42 @@ try {
     amount:"25.1234",paymentDate:issueDate,method:"bank transfer",
     reference:"CI-PAY-"+phase6bSuffix,notes:"Pack 0 payment API regression",
   };
+
+  // Pack 3 negative invoice-payment contract cases.
+  const missingPaymentKey=await call("/api/v1/invoices/"+issuedInvoiceId+"/payments",{
+    method:"POST",body:JSON.stringify(phase8PaymentPayload),
+  },phase6aSession.jar);
+  assert.equal(missingPaymentKey.response.status,400,"invoice payment requires an idempotency key");
+  const badPaymentDateKey="p3-bad-date-"+randomUUID();
+  const badPaymentDateReference="CI-P3-BAD-DATE-"+randomUUID();
+  const badPaymentDate=await call("/api/v1/invoices/"+issuedInvoiceId+"/payments",{
+    method:"POST",headers:{"Idempotency-Key":badPaymentDateKey},
+    body:JSON.stringify({...phase8PaymentPayload,paymentDate:"2026-02-30",reference:badPaymentDateReference}),
+  },phase6aSession.jar);
+  assert.equal(badPaymentDate.response.status,422,"impossible payment dates are rejected");
+  const badPaymentMethodKey="p3-bad-method-"+randomUUID();
+  const badPaymentMethodReference="CI-P3-BAD-METHOD-"+randomUUID();
+  const badPaymentMethod=await call("/api/v1/invoices/"+issuedInvoiceId+"/payments",{
+    method:"POST",headers:{"Idempotency-Key":badPaymentMethodKey},
+    body:JSON.stringify({...phase8PaymentPayload,method:"123BAD",reference:badPaymentMethodReference}),
+  },phase6aSession.jar);
+  assert.equal(badPaymentMethod.response.status,422,"invalid payment method labels are rejected");
+  const draftPaymentKey="p3-draft-payment-"+randomUUID();
+  const draftPayment=await call("/api/v1/invoices/"+phase8Draft.body.data.id+"/payments",{
+    method:"POST",headers:{"Idempotency-Key":draftPaymentKey},body:JSON.stringify(phase8PaymentPayload),
+  },phase6aSession.jar);
+  assert.equal(draftPayment.response.status,409,"a draft invoice cannot accept a payment allocation");
+  assert.equal(draftPayment.body.error.code,"PAYMENT_NOT_ALLOWED");
+  const forbiddenInvoicePayment=await call("/api/v1/invoices/"+issuedInvoiceId+"/payments",{
+    method:"POST",headers:{"Idempotency-Key":"p3-forbidden-payment-"+randomUUID()},body:JSON.stringify(phase8PaymentPayload),
+  },staffSession.jar);
+  assert.equal(forbiddenInvoicePayment.response.status,403,"invoice creator cannot record payments without payments:record");
+  const [rejectedPaymentRows]=await db.execute(
+    "SELECT COUNT(*) AS n FROM payments WHERE idempotency_key IN (?,?,?) OR reference IN (?,?)",
+    [badPaymentDateKey,badPaymentMethodKey,draftPaymentKey,badPaymentDateReference,badPaymentMethodReference]);
+  assert.equal(Number(rejectedPaymentRows[0].n),0,"invalid dates/methods and draft payments leave no receipt rows");
+  console.log("PASS: Pack 3 invoice-payment rejection cases cover missing idempotency key, impossible date, invalid method, draft invoice and missing recording permission.");
+
   const concurrentPaymentResults=await Promise.all([
     call("/api/v1/invoices/"+issuedInvoiceId+"/payments",{
       method:"POST",headers:{"Idempotency-Key":phase8PaymentKey},body:JSON.stringify(phase8PaymentPayload),
@@ -976,6 +1012,19 @@ try {
    const p3ReceiptKey="p3-receipt-"+randomUUID();
    const p3ReceiptBody={legalEntityId:entityA.id,customerId:created.body.data.id,amount:"12.0000",currency:"INR",
      paymentDate:issueDate,method:"bank transfer",reference:"CI-P3-"+phase6bSuffix,notes:"Pack 3 standalone receipt and partial allocation regression"};
+   const p3NoReverse=await seedUser("payment_recorder","p3-no-reverse-"+suffix+"@example.invalid","ACTIVE",
+     "Pack3 No Reverse Password #5!",[entityA.id]);
+   const p3NoReverseSession=await login(p3NoReverse);
+   const p3OutOfScopeKey="p3-out-of-scope-"+randomUUID();
+   const p3OutOfScopeReference="CI-P3-OUT-OF-SCOPE-"+randomUUID();
+   const p3OutOfScope=await call("/api/v1/payments",{
+     method:"POST",headers:{"Idempotency-Key":p3OutOfScopeKey},
+     body:JSON.stringify({...p3ReceiptBody,legalEntityId:entityB.id,currency:entityB.currency,reference:p3OutOfScopeReference}),
+   },p3NoReverseSession.jar);
+   assert.equal(p3OutOfScope.response.status,404,"receipt recorder cannot write outside assigned legal-entity scope");
+   const [p3OutOfScopeRows]=await db.execute("SELECT COUNT(*) AS n FROM payments WHERE idempotency_key=? OR reference=?",
+     [p3OutOfScopeKey,p3OutOfScopeReference]);
+   assert.equal(Number(p3OutOfScopeRows[0].n),0,"cross-entity receipt rejection leaves no ledger row");
    const p3CurrencyMismatchKey="p3-currency-mismatch-"+randomUUID();
    const p3CurrencyMismatchReference="CI-P3-CURRENCY-"+phase6bSuffix;
    const p3CurrencyMismatch=await call("/api/v1/payments",{
@@ -1101,9 +1150,6 @@ try {
    const p3SmallDetail=await call("/api/v1/payments/"+p3Receipt.body.data.id,{},phase6aSession.jar);
    assert.equal(p3SmallDetail.body.data.status,"REVERSED");
    assert.equal(p3SmallDetail.body.data.allocations.length,2,"each partial allocation chunk remains auditable after reversal");
-   const p3NoReverse=await seedUser("payment_recorder","p3-no-reverse-"+suffix+"@example.invalid","ACTIVE",
-     "Pack3 No Reverse Password #5!",[entityA.id]);
-   const p3NoReverseSession=await login(p3NoReverse);
    const p3ForbiddenReverse=await call("/api/v1/payments/"+p3Large.body.data.id+"/reverse",{
      method:"POST",headers:{"Idempotency-Key":"p3-forbidden-reverse-"+randomUUID()},body:JSON.stringify({reason:"permission enforcement test"}),
    },p3NoReverseSession.jar);
@@ -1112,6 +1158,42 @@ try {
      "SELECT COUNT(*) AS n FROM audit_events WHERE action='payment.reversed' AND entity_id IN (?,?)",
      [p3Large.body.data.id,p3Receipt.body.data.id]);
    assert.equal(Number(p3PaymentAuditRows[0].n),2,"each payment reversal creates one payment audit event");
+
+   const p3RaceReceipt=await call("/api/v1/payments",{
+     method:"POST",headers:{"Idempotency-Key":"p3-reversal-race-receipt-"+randomUUID()},
+     body:JSON.stringify({...p3ReceiptBody,amount:"9.0000",reference:"CI-P3-REVERSAL-RACE-"+randomUUID()}),
+   },phase6aSession.jar);
+   assert.equal(p3RaceReceipt.response.status,201);
+   const p3ConcurrentReversals=await Promise.all([
+     call("/api/v1/payments/"+p3RaceReceipt.body.data.id+"/reverse",{
+       method:"POST",headers:{"Idempotency-Key":"p3-reversal-race-a-"+randomUUID()},body:JSON.stringify({reason:"Pack 3 concurrent reversal A"}),
+     },phase6aSession.jar),
+     call("/api/v1/payments/"+p3RaceReceipt.body.data.id+"/reverse",{
+       method:"POST",headers:{"Idempotency-Key":"p3-reversal-race-b-"+randomUUID()},body:JSON.stringify({reason:"Pack 3 concurrent reversal B"}),
+     },phase6aSession.jar),
+   ]);
+   assert.deepEqual(p3ConcurrentReversals.map(result=>result.response.status).sort((a,b)=>a-b),[200,409],
+     "competing reversal requests cannot reverse the same receipt twice");
+   const p3RaceDetail=await call("/api/v1/payments/"+p3RaceReceipt.body.data.id,{},phase6aSession.jar);
+   assert.equal(p3RaceDetail.body.data.reversalEvents.length,1,"exactly one reversal event persists under concurrent reversal");
+
+   const p3BalanceRace=await Promise.all([
+     call("/api/v1/invoices/"+issuedInvoiceId+"/payments",{
+       method:"POST",headers:{"Idempotency-Key":"p3-balance-race-a-"+randomUUID()},
+       body:JSON.stringify({...phase8PaymentPayload,amount:"60.0000",reference:"CI-P3-BALANCE-RACE-A-"+randomUUID()}),
+     },phase6aSession.jar),
+     call("/api/v1/invoices/"+issuedInvoiceId+"/payments",{
+       method:"POST",headers:{"Idempotency-Key":"p3-balance-race-b-"+randomUUID()},
+       body:JSON.stringify({...phase8PaymentPayload,amount:"60.0000",reference:"CI-P3-BALANCE-RACE-B-"+randomUUID()}),
+     },phase6aSession.jar),
+   ]);
+   assert.deepEqual(p3BalanceRace.map(result=>result.response.status).sort((a,b)=>a-b),[201,409],
+     "concurrent different-key payment attempts cannot overpay an invoice in aggregate");
+   assert.equal(p3BalanceRace.find(result=>result.response.status===409).body.error.code,"PAYMENT_EXCEEDS_BALANCE");
+   const p3BalanceRaceInvoice=await call("/api/v1/invoices/"+issuedInvoiceId,{},phase6aSession.jar);
+   assert.equal(p3BalanceRaceInvoice.body.data.paidAmount,"85.1234");
+   assert.equal(p3BalanceRaceInvoice.body.data.outstandingBalance,"32.8766");
+   console.log("PASS: Pack 3 concurrent reversal and competing payment requests cannot double-reverse or aggregate-overpay.");
    console.log("PASS: Pack 3 receipt create/replay/conflict, snapshots, scoped listing, partial allocations, amount bounds, full-paid balance, atomic reversals, idempotency and least-privilege reversal are covered.");
 
   assert.match(issueResult.body.data.invoiceNumber,/^P6B-/);
