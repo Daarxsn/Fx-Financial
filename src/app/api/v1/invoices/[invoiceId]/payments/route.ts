@@ -62,6 +62,8 @@ type InvoiceRow = RowDataPacket & {
 };
 type PaymentRow = RowDataPacket & {
   id: string;
+  legal_entity_id: string | null;
+  receipt_reference: string | null;
   customer_id: string;
   amount: string | number;
   currency: string;
@@ -82,7 +84,7 @@ async function getPaymentByKey(
   idempotencyKey: string,
 ): Promise<PaymentRow | undefined> {
   const [rows] = await conn.execute<PaymentRow[]>(
-    `SELECT p.id,p.customer_id,p.amount,p.currency,DATE_FORMAT(p.payment_date,'%Y-%m-%d') AS payment_date,
+    `SELECT p.id,p.legal_entity_id,p.receipt_reference,p.customer_id,p.amount,p.currency,DATE_FORMAT(p.payment_date,'%Y-%m-%d') AS payment_date,
       p.method,p.reference,p.status,p.notes,p.created_at,p.reversed_at,p.reversal_reason,
       pa.invoice_id,pa.amount AS allocated_amount
      FROM payments p
@@ -204,7 +206,7 @@ export async function POST(request: NextRequest, context: Context) {
       const balances = await getBalances(conn, invoiceId, invoiceTotal);
       await conn.commit();
       return jsonNoStore({ data: {
-        id: existing.id, invoiceId, amount, currency: invoice.currency, paymentDate: input.paymentDate,
+        id: existing.id, invoiceId, receiptReference: existing.receipt_reference ?? "RCPT-" + existing.id.replaceAll("-", "").toUpperCase(), amount, currency: invoice.currency, paymentDate: input.paymentDate,
         method: input.method, status: existing.status, paidAmount: fromUnits(balances.paid),
         outstandingBalance: fromUnits(balances.outstanding), paymentStatus: balances.status, idempotentReplay: true,
       } }, 200);
@@ -225,15 +227,17 @@ export async function POST(request: NextRequest, context: Context) {
     }
 
     const paymentId = randomUUID();
+    const receiptReference = "RCPT-" + paymentId.replaceAll("-", "").toUpperCase();
     await conn.execute(
       `INSERT INTO payments
-        (id,customer_id,amount,currency,payment_date,method,reference,status,notes,recorded_by,idempotency_key)
-       VALUES (?,?,?,?,?,?,?,'RECORDED',?,?,?)`,
-      [paymentId, invoice.customer_id, amount, invoice.currency, input.paymentDate, input.method, reference, notes, actor.userId, idempotencyKey],
+        (id,legal_entity_id,receipt_reference,customer_id,amount,currency,payment_date,method,reference,status,notes,recorded_by,idempotency_key)
+       VALUES (?,?,?,?,?,?,?,?,?,'RECORDED',?,?,?)`,
+      [paymentId, invoice.legal_entity_id, receiptReference, invoice.customer_id, amount, invoice.currency,
+        input.paymentDate, input.method, reference, notes, actor.userId, idempotencyKey],
     );
     await conn.execute(
-      "INSERT INTO payment_allocations (id,payment_id,invoice_id,amount) VALUES (?,?,?,?)",
-      [randomUUID(), paymentId, invoiceId, amount],
+      "INSERT INTO payment_allocations (id,payment_id,invoice_id,amount,idempotency_key,created_by) VALUES (?,?,?,?,?,?)",
+      [randomUUID(), paymentId, invoiceId, amount, idempotencyKey, actor.userId],
     );
     const nextPaid = balances.paid + amountUnits;
     const nextOutstanding = invoiceTotal > nextPaid ? invoiceTotal - nextPaid : 0n;
@@ -249,7 +253,7 @@ export async function POST(request: NextRequest, context: Context) {
     );
     await conn.commit();
     return jsonNoStore({ data: {
-      id: paymentId, invoiceId, amount, currency: invoice.currency, paymentDate: input.paymentDate,
+      id: paymentId, invoiceId, receiptReference, amount, currency: invoice.currency, paymentDate: input.paymentDate,
       method: input.method, status: "RECORDED", paidAmount: fromUnits(nextPaid),
       outstandingBalance: fromUnits(nextOutstanding), paymentStatus: paymentStatus(invoiceTotal, nextPaid),
       idempotentReplay: false,
