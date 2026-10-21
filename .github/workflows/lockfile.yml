@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   lockfile:
-    if: github.repository == 'Daarxsn/Fx-Fanancial'
+    if: github.repository == 'Daarxsn/Fx-Financial'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
