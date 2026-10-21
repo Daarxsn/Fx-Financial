@@ -39,7 +39,7 @@ export function InvoiceWorkspace(){
  const canRead=permissions.includes("invoices:read");
  const missingSetup=!optionsLoading&&canCreate&&(!options.legalEntities.length||!options.customers.length);
  const selectedEntity=options.legalEntities.find(e=>e.id===form.legalEntityId);
- const rules=useMemo(()=>options.taxRules.filter(r=>r.legalEntityId===form.legalEntityId),[options.taxRules,form.legalEntityId]);
+ const rules=useMemo(()=>options.taxRules.filter(r=>r.legalEntityId===form.legalEntityId&&(!form.invoiceDate||r.effectiveFrom<=form.invoiceDate)&&(!r.effectiveUntil||r.effectiveUntil>=form.invoiceDate)),[options.taxRules,form.legalEntityId,form.invoiceDate]);
  const getRequest=useCallback(async(url:string,init:RequestInit={})=>{
   const response=await fetch(url,{...init,cache:"no-store",headers:{"Accept":"application/json",...(init.body?{"Content-Type":"application/json"}:{}),...(init.headers??{})}});
   let body:Api={};try{body=await response.json() as Api;}catch{/* safe generic message below */}
@@ -79,6 +79,8 @@ export function InvoiceWorkspace(){
   try{
    if(!form.legalEntityId||!form.customerId)throw new Error("Select a legal entity and customer first.");
    if(!lines.length||lines.some(l=>!l.description.trim()))throw new Error("Each invoice line requires a description.");
+   const invalidTaxLine=lines.find(l=>l.taxCode.trim()&&!rules.some(r=>r.taxCode===l.taxCode.trim()));
+   if(invalidTaxLine)throw new Error("Line "+(lines.indexOf(invalidTaxLine)+1)+" tax code is not approved and effective for this invoice date. Choose an effective tax code or correct the date.");
    const token=await csrf();const body=makePayload();const url=selected?"/api/v1/invoices/"+selected.id:"/api/v1/invoices";
    const r=await getRequest(url,{method:selected?"PATCH":"POST",headers:{"X-CSRF-Token":token,...(!selected?{"Idempotency-Key":createKey}:{})},body:JSON.stringify(selected?{...body,expectedVersion:selected.recordVersion}:body)});
    if(!r.response.ok)throw new Error(r.body.error?.message??"Invoice draft could not be saved.");

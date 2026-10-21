@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button, EmptyState, InlineAlert, LoadingState, StatusBadge } from "@/components/ui";
 
@@ -90,13 +90,16 @@ export function QuotationWorkspace() {
   const [pendingStatus, setPendingStatus] = useState<PendingStatus | null>(null);
   const [actionReason, setActionReason] = useState("");
   const [createKey, setCreateKey] = useState(() => "q-" + crypto.randomUUID());
+  const conversionKeys = useRef<Record<string, string>>({});
   const limit = 25;
   const canRead = permissions.includes("quotations:read");
   const canWrite = permissions.includes("quotations:write");
   const selectedEntity = options.legalEntities.find(entity => entity.id === form.legalEntityId);
   const applicableTaxRules = useMemo(
-    () => options.taxRules.filter(rule => rule.legalEntityId === form.legalEntityId),
-    [options.taxRules, form.legalEntityId],
+    () => options.taxRules.filter(rule => rule.legalEntityId === form.legalEntityId &&
+      (!form.quotationDate || rule.effectiveFrom <= form.quotationDate) &&
+      (!rule.effectiveUntil || rule.effectiveUntil >= form.quotationDate)),
+    [options.taxRules, form.legalEntityId, form.quotationDate],
   );
   const missingSetup = !optionsLoading && canWrite && (!options.legalEntities.length || !options.customers.length);
 
@@ -241,6 +244,12 @@ export function QuotationWorkspace() {
       setError("Each quotation line needs a description.");
       return;
     }
+    const invalidTaxLine = lines.find(line => line.taxCode.trim() &&
+      !applicableTaxRules.some(rule => rule.taxCode === line.taxCode.trim()));
+    if (invalidTaxLine) {
+      setError("Line " + (lines.indexOf(invalidTaxLine) + 1) + " tax code is not approved and effective for this quotation date. Choose an effective tax code or correct the date.");
+      return;
+    }
     setSaving(true);
     setError("");
     setSuccess("");
@@ -294,19 +303,23 @@ export function QuotationWorkspace() {
   };
 
   const convertToInvoice = async (quote: Quotation) => {
+    // Reuse a per-quotation key after a network/response failure: the server may already have committed.
+    const idempotencyKey = conversionKeys.current[quote.id] ?? ("qconv-" + crypto.randomUUID() + "-" + crypto.randomUUID());
+    conversionKeys.current[quote.id] = idempotencyKey;
     setActionBusy(quote.id);
     setError("");
     setSuccess("");
     try {
       const result = await mutate(
         "/api/v1/quotations/" + quote.id + "/convert", "POST", {},
-        "qconv-" + crypto.randomUUID(),
+        idempotencyKey,
       );
       if (!result.response.ok) throw new Error(result.body.error?.message ?? "Quotation could not be converted to an invoice draft.");
       const data = record(result.body.data);
       setSuccess("Invoice draft created from the accepted quotation (" + str(data.invoiceId).slice(0, 8) + ").");
       await refresh();
       await openQuotation(quote.id);
+      delete conversionKeys.current[quote.id];
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Quotation could not be converted.");
     } finally { setActionBusy(""); }
@@ -324,8 +337,10 @@ export function QuotationWorkspace() {
     });
     setLines(linesFrom(quote.lines));
   };
-  const updateLine = (key: string, patch: Partial<LineDraft>) =>
+  const updateLine = (key: string, patch: Partial<LineDraft>) => {
     setLines(current => current.map(line => line.key === key ? { ...line, ...patch } : line));
+    setCreateKey("q-" + crypto.randomUUID());
+  };
   const money = (currency: string, value: unknown) => currency + " " + (str(value) || "0.0000");
   const currentStatus = (quote: Quotation) => quote.status;
   const statusTone = (value: string) =>
@@ -433,13 +448,13 @@ export function QuotationWorkspace() {
 
         <div className="invoice-editor__lines-heading"><div><h3>Quote lines and additional charges</h3>
           <p className="form-hint">Select approved tax codes only. Do not use customer-specific or unapproved rates.</p></div>
-          <Button type="button" variant="secondary" disabled={lines.length >= 500} onClick={() => setLines(current => [...current, freshLine()])}>+ Add line</Button></div>
+          <Button type="button" variant="secondary" disabled={lines.length >= 500} onClick={() => { setLines(current => [...current, freshLine()]); setCreateKey("q-" + crypto.randomUUID()); }}>+ Add line</Button></div>
         {lines.map((line, index) => <div className="invoice-line-card" key={line.key}>
           <div className="invoice-line-card__head"><strong>Line {index + 1}</strong>
             <select aria-label={"Line " + (index + 1) + " type"} className="form-control" value={line.lineKind}
               onChange={event => updateLine(line.key, { lineKind: event.target.value as LineKind })}>
               <option value="ITEM">Item / service</option><option value="CHARGE">Additional charge</option></select>
-            {lines.length > 1 ? <Button type="button" variant="ghost" size="sm" onClick={() => setLines(current => current.filter(item => item.key !== line.key))}>Remove</Button> : null}</div>
+            {lines.length > 1 ? <Button type="button" variant="ghost" size="sm" onClick={() => { setLines(current => current.filter(item => item.key !== line.key)); setCreateKey("q-" + crypto.randomUUID()); }}>Remove</Button> : null}</div>
           {line.lineKind === "ITEM" ? <div className="invoice-form-field"><label className="form-label" htmlFor={"quotation-catalog-" + line.key}>Catalog item (optional)</label>
             <select id={"quotation-catalog-" + line.key} className="form-control" value={line.catalogItemId} onChange={event => {
               const item = options.catalogItems.find(entry => entry.id === event.target.value);

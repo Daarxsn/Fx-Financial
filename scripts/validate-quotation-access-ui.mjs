@@ -15,6 +15,11 @@ const checks = [
   ["invoice workspace explicitly explains missing draft-create permission", invoice.includes("Invoice creation permission required") && invoice.includes("invoices:draft:create")],
   ["invoice workspace explains legal entity/customer setup prerequisites", invoice.includes("Invoice creation is not configured") && invoice.includes("active legal entity")],
   ["quotation workspace explicitly explains missing write permission", quotation.includes("Quotation creation permission required") && quotation.includes("quotations:write")],
+  ["invoice tax options are filtered by selected document date", invoice.includes("r.effectiveFrom<=form.invoiceDate") && invoice.includes("r.effectiveUntil>=form.invoiceDate") && invoice.includes("not approved and effective for this invoice date")],
+  ["quotation tax options are filtered by selected quotation date", quotation.includes("rule.effectiveFrom <= form.quotationDate") && quotation.includes("rule.effectiveUntil >= form.quotationDate") && quotation.includes("not approved and effective for this quotation date")],
+  ["quotation conversion retries reuse the same idempotency key per source quote", quotation.includes("conversionKeys.current[quote.id]") && quotation.includes("idempotencyKey,")],
+  ["quotation draft-create idempotency rotates when line payload changes", quotation.includes("const updateLine = (key: string, patch: Partial<LineDraft>) => {") && quotation.includes('setCreateKey("q-" + crypto.randomUUID())')],
+
   ["users & access route is discoverable for authorized administrators", shell.includes('href: "/access"') && shell.includes('permission: "users:manage"') && accessPage.includes("<AccessWorkspace />")],
   ["dashboard directly exposes both invoice and quotation workspaces", home.includes('title: "Invoices"') && home.includes('href: "/invoices"') && home.includes('title: "Quotations"') && home.includes('href: "/quotations"')],
   ["dashboard explains draft conversion and current PDF/email limitations", home.includes("convert accepted quotes into invoice drafts") && home.includes("PDF generation and email delivery are not enabled yet")],

@@ -23,7 +23,9 @@ export async function GET() {
       "SELECT id,item_code,item_type,name,customer_description,unit_code,default_unit_price,currency,default_tax_code FROM catalog_items WHERE is_active=TRUE ORDER BY name,id LIMIT 1000",
     );
     const [taxRules] = await pool.query<(RowDataPacket & { id: string; legal_entity_id: string; tax_code: string; display_name: string; rate: string; calculation_mode: string; effective_from: Date | string; effective_until: Date | string | null })[]>(
-      `SELECT id,legal_entity_id,tax_code,display_name,rate,calculation_mode,effective_from,effective_until
+      `SELECT id,legal_entity_id,tax_code,display_name,rate,calculation_mode,
+              DATE_FORMAT(effective_from, '%Y-%m-%d') AS effective_from,
+              DATE_FORMAT(effective_until, '%Y-%m-%d') AS effective_until
        FROM tax_rules WHERE legal_entity_id IN (${placeholders}) AND is_active=TRUE AND approved_at IS NOT NULL
        ORDER BY legal_entity_id,tax_code,effective_from DESC`, scope,
     );
