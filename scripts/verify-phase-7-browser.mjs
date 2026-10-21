@@ -262,7 +262,7 @@ try {
   await invoiceEditor.getByLabel("Customer").selectOption(String(invoiceTestCustomer.id));
   await invoiceEditor.getByLabel("Invoice date").fill(invoiceUiDate);
   await invoiceEditor.getByLabel("Description").fill(invoiceLineDescription);
-  await invoiceEditor.getByLabel("Unit").fill("hour");
+  await invoiceEditor.getByLabel("Unit", { exact: true }).fill("hour");
   await invoiceEditor.getByLabel("Quantity").fill("2.0000");
   await invoiceEditor.getByLabel("Unit rate").fill("100.0000");
   await invoiceEditor.getByLabel("Discount type").selectOption("PERCENT");
@@ -340,7 +340,7 @@ try {
   await page.getByRole("button", { name: "Convert to invoice draft", exact: true }).waitFor();
   await page.getByRole("button", { name: "Convert to invoice draft", exact: true }).click();
   await page.getByText(/Invoice draft created from the accepted quotation/).waitFor();
-  await page.getByRole("heading", { name: "Converted to invoice", exact: true }).waitFor();
+  await page.getByText("Converted to invoice", { exact: true }).waitFor();
   const [convertedBrowserQuotes] = await db.execute(
     "SELECT id,status,converted_invoice_id FROM quotations WHERE legal_entity_id=? AND customer_id=? AND notes=? ORDER BY created_at DESC LIMIT 1",
     [invoiceTestEntity.id, invoiceTestCustomer.id, quotationNotes],

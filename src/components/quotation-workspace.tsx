@@ -199,9 +199,9 @@ export function QuotationWorkspace() {
     setCreateKey("q-" + crypto.randomUUID());
   };
 
-  const openQuotation = async (id: string) => {
+  const openQuotation = async (id: string, preserveSuccess = false) => {
     setError("");
-    setSuccess("");
+    if (!preserveSuccess) setSuccess("");
     setSaving(true);
     try {
       const result = await request("/api/v1/quotations/" + id);
@@ -296,7 +296,7 @@ export function QuotationWorkspace() {
       setPendingStatus(null);
       setActionReason("");
       await refresh();
-      await openQuotation(pending.quotation.id);
+      await openQuotation(pending.quotation.id, true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Quotation status could not be changed.");
     } finally { setActionBusy(""); }
@@ -318,7 +318,7 @@ export function QuotationWorkspace() {
       const data = record(result.body.data);
       setSuccess("Invoice draft created from the accepted quotation (" + str(data.invoiceId).slice(0, 8) + ").");
       await refresh();
-      await openQuotation(quote.id);
+      await openQuotation(quote.id, true);
       delete conversionKeys.current[quote.id];
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Quotation could not be converted.");

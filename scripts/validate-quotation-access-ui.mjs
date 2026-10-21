@@ -18,6 +18,7 @@ const checks = [
   ["quotation workspace explicitly explains missing write permission", quotation.includes("Quotation creation permission required") && quotation.includes("quotations:write")],
   ["invoice tax options are filtered by selected document date", invoice.includes("r.effectiveFrom<=form.invoiceDate") && invoice.includes("r.effectiveUntil>=form.invoiceDate") && invoice.includes("not approved and effective for this invoice date")],
   ["quotation tax options are filtered by selected quotation date", quotation.includes("rule.effectiveFrom <= form.quotationDate") && quotation.includes("rule.effectiveUntil >= form.quotationDate") && quotation.includes("not approved and effective for this quotation date")],
+  ["quotation status and conversion feedback survives detail refresh", quotation.includes("const openQuotation = async (id: string, preserveSuccess = false)") && quotation.includes("await openQuotation(pending.quotation.id, true)") && quotation.includes("await openQuotation(quote.id, true)")],
   ["quotation conversion retries reuse the same idempotency key per source quote", quotation.includes("conversionKeys.current[quote.id]") && quotation.includes("idempotencyKey,")],
   ["quotation draft-create idempotency rotates when line payload changes", quotation.includes("const updateLine = (key: string, patch: Partial<LineDraft>) => {") && quotation.includes('setCreateKey("q-" + crypto.randomUUID())')],
 
