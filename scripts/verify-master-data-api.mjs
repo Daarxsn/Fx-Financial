@@ -1348,6 +1348,21 @@ try {
   }, quotationFinanceSession.jar);
   assert.equal(quotationCustomer.response.status, 201, "quotation lifecycle test creates a separate customer fixture");
   const quotationCustomerId = quotationCustomer.body.data.id;
+  // The legal entity is deliberately configured with an 18% default tax rule for invoice tests.
+  // Use a separate approved zero-rate rule for quotation lifecycle/DECIMAL(19,4) fixtures so
+  // their expected amounts stay stable and the high-value precision case remains within DECIMAL.
+  const quotationTaxCode = "P2_ZERO_" + suffix.toUpperCase();
+  const quotationTaxRule = await call("/api/v1/tax-rules", {
+    method: "POST",
+    body: JSON.stringify({
+      legalEntityId: entityA.id, taxCode: quotationTaxCode, displayName: "Synthetic Pack 2 zero-rate quotation rule",
+      jurisdiction: "CI-JURISDICTION", ratePercent: "0", calculationMode: "EXCLUSIVE", effectiveFrom: "2020-01-01",
+      effectiveUntil: "", approvalReference: "CI-P2-ZERO-" + suffix.toUpperCase(),
+      changeReason: "Pack 2 test-only zero-rate rule for stable quotation lifecycle and precision fixtures",
+    }),
+  }, quotationFinanceSession.jar);
+  assert.equal(quotationTaxRule.response.status, 201,
+    "quotation precision fixture creates an approved zero-rate test rule; response=" + JSON.stringify(quotationTaxRule.body.error ?? quotationTaxRule.body));
   const quotationValidUntil = new Date(Date.parse(quotationDate + "T00:00:00.000Z") + 30 * 86400000).toISOString().slice(0,10);
   const quotationKey = "q-" + randomUUID();
   const quotationPayload = {
@@ -1355,7 +1370,7 @@ try {
     invoiceDate: quotationDate, dueDate: null, validUntil: quotationValidUntil, paymentTermsDays: 30,
     notes: "Phase 10 quotation API integration test",
     lines: [{ lineKind: "ITEM", description: "Quotation test service", unitCode: "hour", quantity: "2.0000",
-      unitPrice: "20.0000", discountType: "AMOUNT", discountValue: "4.0000", taxCode: null }],
+      unitPrice: "20.0000", discountType: "AMOUNT", discountValue: "4.0000", taxCode: quotationTaxCode }],
   };
   const quotation = await call("/api/v1/quotations", {
     method: "POST", headers: { "Idempotency-Key": quotationKey }, body: JSON.stringify(quotationPayload),
@@ -1416,7 +1431,7 @@ try {
       notes: "Phase 10 exact-decimal precision regression",
       lines: [{ lineKind: "ITEM", description: "High-value precision regression", unitCode: "unit",
         quantity: "1.0000", unitPrice: "999999999999999.9999",
-        discountType: "AMOUNT", discountValue: "0.0001", taxCode: null }],
+        discountType: "AMOUNT", discountValue: "0.0001", taxCode: quotationTaxCode }],
     }),
   }, quotationFinanceSession.jar);
   assert.equal(highValueQuotation.response.status, 201,
