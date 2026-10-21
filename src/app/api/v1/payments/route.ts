@@ -225,6 +225,15 @@ export async function POST(request: NextRequest) {
         status: row.status, idempotentReplay: true,
       }, meta: {} }, 200);
     }
+    // A receipt is denominated in the legal entity's configured currency. Never trust
+    // the client-provided currency, even when the UI currently renders it read-only.
+    if (input.currency !== entities[0].currency) {
+      await conn.rollback();
+      return jsonNoStore({ error: {
+        code: "CURRENCY_MISMATCH",
+        message: "Receipt currency must match the selected legal entity's configured currency.",
+      } }, 422);
+    }
     const paymentId = randomUUID();
     const receiptReference = "RCPT-" + paymentId.replaceAll("-", "").toUpperCase();
     await conn.execute(

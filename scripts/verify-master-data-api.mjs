@@ -976,6 +976,18 @@ try {
    const p3ReceiptKey="p3-receipt-"+randomUUID();
    const p3ReceiptBody={legalEntityId:entityA.id,customerId:created.body.data.id,amount:"12.0000",currency:"INR",
      paymentDate:issueDate,method:"bank transfer",reference:"CI-P3-"+phase6bSuffix,notes:"Pack 3 standalone receipt and partial allocation regression"};
+   const p3CurrencyMismatchKey="p3-currency-mismatch-"+randomUUID();
+   const p3CurrencyMismatchReference="CI-P3-CURRENCY-"+phase6bSuffix;
+   const p3CurrencyMismatch=await call("/api/v1/payments",{
+     method:"POST",headers:{"Idempotency-Key":p3CurrencyMismatchKey},
+     body:JSON.stringify({...p3ReceiptBody,currency:"USD",reference:p3CurrencyMismatchReference}),
+   },phase6aSession.jar);
+   assert.equal(p3CurrencyMismatch.response.status,422,"receipt currency cannot override the configured legal-entity currency");
+   assert.equal(p3CurrencyMismatch.body.error.code,"CURRENCY_MISMATCH");
+   const [p3CurrencyMismatchRows]=await db.execute(
+     "SELECT COUNT(*) AS n FROM payments WHERE idempotency_key=? OR reference=?",
+     [p3CurrencyMismatchKey,p3CurrencyMismatchReference]);
+   assert.equal(Number(p3CurrencyMismatchRows[0].n),0,"a rejected currency mismatch must leave no payment record");
    const p3Receipt=await call("/api/v1/payments",{method:"POST",headers:{"Idempotency-Key":p3ReceiptKey},body:JSON.stringify(p3ReceiptBody)},phase6aSession.jar);
    assert.equal(p3Receipt.response.status,201,"standalone receipt can be recorded without changing invoice balances");
    assert.match(p3Receipt.body.data.receiptReference,/^RCPT-[0-9A-F]{32}$/);
