@@ -22,6 +22,11 @@ function isRetryableIssuanceTransactionError(error: unknown): boolean {
   return code === "ER_LOCK_DEADLOCK" || code === "ER_LOCK_WAIT_TIMEOUT";
 }
 
+function isDuplicateInvoiceKeyError(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "code" in error &&
+    (error as { code?: unknown }).code === "ER_DUP_ENTRY");
+}
+
 function safeIssueErrorMetadata(error: unknown): { errorName: string; databaseCode?: string } {
   if (!error || typeof error !== "object") return { errorName: "UnknownError" };
   const candidate = error as { name?: unknown; code?: unknown };
@@ -123,8 +128,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ in
       if (invoice.document_type !== "INVOICE" && invoice.document_type !== "CREDIT_NOTE" && invoice.document_type !== "DEBIT_NOTE") {
         throw new ConfigurationConflictError("Only invoice, credit-note and debit-note records can be issued through this endpoint.");
       }
+      // This is an advisory pre-check only. Do not take a locking read on a missing unique
+      // (legal_entity_id, issue_idempotency_key) value: concurrent issuance can acquire compatible
+      // gap locks here and then deadlock when each transaction writes its distinct key. The unique
+      // constraint remains the final authority and is reconciled below if competing requests race.
       const [keyRows] = await conn.execute<(RowDataPacket & { id: string })[]>(
-        "SELECT id FROM invoices WHERE legal_entity_id=? AND issue_idempotency_key=? AND id<>? LIMIT 1 FOR UPDATE",
+        "SELECT id FROM invoices WHERE legal_entity_id=? AND issue_idempotency_key=? AND id<>? LIMIT 1",
         [invoice.legal_entity_id, idempotencyKey, invoice.id],
       );
       if (keyRows.length) throw new ConfigurationConflictError("Idempotency-Key has already been used for another invoice in this legal entity.");
@@ -256,6 +265,27 @@ export async function POST(request: NextRequest, context: { params: Promise<{ in
 
       } catch (error) {
         if (conn) await conn.rollback().catch(() => undefined);
+        if (isDuplicateInvoiceKeyError(error)) {
+          try {
+            const [sourceRows] = await pool.execute<(RowDataPacket & { legal_entity_id: string })[]>(
+              "SELECT legal_entity_id FROM invoices WHERE id=? LIMIT 1", [invoiceId],
+            );
+            if (sourceRows.length) {
+              const [owners] = await pool.execute<(RowDataPacket & { id: string })[]>(
+                "SELECT id FROM invoices WHERE legal_entity_id=? AND issue_idempotency_key=? AND id<>? LIMIT 1",
+                [sourceRows[0].legal_entity_id, idempotencyKey, invoiceId],
+              );
+              if (owners.length) {
+                return jsonNoStore({ error: {
+                  code: "CONFIGURATION_CONFLICT",
+                  message: "Idempotency-Key has already been used for another invoice in this legal entity.",
+                } }, 409);
+              }
+            }
+          } catch {
+            // Keep the original safe API error if the post-rollback ownership check cannot run.
+          }
+        }
         if (isRetryableIssuanceTransactionError(error) && attempt < maximumAttempts) {
           console.warn("Invoice issuance transaction retry", {
             attempt,
