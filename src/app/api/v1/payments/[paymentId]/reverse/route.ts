@@ -58,7 +58,7 @@ export async function POST(request:NextRequest,context:Context){
    await conn.rollback();return jsonNoStore({error:{code:"NOT_FOUND",message:"Payment not found in your assigned scope."}},404);
   }
   const [allocationPreview]=await conn.execute<Allocation[]>(
-   "SELECT id,invoice_id,amount FROM payment_allocations WHERE payment_id=? ORDER BY invoice_id,id",[paymentId]);
+   "SELECT id,invoice_id,amount FROM payment_allocations WHERE payment_id=? ORDER BY invoice_id,id FOR UPDATE",[paymentId]);
   const previewIds=[...new Set(allocationPreview.map(a=>a.invoice_id))].sort();
   const invoiceContext:Record<string,{legal_entity_id:string;customer_id:string;currency:string;grand_total:string|number}>={};
   for(const invoiceId of previewIds){
