@@ -786,6 +786,26 @@ try {
   assert.equal(templateResult.response.status,201,"test invoice template can be activated: "+JSON.stringify(templateResult.body?.error??null));
   const phase6bTemplateId=templateResult.body.data.templateId;
 
+  const quotationNumberingResult=await call("/api/v1/numbering-configs",{
+    method:"POST",
+    body:JSON.stringify({legalEntityId:entityA.id,documentType:"QUOTATION",seriesCode:"P6B_Q_"+phase6bSuffix,
+      prefix:"P6B-Q-"+phase6bSuffix+"-",suffix:"",sequenceWidth:5,includeFinancialYear:true,
+      financialYearStartMonth:4,financialYearStartDay:1,timeZone:"Asia/Kolkata",
+      effectiveFrom:"2020-01-01",effectiveUntil:"",approvalReference:"CI-Q-NUM-APPROVAL-"+phase6bSuffix,
+      activate:true,changeReason:"Phase 6B synthetic approved quotation series"}),
+  },phase6aSession.jar);
+  assert.equal(quotationNumberingResult.response.status,201,
+    "approved synthetic quotation number series can be activated: "+JSON.stringify(quotationNumberingResult.body?.error??null));
+  const quotationTemplateResult=await call("/api/v1/document-templates",{
+    method:"POST",
+    body:JSON.stringify({legalEntityId:entityA.id,documentType:"QUOTATION",templateKey:"P6B_QUOTATION",
+      displayName:"Synthetic CI quotation template",templateConfig,effectiveFrom:"2020-01-01",
+      effectiveUntil:"",activate:true,changeReason:"Phase 6B synthetic quotation template"}),
+  },phase6aSession.jar);
+  assert.equal(quotationTemplateResult.response.status,201,
+    "approved synthetic quotation template can be activated: "+JSON.stringify(quotationTemplateResult.body?.error??null));
+  const phase6bQuotationTemplateId=quotationTemplateResult.body.data.templateId;
+
   const issueDate=new Date().toISOString().slice(0,10);
   const currencyMismatchInvoiceId=randomUUID();
   await db.execute(
@@ -1408,7 +1428,8 @@ try {
   // Pack 2: use public lifecycle endpoints to prove sent quotation identity is immutable.
   const snapshotQuote = await call("/api/v1/quotations", {
     method: "POST", headers: { "Idempotency-Key": "q-snapshot-" + randomUUID() },
-    body: JSON.stringify({ ...quotationPayload, notes: "Pack 2 immutable quotation snapshot regression" }),
+    body: JSON.stringify({ ...quotationPayload, notes: "Pack 2 immutable quotation snapshot regression",
+      lines: quotationPayload.lines.map(line => ({ ...line, taxCode: phase6bTaxCode })) }),
   }, quotationFinanceSession.jar);
   assert.equal(snapshotQuote.response.status, 201, "quotation snapshot fixture is created");
   const snapshotQuoteId = snapshotQuote.body.data.id;
@@ -1540,7 +1561,8 @@ try {
   const conversionQuotation = await call("/api/v1/quotations", {
     method: "POST",
     headers: { "Idempotency-Key": conversionQuotationKey },
-    body: JSON.stringify({ ...quotationPayload, notes: "Pack 2 concurrent conversion fixture" }),
+    body: JSON.stringify({ ...quotationPayload, notes: "Pack 2 concurrent conversion fixture",
+      lines: quotationPayload.lines.map(line => ({ ...line, taxCode: phase6bTaxCode })) }),
   }, quotationFinanceSession.jar);
   assert.equal(conversionQuotation.response.status, 201,
     "conversion fixture quotation is created as a draft: " + JSON.stringify(conversionQuotation.body.error ?? null));
@@ -1590,8 +1612,8 @@ try {
   assert.equal(convertedInvoiceRows[0].lifecycle_status, "DRAFT",
     "quotation conversion creates a draft and never issues an invoice implicitly");
   assert.equal(convertedInvoiceRows[0].idempotency_key, conversionIdempotencyKey);
-  assert.equal(String(convertedInvoiceRows[0].grand_total), quotation.body.data.grandTotal,
-    "conversion preserves the accepted quotation's calculated amount");
+  assert.equal(String(convertedInvoiceRows[0].grand_total), conversionQuotation.body.data.grandTotal,
+    "conversion preserves the accepted quotation's calculated amount after fresh approved-tax recalculation");
   const [[convertedInvoiceCount]] = await db.execute(
     "SELECT COUNT(*) AS total FROM invoices WHERE idempotency_key=?",
     [conversionIdempotencyKey],
@@ -1619,7 +1641,8 @@ try {
   const invalidZoneQuote = await call("/api/v1/quotations", {
     method: "POST",
     headers: { "Idempotency-Key": "q-invalid-zone-source-" + randomUUID() },
-    body: JSON.stringify({ ...quotationPayload, notes: "Pack 2 invalid timezone conversion regression" }),
+    body: JSON.stringify({ ...quotationPayload, notes: "Pack 2 invalid timezone conversion regression",
+      lines: quotationPayload.lines.map(line => ({ ...line, taxCode: phase6bTaxCode })) }),
   }, quotationFinanceSession.jar);
   assert.equal(invalidZoneQuote.response.status, 201, "invalid-timezone conversion fixture is created");
   const invalidZoneQuoteId = invalidZoneQuote.body.data.id;

@@ -2950,7 +2950,8 @@ components:
     QuotationUpdateInput:
       type: object
       additionalProperties: false
-      required: [expectedVersion, legalEntityId, customerId, currency, lines]
+      required: [expectedVersion]
+      minProperties: 2
       properties:
         expectedVersion: { type: integer, minimum: 1 }
         legalEntityId: { $ref: "#/components/schemas/Uuid" }
