@@ -431,6 +431,83 @@ try {
   const entityBResult = await createPhase6aEntity("B");
   const entityA = entityAResult.body.data;
   const entityB = entityBResult.body.data;
+
+  // Pack 4 Part A: prove that no issuance occurs while any required company/issuer decision is pending.
+  const p4PendingDecisions = await call("/api/v1/policy-decisions", {}, phase6aSession.jar);
+  assert.equal(p4PendingDecisions.response.status, 200, "finance approvers can inspect the scoped policy-decision register");
+  assert.ok(p4PendingDecisions.body.data.some(row => row.decisionKey === "D-09" && row.status === "PENDING" && row.legalEntityId === null),
+    "global correction policy must begin pending");
+  assert.ok(p4PendingDecisions.body.data.some(row => row.decisionKey === "D-11" && row.status === "PENDING" && row.legalEntityId === entityA.id),
+    "new legal entity must receive a pending issuer-specific statutory decision");
+  const p4BlockedInvoiceId = randomUUID();
+  await db.execute(
+    "INSERT INTO invoices (id,legal_entity_id,brand_id,customer_id,document_type,lifecycle_status,payment_terms_days,currency,subtotal,discount_total,tax_total,grand_total) VALUES (?, ?, NULL, ?, 'INVOICE','DRAFT',30,'INR',0,0,0,0)",
+    [p4BlockedInvoiceId, entityA.id, created.body.data.id],
+  );
+  const p4BlockedIssue = await call("/api/v1/invoices/" + p4BlockedInvoiceId + "/issue", {
+    method: "POST", headers: { "Idempotency-Key": "p4-policy-pending-" + suffix.toLowerCase() },
+    body: JSON.stringify({ documentDate: new Date().toISOString().slice(0,10) }),
+  }, phase6aSession.jar);
+  assert.equal(p4BlockedIssue.response.status, 409, "issuance must be blocked while required policy decisions are pending");
+  assert.equal(p4BlockedIssue.body.error.code, "POLICY_APPROVAL_REQUIRED");
+  assert.ok(p4BlockedIssue.body.error.details.unresolvedDecisions.length >= 11);
+  const [p4BlockedInvoiceRows] = await db.execute("SELECT lifecycle_status,invoice_number FROM invoices WHERE id=?", [p4BlockedInvoiceId]);
+  assert.equal(p4BlockedInvoiceRows[0].lifecycle_status, "DRAFT");
+  assert.equal(p4BlockedInvoiceRows[0].invoice_number, null);
+  const [p4BlockedSnapshots] = await db.execute("SELECT id FROM document_configuration_snapshots WHERE resource_type='INVOICE' AND resource_id=?", [p4BlockedInvoiceId]);
+  assert.equal(p4BlockedSnapshots.length, 0, "pending policy must block issuance before number reservation and snapshot capture");
+  const p4MissingEvidence = await call("/api/v1/policy-decisions/D-09", {
+    method: "PATCH", body: JSON.stringify({ status:"APPROVED", decisionCode:"CANCEL_UNPAID_ONLY", rationale:"CI test with missing approver evidence." }),
+  }, phase6aSession.jar);
+  assert.equal(p4MissingEvidence.response.status, 422, "policy approval requires external approver and evidence");
+  assert.equal(p4MissingEvidence.body.error.code, "APPROVAL_EVIDENCE_REQUIRED");
+  const p4MissingEntityScope = await call("/api/v1/policy-decisions/D-02", {
+    method:"PATCH", body: JSON.stringify({ status:"APPROVED", decisionText:"Disposable CI decision only.", rationale:"Disposable CI test, not company approval.", externalApproverName:"CI fixture NOT REAL", externalApproverRole:"CI fixture only", approvalReference:"CI-NOT-REAL-"+suffix, approvalDate:new Date().toISOString().slice(0,10) }),
+  }, phase6aSession.jar);
+  assert.equal(p4MissingEntityScope.response.status, 422, "entity-specific decisions must not be resolved globally");
+  const p4CorrectionModeRequired = await call("/api/v1/policy-decisions/D-09", {
+    method:"PATCH", body: JSON.stringify({ status:"APPROVED", decisionText:"Disposable CI decision only.", rationale:"Disposable CI test, not company approval.", externalApproverName:"CI fixture NOT REAL", externalApproverRole:"CI fixture only", approvalReference:"CI-NOT-REAL-MODE-"+suffix, approvalDate:new Date().toISOString().slice(0,10) }),
+  }, phase6aSession.jar);
+  assert.equal(p4CorrectionModeRequired.response.status, 422, "correction decision requires an explicit treatment mode");
+  assert.equal(p4CorrectionModeRequired.body.error.code, "CORRECTION_MODE_REQUIRED");
+
+  // The following records are synthetic approvals only in disposable falchion_ci; never company sign-off.
+  const p4FixtureDate = new Date().toISOString().slice(0,10);
+  async function approveP4Decision(decisionKey, legalEntityId = null, status = "APPROVED") {
+    const payload = {
+      ...(legalEntityId ? { legalEntityId } : {}),
+      status,
+      decisionCode: decisionKey === "D-09" ? "CANCEL_UNPAID_ONLY" : status === "NOT_APPLICABLE" ? "CI_TEST_NOT_APPLICABLE" : "CI_TEST_FIXTURE",
+      decisionText: "Disposable CI fixture outcome only; not a real company approval.",
+      rationale: "Disposable CI database fixture only; this is not company approval.",
+      externalApproverName: "CI fixture approver (NOT REAL)",
+      externalApproverRole: "Disposable automated-test fixture",
+      approvalReference: "CI-NOT-REAL-APPROVAL-" + suffix + "-" + decisionKey + (legalEntityId ? "-ENTITY" : "-GLOBAL"),
+      approvalDate: p4FixtureDate,
+    };
+    const result = await call("/api/v1/policy-decisions/" + decisionKey, { method:"PATCH", body:JSON.stringify(payload) }, phase6aSession.jar);
+    assert.equal(result.response.status, 200, "disposable CI resolves " + decisionKey + ": " + JSON.stringify(result.body?.error ?? null));
+    assert.equal(result.body.data.status, status);
+  }
+  for (const key of ["D-01","D-05","D-08","D-10"]) await approveP4Decision(key);
+  await approveP4Decision("D-09");
+  const p4EntityDecisionKeys = ["D-02","D-03","D-04","D-06","D-07"];
+  for (const entityId of [entityA.id,entityB.id]) {
+    for (const key of p4EntityDecisionKeys) await approveP4Decision(key,entityId);
+    await approveP4Decision("D-11",entityId,"NOT_APPLICABLE");
+  }
+  const p4ResolvedDecisions = await call("/api/v1/policy-decisions", {}, phase6aSession.jar);
+  assert.equal(p4ResolvedDecisions.response.status, 200);
+  for (const key of ["D-01","D-02","D-03","D-04","D-05","D-06","D-07","D-08","D-09","D-10","D-11"]) {
+    assert.ok(p4ResolvedDecisions.body.data.some(row => row.decisionKey===key && (row.status==="APPROVED"||row.status==="NOT_APPLICABLE") && (row.legalEntityId===null||row.legalEntityId===entityA.id)),
+      "synthetic fixture should resolve required decision " + key + " for entity A");
+  }
+  const [p4DecisionHistory] = await db.execute(
+    "SELECT COUNT(*) AS n FROM business_policy_decision_events",
+  );
+  assert.ok(Number(p4DecisionHistory[0].n) >= 17, "each synthetic approval outcome must retain a decision history event");
+  console.log("PASS: Pack 4 policy register begins pending, blocks issuance before numbering/snapshots, requires evidence and issuer scope, and permits explicitly recorded disposable test decisions.");
+
   assert.equal(entityA.bankAccountLast4, "3456");
   assert.equal(entityA.bankDetailsConfigured, true);
   assert.equal("bankDetails" in entityA, false, "ordinary API responses must never return full bank details");
