@@ -1591,8 +1591,16 @@ try {
   }, quotationFinanceSession.jar);
   assert.equal(expiredFixture.response.status, 201, "expiry fixture quotation can be created");
   const expiredQuotationId = expiredFixture.body.data.id;
+  const sentExpiryFixture = await call("/api/v1/quotations/" + expiredQuotationId + "/status", {
+    method: "POST", body: JSON.stringify({ status: "SENT", expectedVersion: 1 }),
+  }, quotationFinanceSession.jar);
+  assert.equal(sentExpiryFixture.response.status, 200,
+    "expiry fixture follows the protected DRAFT to SENT transition before the simulated passage of time");
+  assert.equal(sentExpiryFixture.body.data.status, "SENT");
+  // Advance the fixture beyond its validity period to model time passing. Keep lifecycle status/version
+  // untouched; the application must derive EXPIRED consistently from the entity's business date.
   await db.execute(
-    "UPDATE quotations SET status='SENT',valid_until=? WHERE id=? AND status='DRAFT'",
+    "UPDATE quotations SET valid_until=? WHERE id=? AND status='SENT'",
     [quotationYesterday, expiredQuotationId],
   );
   const expiredDetail = await call("/api/v1/quotations/" + expiredQuotationId, {}, quotationFinanceSession.jar);
@@ -1614,7 +1622,7 @@ try {
   assert.equal(sentList.body.data.some(row => row.id === expiredQuotationId), false,
     "expired quotations no longer appear under the SENT status filter");
   const acceptExpired = await call("/api/v1/quotations/" + expiredQuotationId + "/status", {
-    method: "POST", body: JSON.stringify({ status: "ACCEPTED", expectedVersion: 1 }),
+    method: "POST", body: JSON.stringify({ status: "ACCEPTED", expectedVersion: 2 }),
   }, quotationFinanceSession.jar);
   assert.equal(acceptExpired.response.status, 409, "an expired quotation cannot be accepted");
   assert.equal(acceptExpired.body.error.code, "INVALID_STATUS_TRANSITION");
@@ -1720,13 +1728,13 @@ try {
   }, quotationFinanceSession.jar);
   assert.equal(acceptInvalidZoneQuote.response.status, 200);
   const [priorTimeZoneRows] = await db.execute(
-    "SELECT time_zone FROM legal_entities WHERE id=?", [testLegalEntityId],
+    "SELECT time_zone FROM legal_entities WHERE id=?", [entityA.id],
   );
   assert.equal(priorTimeZoneRows.length, 1);
   const priorTimeZone = priorTimeZoneRows[0].time_zone ?? null;
   const invalidZoneConversionKey = "q-convert-invalid-zone-" + randomUUID();
   try {
-    await db.execute("UPDATE legal_entities SET time_zone='Invalid/Timezone' WHERE id=?", [testLegalEntityId]);
+    await db.execute("UPDATE legal_entities SET time_zone='Invalid/Timezone' WHERE id=?", [entityA.id]);
     const invalidZoneConversion = await call("/api/v1/quotations/" + invalidZoneQuoteId + "/convert", {
       method: "POST", headers: { "Idempotency-Key": invalidZoneConversionKey }, body: "{}",
     }, quotationFinanceSession.jar);
@@ -1743,7 +1751,7 @@ try {
     );
     assert.equal(Number(invalidZoneInvoiceCount.total), 0, "invalid timezone creates no invoice draft");
   } finally {
-    await db.execute("UPDATE legal_entities SET time_zone=? WHERE id=?", [priorTimeZone, testLegalEntityId]);
+    await db.execute("UPDATE legal_entities SET time_zone=? WHERE id=?", [priorTimeZone, entityA.id]);
   }
   console.log("PASS: Pack 2 quotation conversion fails closed on an invalid entity timezone and leaves no draft behind.");
   console.log("PASS: Pack 2 quotation conversion tests cover concurrent retries, one-draft invariant, same-key replay, different-key conflict, timezone readiness, preserved totals and creation audit evidence.");
