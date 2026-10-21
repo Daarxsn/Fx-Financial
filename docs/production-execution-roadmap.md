@@ -231,19 +231,52 @@ A chunk is accepted only when all applicable statements below are true:
 
 ### Pack 4 — Approvals and issued-document correction policy
 
-**Goal:** prevent the app from inventing the company's accounting/legal rules.
+**Goal:** make approvals and issued-document corrections explicit, auditable and safe without inventing the company's accounting, tax or statutory decisions. Pack 4 is an engineering control layer, not a substitute for the actual named business/finance/tax owners' sign-off.
 
 | Chunk | Work | Acceptance evidence |
 |---|---|---|
-| 4.1 | Complete the decision rows in `docs/phase-02-signoff-packet.md`: actual issuer mapping, financial year/numbering, currency, rounding, tax/discounts, terms, payments/overpayment, corrections, permissions, statutory/e-invoice scope, templates and communications. | Named authorized decision-makers, dates and evidence references; unresolved rows stay blocked. |
-| 4.2 | Map MyFX POS, FX Digitech and FX Coworks to the actual approved legal entity/entities and effective dates. | Configuration includes only evidenced mappings; brand is not assumed to be an issuer. |
-| 4.3 | Add tests using finance-approved worked examples for tax-inclusive/exclusive, discount order, half-up rounding, charges and due dates. | Approved expected values match server and UI; rejected/unapproved rules cannot be selected. |
-| 4.4 | Based on approved policy, implement explicit cancellation/correction flow: reason, authorized action, payment-state guard, original preserved, linked document, audit trail and approved numbering treatment. | Issued invoice never gets silently edited or deleted. |
-| 4.5 | If required by approved policy, implement credit/debit-note flows with original-document linkage and tax/total treatment. | Separate sequence/lifecycle as approved; no made-up legal assumptions. |
-| 4.6 | Determine e-invoice/statutory submission applicability for each actual issuer. Implement the integration only if required and sufficiently specified; otherwise record the approved not-applicable outcome. | No claim of electronic submission/IRN exists without verified external confirmation. |
-| 4.7 | Add a readiness gate that blocks issuing if required legal entity, approved tax rule, numbering, template, currency or statutory prerequisites are absent. | Negative readiness tests prove unknown configuration cannot issue. |
+| 4.1 | Add a global and legal-entity scoped decision register for issuer mapping, numbering, financial year, currency, calculation/tax treatment, payments, correction policy, separation of duties and statutory applicability. | Required decisions start PENDING; every resolved outcome records the actual decision, rationale, approver name/role, date and evidence reference. |
+| 4.2 | Gate invoice issuance on required global and issuer-specific decisions as well as the existing technical configuration readiness checks. | Pending, blocked, missing or unresolved policy rows return `POLICY_APPROVAL_REQUIRED` before sequence reservation or configuration snapshot creation. |
+| 4.3 | Preserve append-only decision history and audit every policy outcome. | Both API and policy workspace expose prior outcomes and evidence references; history changes do not rewrite previous events. |
+| 4.4 | Implement issued-invoice cancellation/correction request creation with reason, scope checks, CSRF, idempotency and immutable source snapshots. | Re-request/replay/conflicting-key behavior is covered; only one pending correction request per invoice exists; source invoice remains ISSUED while a request awaits review. |
+| 4.5 | Add independent review and separation of duties. | Requester cannot approve their own request; reviewer decisions require rationale and scope/permission checks; request history and audit events persist. |
+| 4.6 | Implement cancellation only under an explicitly approved, narrowly-scoped policy. | Requires approved payment and separation-of-duties policy, an approved `CANCEL_UNPAID_ONLY` correction mode, and zero active recorded allocations; source number/record is preserved, lifecycle changes to CANCELLED with actor/reason and audit trail. |
+| 4.7 | Refuse unimplemented statutory correction/submission actions rather than fabricating documents. | Credit/debit-note requests can be recorded/rejected but execution is blocked until issuer-specific note treatment is approved and implemented. A generic D-11 APPROVED result is rejected while electronic/statutory submission is not implemented. |
+| 4.8 | Deliver policy-decision, correction-request and review screens. | Invoice detail can submit a correction request; Approvals shows a scoped review queue; policy decisions show pending/resolved status and history/evidence details. |
+| 4.9 | Validate against isolated MySQL and browser fixtures. | Negative issuance, no-write-on-failure, correction idempotency, one-pending guard, self-review denial, paid-invoice cancellation refusal, unimplemented note refusal, audit/history, lint, type-check, build and Playwright pass. |
 
-**Gate 4:** All critical accounting and issuer decisions are signed or explicitly documented as blocked/not-applicable with rationale. Real issuance remains disabled where required approval is missing.
+#### Part A — Evidence-backed policy and issuance guard
+
+- Migration 022 adds the global and issuer-specific policy registry, append-only policy event table, and correction-request schema. Migration 023 adds a database-level unique pending-request guard per invoice. No real decision is seeded as approved.
+- D-01/D-05/D-08/D-09/D-10 are global issuance gates. D-02/D-03/D-04/D-06/D-07/D-11 are legal-entity-specific gates. New legal entities receive issuer-specific PENDING rows inside their creation transaction; existing issuers receive PENDING rows through migration 022.
+- Policy writes require finance configuration authorization, CSRF and an explicit rationale. APPROVED/NOT_APPLICABLE require decision text, external approver name/role, approval date and an evidence reference. Every change emits an append-only decision-history event and an audit event.
+- Issuance locks and checks the required global and issuer rows before number allocation and snapshot creation. Missing or pending decisions fail closed.
+- **Statutory boundary:** this product does not implement electronic invoice/statutory submission. D-11 cannot be marked APPROVED until the integration and verification exist. The owner may record NOT_APPLICABLE with evidence only if the actual issuer is genuinely not subject to that requirement; otherwise keep it PENDING/BLOCKED.
+
+#### Part B — Issued-document correction and independent review
+
+- An issued invoice can receive a CANCEL/CREDIT_NOTE/DEBIT_NOTE correction request with a business reason. Idempotency protects request retries; a conflicting key or second pending request is rejected. The original number, totals, configuration snapshot and issue data remain unchanged while review is pending.
+- Correction review requires `invoices:cancel`, `approvals:decide`, finance-configuration approver authorization, entity scope, CSRF and an independent reviewer. The requester cannot approve their own request. REQUESTED/REJECTED/EXECUTED events and corresponding audit events are retained.
+- Direct cancellation executes only when D-08, D-09 and D-10 are explicitly approved, D-09 selects `CANCEL_UNPAID_ONLY`, the source is still an issued invoice, and there are no active recorded allocations. The original invoice record and number are preserved; its lifecycle moves to CANCELLED with reviewer/actor and reason recorded.
+- Credit/debit notes are **not** falsely marked executed. Their requests stay pending until rejected or otherwise handled; approval currently returns `CORRECTION_TREATMENT_BLOCKED`, leaving the source invoice unchanged, because issuer-specific tax, numbering, template and statutory treatment is not implemented.
+- The Policy decisions screen now displays current status plus append-only prior decisions and their evidence references. The Approvals queue exposes request history and maker-checker actions. Browser checks cover request creation without source mutation, queue visibility and policy workspace access.
+
+**Pack 4 final engineering acceptance record — 2026-10-21**
+
+- [x] Part A — global and issuer-scoped policy register; all real decisions begin unresolved/pending.
+- [x] Invoice issue gate blocks pending/missing required decisions before official number reservation and configuration snapshot creation.
+- [x] Evidence requirements, finance authorization, issuer-scope requirements, decision history and audit events.
+- [x] D-11 statutory/e-invoice boundary fails closed: no generic approval can imply an integration that does not exist.
+- [x] Part B — correction request, idempotency/conflict, one-pending guard, scoped queue, review reason, separation of duties and immutable request events.
+- [x] Cancellation guards enforce the approved unpaid-only path and zero active recorded allocations; original record/number is preserved and cancellation is audited.
+- [x] Credit/debit-note execution stays blocked until the real policy and implementation exist; rejection is available without mutating the source.
+- [x] MySQL 8 migration/seed/failure-safety/restore, secret scan, health behavior, OpenAPI, API integration, Phase 6B numbering/snapshot, calculation, responsive/accessibility foundation, customer/catalog, invoice/quotation, lint, TypeScript, production build and Playwright passed on code commit `dc00d241b76ac1a49816ba8390ee4a269e4b69ed`: [CI 39600906506](https://github.com/Daarxsn/Fx-Financial/actions/runs/39600906506).
+
+**Engineering disposition:** Pack 4's controls and workflows are accepted and locked on `main`; Pack 5 can start from this baseline. Policy changes, issuance readiness logic, correction execution, permissions or document-state behavior reopen the relevant acceptance gate until the tests and complete CI pass.
+
+**Release boundary:** this is an engineering lock, not a declaration that Falchion's business, finance or tax owners have signed off. On a real migrated database, required policy rows remain PENDING and issuance will return `POLICY_APPROVAL_REQUIRED` until the actual authorized owners record their decision and secure evidence reference. A CI fixture is never company sign-off. If e-invoicing/statutory submission is required for a real issuer, issuance remains blocked until that integration is implemented and verified. Credit/debit-note execution likewise remains unavailable until issuer-specific treatment is approved and implemented. Pack 5 PDF generation/private storage does not resolve those policy or statutory gates. Aiven provider-level restore evidence, production secrets/database grants/HTTPS, and manual real-device/assistive-technology acceptance remain separate pre-production gates.
+
+**Gate 4:** Pack 4 engineering accepted. Pack 5 may proceed, with production issuance intentionally blocked for any issuer whose required real approval/policy evidence is unresolved.
 
 ### Pack 5 — Real document generation and private history
 
