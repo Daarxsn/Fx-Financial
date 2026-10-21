@@ -1,8 +1,9 @@
 import { readFile } from "node:fs/promises";
 
-const [invoice, quotation, shell, access, accessPage, home, css, proxy] = await Promise.all([
+const [invoice, quotation, payment, shell, access, accessPage, home, css, proxy] = await Promise.all([
   readFile("src/components/invoice-workspace.tsx", "utf8"),
   readFile("src/components/quotation-workspace.tsx", "utf8"),
+  readFile("src/components/payment-workspace.tsx", "utf8"),
   readFile("src/components/app-shell.tsx", "utf8"),
   readFile("src/components/access-workspace.tsx", "utf8"),
   readFile("src/app/(workspace)/access/page.tsx", "utf8"),
@@ -11,6 +12,9 @@ const [invoice, quotation, shell, access, accessPage, home, css, proxy] = await 
   readFile("src/proxy.ts", "utf8"),
 ]);
 const checks = [
+  ["payment workspace exposes scoped receipt creation and receipt listing", payment.includes("/api/v1/payments/options") && payment.includes("/api/v1/payments?limit=25") && payment.includes("Record receipt")],
+  ["payment workspace supports partial allocations and full receipt reversals with a reason", payment.includes("/allocations") && payment.includes("unallocatedAmount") && payment.includes("/reverse") && payment.includes("Reason (required)")],
+  ["invoice workspace exposes permission-gated payment history, direct recording and full reversal", invoice.includes("payments:read") && invoice.includes("payments:record") && invoice.includes("payments:reverse") && invoice.includes("Record and allocate payment") && invoice.includes("Confirm full reversal")],
   ["invoice form labels are programmatically associated with unique controls", invoice.includes("const fieldId=useId()") && invoice.includes('htmlFor={fieldId}') && invoice.includes('cloneElement(children as ReactElement<{id?:string}>,{id:fieldId})')],
   ["invoice workspace explicitly explains missing read permission", invoice.includes("Invoice access is not assigned") && invoice.includes("invoices:read")],
   ["invoice workspace explicitly explains missing draft-create permission", invoice.includes("Invoice creation permission required") && invoice.includes("invoices:draft:create")],
