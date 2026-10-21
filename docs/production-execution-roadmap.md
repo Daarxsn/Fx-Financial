@@ -181,24 +181,53 @@ A chunk is accepted only when all applicable statements below are true:
 
 **Gate 2:** Invoice and quotation workflows are accepted for engineering progression. Pack 3 may build on this locked baseline after the final lock-record commit's CI is green. A draft is not an issued document; quotation conversion is not automatic issuance.
 
-### Pack 3 — Finish manual payments and receipts
+### Pack 3 — Manual payments and receipts
 
-**Goal:** a fully usable, reconciled manual payment workflow without a gateway.
+**Goal:** a usable, auditable, reconciled manual payment workflow. This pack records payment events; it does not claim bank settlement or gateway processing.
 
 | Chunk | Work | Acceptance evidence |
 |---|---|---|
-| 3.1 | Complete static review and CI certification of `POST/GET /api/v1/invoices/{invoiceId}/payments`; fix any gaps. | Exact-decimal validation, invoice/entity scope, permission, CSRF, idempotency and audit tests pass. |
-| 3.2 | Add integration tests to record a payment against an issued invoice: valid, invalid date/amount/method, draft/cancelled invoice, unauthorized user, cross-entity request and missing key. | Expected HTTP/result contract and unchanged data after rejection. |
-| 3.3 | Test same-key/same-payload replay and same-key/different-payload conflict; send concurrent payment attempts that together would exceed balance. | Exactly-once behavior and no overpayment under race. |
-| 3.4 | Add/review payment list/detail query and allocation history; make balances derive from valid, recorded allocations with exact decimals. | Invoice balance, customer balance and payment history reconcile. |
-| 3.5 | Implement payment reversal API: reason required, only recorded payments reversible, authorization/scope checked, linked invoices locked safely, allocation retained, reverse event audited, duplicate reversal rejected. | Reversal never deletes ledger history; balance returns accurately. |
-| 3.6 | Add reversal tests including concurrent attempts, already-reversed payments, invalid reason, scope denial and linked invoice balance recalculation. | Race/security/reconciliation regression suite passes. |
-| 3.7 | Build invoice payment UI: record payment form, method/reference/date/notes, amount validation, current outstanding limit, pending/success/error/conflict states. | Real browser can record an accepted payment; failures never show false success. |
-| 3.8 | Add payment history, allocation amount/date/reference/status and permission-gated reversal UI with explicit confirmation/reason. | History updates after record/reversal; controls disappear or reject for unauthorized roles. |
-| 3.9 | Add printable receipt source data and receipt record semantics; receipt gets its own immutable reference and does not masquerade as a new invoice. | Receipt totals/status exactly match the recorded payment and allocation. PDF rendering follows Pack 5. |
-| 3.10 | Reconcile invoice totals, payment allocations, reversals and outstanding balance across list, detail, dashboard inputs and API. | Integration reconciliation tests cover unpaid, partial, fully paid and reversed states. |
+| 3.1 | Certify invoice-linked payment and standalone receipt APIs. | Input validation, invoice/entity scope, permission, CSRF, idempotency and audit contract tests pass. |
+| 3.2 | Exercise rejected submissions and authorization boundaries. | Missing idempotency key, impossible date, invalid method, invalid amounts, draft invoice, missing permission, out-of-scope entity and currency mismatch are rejected without creating ledger rows. |
+| 3.3 | Prove retry and concurrency safety. | Same-key/same-payload replays; conflicting reuse returns 409; different-key concurrent payment attempts cannot aggregate-overpay; concurrent reversal attempts create one reversal event only. |
+| 3.4 | Certify payment list/detail, allocation history and balances. | Exact-decimal invoice balances reconcile to recorded allocations; multiple partial allocations remain visible in receipt history. |
+| 3.5 | Certify reversal semantics. | A reason is mandatory; only a recorded receipt in scope may be reversed with permission; source allocations remain immutable/auditable; the reversal event is retained and audited; linked invoice balances are restored. |
+| 3.6 | Deliver the payment and invoice workspace flows. | Browser acceptance records a standalone receipt, allocates selected partial amounts, views history, reverses with a reason, and records a fully allocated invoice payment; no premature success feedback. |
+| 3.7 | Preserve receipt identity and immutable source information. | Every receipt has its own generated reference and record-time customer/legal-entity snapshots; a receipt is not represented as a new invoice. |
+| 3.8 | Reconcile invoice and receipt balances for users with payment-read permission. | Overview displays per-legal-entity, per-currency issued invoice totals, allocated amounts, outstanding balances, recorded receipt totals, receipt allocations, unallocated balances, reversed receipt count and an explicit overpayment discrepancy indicator. |
+| 3.9 | Validate responsiveness, accessibility foundation and integration. | Responsive checks at desktop (1365 px), tablet (768 px) and mobile (390 px); OpenAPI, migration/restore, API, lint, TypeScript, production build and browser acceptance pass. |
+| 3.10 | Keep future delivery work out of the accepted slice. | No payment gateway, bank settlement feed, PDF rendering/private delivery or email delivery is implied; PDF rendering remains Pack 5. |
 
-**Gate 3:** A user can record a manual payment, see its allocation and updated balance, reverse it with a reason if authorized, and audit the full history. No gateway is required.
+#### Pack 3 Part A — Ledger, API and reversal integrity
+
+- Certified the invoice-linked payment endpoints and standalone receipt API, scoped payment options, and payment list/detail endpoints.
+- Receipt amounts and invoice totals use four-decimal exact money handling. Server-side entity/customer scope and permission checks are enforced, including rejecting a submitted currency that differs from the legal entity's configured currency.
+- Idempotency behavior covers same-request replay, conflicting same-key payloads, missing keys, and concurrent different-key attempts against one outstanding balance.
+- Allocation records remain in the ledger after reversal. A reversal requires a reason, is permission/scope gated, updates invoice balances from recorded allocations, stores a unique reversal event, emits an audit event, and safely handles simultaneous reversal requests.
+
+#### Pack 3 Part B — Workspace and reconciliation
+
+- Overview now links to Payments. The Payments workspace supports standalone receipt capture, partial invoice allocation, receipt detail/history, and reasoned reversal; invoice detail supports payment recording/history and server-validated outstanding limits.
+- Receipt references and record-time customer/legal-entity snapshots are persisted and shown in receipt detail. Successful UI feedback is shown only after the refreshed state is available.
+- Overview exposes a no-store, permission-scoped receivables summary grouped by legal entity and currency. It is derived from issued invoices and recorded allocations, excludes reversed receipts from active balances, separates recorded/allocation/unallocated receipt totals, and surfaces overpaid invoice discrepancies rather than offsetting them against other invoices.
+- Database-backed acceptance compares summary values against invoice and receipt list APIs using exact decimal sums. Browser acceptance checks the Overview snapshot and responsive layout.
+
+**Pack 3 final acceptance record — 2026-10-21**
+
+- [x] Part A — invoice-linked payments, standalone receipts, exact-decimal validation and configured-currency enforcement.
+- [x] Idempotent replay/conflict behavior, explicit failed-submit cases and no-write-on-rejection assertions.
+- [x] Partial and repeated allocations, over-allocation/overpayment protection, concurrent payment and reversal race tests.
+- [x] Permission- and legal-entity-scoped receipt APIs, reversal reason/authorization, immutable allocation history and reversal/audit event checks.
+- [x] Part B — Payments workspace, invoice payment panel, receipt detail/history and reasoned reversal workflow.
+- [x] Overview receivables snapshot grouped by legal entity and currency, with API totals reconciled to invoice and receipt lists.
+- [x] Browser acceptance across invoice payment, standalone receipt, allocation and reversal workflows; overview responsive checks at 1365 px, 768 px and 390 px.
+- [x] MySQL migration/seed/failure-safety/restore, health endpoints, OpenAPI, API integration, UI foundation, authorization, invoice/quotation checks, lint, TypeScript, production build and Playwright browser acceptance passed on commit 2e70d546919efc148440bf75bb24dc029a7e8425: [CI 39592429295](https://github.com/Daarxsn/Fx-Financial/actions/runs/39592429295).
+
+**Engineering disposition:** Pack 3 is accepted and locked on main. Pack 4 may start from this baseline. A change to payment recording, allocation, reversal, permission/scope, snapshots or reconciliation reopens the affected acceptance gate until the relevant tests and full CI pass.
+
+**Release boundary:** this lock is an engineering acceptance for Pack 3, not whole-product production go-live approval. Manual receipts do not establish bank settlement. Payment-gateway integration, bank matching, PDF rendering/private storage and email delivery remain out of scope (PDF rendering is Pack 5). Business/finance/tax sign-off, provider-level Aiven restore evidence, approved production secrets/database grants/HTTPS configuration, and manual real-device/assistive-technology acceptance remain separate pre-production gates.
+
+**Gate 3:** Pack 3 accepted. Pack 4 may proceed; Pack 4 remains responsible for approvals and issued-document correction policy, and does not inherit implied gateway, PDF or email capabilities.
 
 ### Pack 4 — Approvals and issued-document correction policy
 
