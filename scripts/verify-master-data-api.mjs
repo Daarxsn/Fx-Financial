@@ -481,6 +481,12 @@ try {
     method:"PATCH", body: JSON.stringify({ status:"APPROVED", decisionText:"Disposable CI decision only.", rationale:"Disposable CI test, not company approval.", externalApproverName:"CI fixture NOT REAL", externalApproverRole:"CI fixture only", approvalReference:"CI-NOT-REAL-"+suffix, approvalDate:new Date().toISOString().slice(0,10) }),
   }, phase6aSession.jar);
   assert.equal(p4MissingEntityScope.response.status, 422, "entity-specific decisions must not be resolved globally");
+  const p4StatutoryApprovalAttempt = await call("/api/v1/policy-decisions/D-11", {
+    method:"PATCH",
+    body:JSON.stringify({legalEntityId:entityA.id,status:"APPROVED",decisionCode:"CI_TEST_FIXTURE",decisionText:"Disposable CI fixture only; not a real company approval.",rationale:"Disposable CI database fixture only; this is not company approval.",externalApproverName:"CI fixture approver (NOT REAL)",externalApproverRole:"Disposable automated-test fixture",approvalReference:"CI-NOT-REAL-D11-"+suffix,approvalDate:new Date().toISOString().slice(0,10)}),
+  }, phase6aSession.jar);
+  assert.equal(p4StatutoryApprovalAttempt.response.status,409,"statutory applicability cannot be approved as implemented while submission integration is absent");
+  assert.equal(p4StatutoryApprovalAttempt.body.error.code,"STATUTORY_INTEGRATION_NOT_IMPLEMENTED");
   const p4CorrectionModeRequired = await call("/api/v1/policy-decisions/D-09", {
     method:"PATCH", body: JSON.stringify({ status:"APPROVED", decisionText:"Disposable CI decision only.", rationale:"Disposable CI test, not company approval.", externalApproverName:"CI fixture NOT REAL", externalApproverRole:"CI fixture only", approvalReference:"CI-NOT-REAL-MODE-"+suffix, approvalDate:new Date().toISOString().slice(0,10) }),
   }, phase6aSession.jar);
@@ -514,6 +520,9 @@ try {
   }
   const p4ResolvedDecisions = await call("/api/v1/policy-decisions", {}, phase6aSession.jar);
   assert.equal(p4ResolvedDecisions.response.status, 200);
+  const p4GlobalCorrectionDecision = p4ResolvedDecisions.body.data.find(row=>row.decisionKey==="D-09"&&row.legalEntityId===null);
+  assert.ok(p4GlobalCorrectionDecision && p4GlobalCorrectionDecision.history.length>=1,"policy GET returns the append-only decision event history");
+  assert.equal(p4GlobalCorrectionDecision.history.at(-1).approvalReference?.startsWith("CI-NOT-REAL-APPROVAL-")??false,true,"decision history preserves the evidence reference supplied by the approver workflow");
   for (const key of ["D-01","D-02","D-03","D-04","D-05","D-06","D-07","D-08","D-09","D-10","D-11"]) {
     assert.ok(p4ResolvedDecisions.body.data.some(row => row.decisionKey===key && (row.status==="APPROVED"||row.status==="NOT_APPLICABLE") && (row.legalEntityId===null||row.legalEntityId===entityA.id)),
       "synthetic fixture should resolve required decision " + key + " for entity A");

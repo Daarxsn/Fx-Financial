@@ -62,7 +62,7 @@ export async function GET(request:NextRequest){
   if(rows.length){
    const ids=rows.map(r=>r.id);
    const [eventRows]=await pool.execute<RowDataPacket[]>(
-    "SELECT id,request_id,event_type,previous_status,new_status,reason,actor_id,created_at FROM invoice_correction_request_events WHERE request_id IN ("+ids.map(()=>"?").join(",")+") ORDER BY created_at,event_type,id",ids);
+    "SELECT id,request_id,event_type,previous_status,new_status,reason,actor_id,created_at FROM invoice_correction_request_events WHERE request_id IN ("+ids.map(()=>"?").join(",")+") ORDER BY created_at,CASE event_type WHEN 'REQUESTED' THEN 0 ELSE 1 END,id",ids);
    events=eventRows;
   }
   const byRequest=new Map<string,unknown[]>();

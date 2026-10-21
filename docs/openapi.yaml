@@ -3270,9 +3270,25 @@ components:
     PolicyDecisionStatus:
       type: string
       enum: [PENDING, APPROVED, NOT_APPLICABLE, BLOCKED]
+    PolicyDecisionEvent:
+      type: object
+      required: [id, previousStatus, status, decisionText, rationale, recordedBy, createdAt]
+      properties:
+        id: { $ref: "#/components/schemas/Uuid" }
+        previousStatus: { type: [string, "null"] }
+        status: { $ref: "#/components/schemas/PolicyDecisionStatus" }
+        decisionCode: { type: [string, "null"] }
+        decisionText: { type: [string, "null"] }
+        rationale: { type: string }
+        externalApproverName: { type: [string, "null"] }
+        externalApproverRole: { type: [string, "null"] }
+        approvalReference: { type: [string, "null"] }
+        approvalDate: { type: [string, "null"], format: date }
+        recordedBy: { $ref: "#/components/schemas/Uuid" }
+        createdAt: { type: string, format: date-time }
     PolicyDecisionRecord:
       type: object
-      required: [decisionKey, legalEntityId, topic, recommendedStartingPoint, requiredApprover, requiresIssueGate, status, updatedAt]
+      required: [decisionKey, legalEntityId, topic, recommendedStartingPoint, requiredApprover, requiresIssueGate, status, updatedAt, history]
       properties:
         decisionKey: { type: string, pattern: "^D-(0[1-9]|1[0-2])$" }
         legalEntityId: { oneOf: [{ $ref: "#/components/schemas/Uuid" }, { type: "null" }] }
@@ -3290,6 +3306,9 @@ components:
         approvalReference: { type: [string, "null"] }
         approvalDate: { type: [string, "null"], format: date }
         updatedAt: { type: string, format: date-time }
+        history:
+          type: array
+          items: { $ref: "#/components/schemas/PolicyDecisionEvent" }
     PolicyDecisionListResponse:
       type: object
       required: [data, meta]
