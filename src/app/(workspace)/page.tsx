@@ -10,6 +10,7 @@ const modules = [
   { number: "02", title: "Quotations", description: "Create drafts, track customer decisions and convert accepted quotes into invoice drafts.", href: "/quotations", icon: "quote" as const, status: "Document workflow" },
   { number: "03", title: "Customers", description: "Manage customer records that can be reused across invoices and quotations.", href: "/customers", icon: "users" as const, status: "Master data" },
   { number: "04", title: "Items & services", description: "Manage reusable products and services, units and exact-decimal price defaults.", href: "/catalog", icon: "box" as const, status: "Master data" },
+  { number: "05", title: "Payments", description: "Record receipts, allocate payments to issued invoices, and preserve reversal history.", href: "/payments", icon: "wallet" as const, status: "Payment workflow" },
 ];
 
 export default function HomePage() {
@@ -80,7 +81,7 @@ export default function HomePage() {
           <EmptyState
             icon="clock"
             title="Nothing to report yet"
-            description="No activity is being shown because business workflows have not been connected. This keeps the overview honest and ready for real data."
+            description="The recent-activity feed is not connected to a scoped activity query yet, so no live business events are shown here."
           />
         </Card>
         <Card className="readiness-card">
@@ -91,7 +92,7 @@ export default function HomePage() {
           <div className="readiness-list">
             <div><span className="readiness-list__icon readiness-list__icon--success"><Icon name="check" size={15} /></span><span><strong>Design system</strong><small>Tokens and shared components</small></span><StatusBadge tone="success">Ready</StatusBadge></div>
             <div><span className="readiness-list__icon readiness-list__icon--success"><Icon name="check" size={15} /></span><span><strong>Responsive shell</strong><small>Desktop, tablet and mobile</small></span><StatusBadge tone="success">Ready</StatusBadge></div>
-            <div><span className="readiness-list__icon"><Icon name="clock" size={15} /></span><span><strong>Finance workflows</strong><small>Awaiting API implementation</small></span><StatusBadge tone="warning">In progress</StatusBadge></div>
+            <div><span className="readiness-list__icon"><Icon name="clock" size={15} /></span><span><strong>Reports &amp; delivery</strong><small>Reporting, PDF generation and email remain planned</small></span><StatusBadge tone="warning">In progress</StatusBadge></div>
           </div>
           <div className="readiness-note"><Icon name="lock" size={15} /><span>Unreleased workflows are not presented as active.</span></div>
         </Card>
