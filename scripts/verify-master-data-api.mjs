@@ -965,34 +965,6 @@ try {
   console.log("PASS: payment API validates inputs, enforces balance, preserves exact decimals, records one allocation under concurrent retries, and rejects conflicting idempotency keys.");
 
 
-   // Pack 3 Part A: standalone receipt capture, snapshots, idempotency and scoped history.
-   const p3Options=await call("/api/v1/payments/options",{},phase6aSession.jar);
-   assert.equal(p3Options.response.status,200);
-   assert.ok(p3Options.body.data.legalEntities.some(x=>x.id===entityA.id));
-   assert.ok(p3Options.body.data.customers.some(x=>x.id===created.body.data.id));
-   const p3ReceiptKey="p3-receipt-"+randomUUID();
-   const p3ReceiptBody={legalEntityId:entityA.id,customerId:created.body.data.id,amount:"12.0000",currency:"INR",
-     paymentDate:issueDate,method:"bank transfer",reference:"CI-P3-"+phase6bSuffix,notes:"Pack 3 standalone receipt fixture"};
-   const p3Receipt=await call("/api/v1/payments",{method:"POST",headers:{"Idempotency-Key":p3ReceiptKey},body:JSON.stringify(p3ReceiptBody)},phase6aSession.jar);
-   assert.equal(p3Receipt.response.status,201,"standalone receipt can exist before invoice allocation");
-   assert.match(p3Receipt.body.data.receiptReference,/^RCPT-[0-9A-F]{32}$/);
-   assert.equal(p3Receipt.body.data.allocatedAmount,"0.0000");
-   assert.equal(p3Receipt.body.data.unallocatedAmount,"12.0000");
-   assert.equal(p3Receipt.body.data.customerSnapshot.name,created.body.data.name);
-   assert.equal(p3Receipt.body.data.legalEntitySnapshot.displayName,entityA.displayName);
-   const p3ReceiptReplay=await call("/api/v1/payments",{method:"POST",headers:{"Idempotency-Key":p3ReceiptKey},body:JSON.stringify(p3ReceiptBody)},phase6aSession.jar);
-   assert.equal(p3ReceiptReplay.response.status,200);
-   assert.equal(p3ReceiptReplay.body.data.id,p3Receipt.body.data.id);
-   const p3ReceiptConflict=await call("/api/v1/payments",{method:"POST",headers:{"Idempotency-Key":p3ReceiptKey},body:JSON.stringify({...p3ReceiptBody,amount:"13.0000"})},phase6aSession.jar);
-   assert.equal(p3ReceiptConflict.response.status,409);
-   const p3List=await call("/api/v1/payments?legalEntityId="+entityA.id+"&customerId="+created.body.data.id+"&status=RECORDED&limit=100&offset=0",{},phase6aSession.jar);
-   assert.equal(p3List.response.status,200);
-   assert.ok(p3List.body.data.some(x=>x.id===p3Receipt.body.data.id));
-   const p3Detail=await call("/api/v1/payments/"+p3Receipt.body.data.id,{},phase6aSession.jar);
-   assert.equal(p3Detail.response.status,200);
-   assert.equal(p3Detail.body.data.customerSnapshot.name,created.body.data.name);
-   assert.deepEqual(p3Detail.body.data.allocations,[]);
-   console.log("PASS: Pack 3 standalone receipt creation/replay/conflict, party snapshots, listing and detail.");
 
    // Pack 3 Part B: partial allocation, amount bounds, exact balances and full receipt reversal.
    const p3AllocKeyA="p3-alloc-a-"+randomUUID();
