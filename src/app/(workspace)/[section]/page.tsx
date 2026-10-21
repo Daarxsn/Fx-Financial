@@ -3,6 +3,7 @@ import { Icon } from "@/components/icon";
 import { MasterDataWorkspace } from "@/components/master-data-workspace";
 import { InvoiceWorkspace } from "@/components/invoice-workspace";
 import { QuotationWorkspace } from "@/components/quotation-workspace";
+import { PaymentWorkspace } from "@/components/payment-workspace";
 import { Breadcrumbs, Card, EmptyState, InlineAlert, PageHeader, StatusBadge } from "@/components/ui";
 
 const sections = {
@@ -55,9 +56,9 @@ const sections = {
     eyebrow: "RECEIVABLES",
     description: "Keep receipts, invoice allocations and reversals distinct, with a traceable history.",
     icon: "wallet" as const,
-    status: "Planned",
+    status: "Live receipt workflow",
     emptyTitle: "Payment activity will appear here",
-    emptyDescription: "Receipt entry, allocation, reconciliation and reversal endpoints are not implemented yet. Until then, no paid totals, outstanding amounts or payment activity are invented.",
+    emptyDescription: "Record manually received payments, allocate receipts to eligible issued invoices, and reverse a receipt with a reason while preserving the ledger history.",
     note: "Allocations must be checked transactionally against customer, currency and remaining balances.",
     details: ["Receipt ledger", "Partial and full allocations", "Reasoned reversal records"],
   },
@@ -126,6 +127,7 @@ export default async function SectionPage({ params }: { params: Promise<{ sectio
 
       {section === "invoices" ? <InvoiceWorkspace />
         : section === "quotations" ? <QuotationWorkspace />
+        : section === "payments" ? <PaymentWorkspace />
         : section === "customers" || section === "catalog" ? <MasterDataWorkspace resource={section} />
         : <div className="section-workspace-grid">
           <Card className="section-data-card">
