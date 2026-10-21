@@ -82,8 +82,8 @@ export function PaymentWorkspace() {
     if (!canRead) return;
     setLoading(true);
     try {
-      const result = await request("/api/v1/payments?limit=25&offset=" + offset + "&status=" + encodeURIComponent(queryStatus === "all" ? "" : queryStatus));
-      // The empty status is omitted in the next request so that unfiltered history is truly unfiltered.
+      const statusQuery = queryStatus === "all" ? "" : "&status=" + encodeURIComponent(queryStatus);
+      const result = await request("/api/v1/payments?limit=25&offset=" + offset + statusQuery);
       if (!result.response.ok) throw new Error(result.body.error?.message ?? "Receipts could not be loaded.");
       setReceipts(Array.isArray(result.body.data) ? result.body.data as Receipt[] : []);
       setTotal(Number(result.body.meta?.pagination?.total ?? 0));
