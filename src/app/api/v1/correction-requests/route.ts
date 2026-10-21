@@ -53,11 +53,11 @@ export async function GET(request:NextRequest){
   if(status!=="all"){clauses.push("r.status=?");params.push(status);}
   if(invoiceId){clauses.push("r.invoice_id=?");params.push(invoiceId);}
   const where=clauses.join(" AND ");
-  const [rows]=await pool.execute<RequestRow[]>(
+  const [rows]=await pool.query<RequestRow[]>(
    "SELECT r.id,r.invoice_id,r.legal_entity_id,r.invoice_number_snapshot,r.correction_type,r.reason,r.idempotency_key,r.status,r.requested_by,r.reviewed_by,r.review_decision,r.review_reason,r.reviewed_at,r.executed_at,r.created_at,r.updated_at "+
    "FROM invoice_correction_requests r WHERE "+where+" ORDER BY r.created_at DESC,r.id DESC LIMIT ? OFFSET ?",
    [...params,limit,offset]);
-  const [[count]]=await pool.execute<(RowDataPacket&{total:number})[]>("SELECT COUNT(*) AS total FROM invoice_correction_requests r WHERE "+where,params);
+  const [[count]]=await pool.query<(RowDataPacket&{total:number})[]>("SELECT COUNT(*) AS total FROM invoice_correction_requests r WHERE "+where,params);
   let events:RowDataPacket[]=[];
   if(rows.length){
    const ids=rows.map(r=>r.id);

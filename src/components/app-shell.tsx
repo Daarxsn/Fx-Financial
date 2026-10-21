@@ -22,9 +22,9 @@ const navGroups: NavGroup[] = [
     { label: "Payments", href: "/payments", icon: "wallet" },
     { label: "Reports", href: "/reports", icon: "chart" },
     { label: "Audit trail", href: "/audit", icon: "shield" },
-    { label: "Approvals", href: "/approvals", icon: "check-circle", permission: "approvals:read" },
+    { label: "Approvals", href: "/approvals", icon: "check", permission: "approvals:read" },
   ] },
-  { label: "Configure", items: [{ label: "Settings", href: "/settings", icon: "settings", permission: "settings:manage" }, { label: "Policy decisions", href: "/policy-decisions", icon: "clipboard-check", permission: "settings:manage" }, { label: "Users & access", href: "/access", icon: "users", permission: "users:manage" }] },
+  { label: "Configure", items: [{ label: "Settings", href: "/settings", icon: "settings", permission: "settings:manage" }, { label: "Policy decisions", href: "/policy-decisions", icon: "file", permission: "settings:manage" }, { label: "Users & access", href: "/access", icon: "users", permission: "users:manage" }] },
 ];
 
 const navByPath = new Map(navGroups.flatMap((group) => group.items).map((item) => [item.href, item]));
