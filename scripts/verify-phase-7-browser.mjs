@@ -358,6 +358,71 @@ try {
   assert.equal(String(convertedBrowserInvoiceRows[0].grand_total), "212.4000");
   pass("Quotation workspace sends, accepts and converts to one linked editable invoice draft without issuing it.");
 
+
+   // Pack 3 browser acceptance: record a standalone receipt, partially allocate it, then reverse.
+   const p3ExternalReference = "P3-PAY-" + suffix;
+   await page.goto(baseUrl + "/payments");
+   await page.getByRole("heading", { name: "Payment ledger", exact: true }).waitFor();
+   await page.getByLabel("Legal entity", { exact: true }).selectOption(String(invoiceTestEntity.id));
+   await page.getByLabel("Customer", { exact: true }).selectOption(String(invoiceTestCustomer.id));
+   await page.getByLabel("Amount", { exact: true }).fill("50.0000");
+   await page.getByLabel("Payment date", { exact: true }).fill(invoiceUiDate);
+   await page.getByLabel("Payment method", { exact: true }).selectOption("CASH");
+   await page.getByLabel("External reference (optional)", { exact: true }).fill(p3ExternalReference);
+   await page.getByLabel("Notes (optional)", { exact: true }).fill("Pack 3 browser receipt allocation/reversal acceptance");
+   await page.getByRole("button", { name: "Record receipt", exact: true }).click();
+   await page.getByRole("heading", { name: /^RCPT-[0-9A-F]{32}$/ }).waitFor();
+   const [p3BrowserReceiptRows] = await db.execute(
+     "SELECT id,receipt_reference,status FROM payments WHERE legal_entity_id=? AND customer_id=? AND reference=? ORDER BY created_at DESC LIMIT 1",
+     [invoiceTestEntity.id, invoiceTestCustomer.id, p3ExternalReference],
+   );
+   assert.equal(p3BrowserReceiptRows.length, 1, "Payments workspace persists one standalone receipt");
+   assert.equal(p3BrowserReceiptRows[0].status, "RECORDED");
+   const p3BrowserReceipt = p3BrowserReceiptRows[0];
+   await page.locator("#receipt-invoice").waitFor({ state: "visible" });
+   await page.locator("#receipt-invoice").selectOption(String(invoiceByLineRows[0].id));
+   await page.locator("#receipt-allocation-amount").fill("25.0000");
+   await page.getByRole("button", { name: "Save allocation", exact: true }).click();
+   await page.getByText("Receipt allocation saved. The server updated the invoice balance using recorded allocations.", { exact: true }).waitFor();
+   const [p3BrowserAllocRows] = await db.execute("SELECT id,amount FROM payment_allocations WHERE payment_id=? AND invoice_id=?",
+     [p3BrowserReceipt.id, invoiceByLineRows[0].id]);
+   assert.equal(p3BrowserAllocRows.length, 1);
+   assert.equal(String(p3BrowserAllocRows[0].amount), "25.0000");
+   pass("Payments workspace records a standalone receipt and allocates only the chosen partial amount.");
+
+   await page.getByRole("button", { name: "Reverse receipt", exact: true }).click();
+   await page.locator("#receipt-reversal-reason").fill("Pack 3 browser test full receipt reversal");
+   await page.getByRole("button", { name: "Confirm reversal", exact: true }).click();
+   await page.getByText(/Receipt reversed\\./).waitFor();
+   const [p3BrowserReverseRows] = await db.execute("SELECT status,reversal_reason FROM payments WHERE id=? LIMIT 1",[p3BrowserReceipt.id]);
+   assert.equal(p3BrowserReverseRows[0].status, "REVERSED");
+   assert.equal(p3BrowserReverseRows[0].reversal_reason, "Pack 3 browser test full receipt reversal");
+   const [p3BrowserRetainedRows] = await db.execute("SELECT COUNT(*) AS n FROM payment_allocations WHERE payment_id=? AND invoice_id=?",
+     [p3BrowserReceipt.id, invoiceByLineRows[0].id]);
+   assert.equal(Number(p3BrowserRetainedRows[0].n), 1, "reversal retains allocation history instead of deleting it");
+   pass("Payments workspace reverses a receipt with a reason and preserves allocation history.");
+
+   // Direct payment recording from invoice details stays connected to the same receipt ledger.
+   await page.goto(baseUrl + "/invoices");
+   await page.getByRole("heading", { name: "Invoices", exact: true }).waitFor();
+   await waitForList(page);
+   const targetInvoiceRow = page.locator("tbody tr").filter({ hasText: invoiceByLineRows[0].invoice_number });
+   await targetInvoiceRow.getByRole("button", { name: "Details", exact: true }).click();
+   await page.getByRole("heading", { name: invoiceByLineRows[0].invoice_number, exact: true }).waitFor();
+   await page.locator("#invoice-payment-amount").fill("10.0000");
+   await page.locator("#invoice-payment-date").fill(invoiceUiDate);
+   await page.locator("#invoice-payment-method").selectOption("CASH");
+   const p3DirectReference = "P3-DIRECT-" + suffix;
+   await page.locator("#invoice-payment-reference").fill(p3DirectReference);
+   await page.locator("#invoice-payment-notes").fill("Pack 3 invoice detail payment UI acceptance");
+   await page.getByRole("button", { name: "Record and allocate payment", exact: true }).click();
+   await page.getByText(/Payment RCPT-[0-9A-F]{32} recorded and fully allocated to this invoice\\./).waitFor();
+   const [p3DirectRows] = await db.execute("SELECT id,receipt_reference,status FROM payments WHERE reference=? ORDER BY created_at DESC LIMIT 1",[p3DirectReference]);
+   assert.equal(p3DirectRows.length, 1);
+   assert.equal(p3DirectRows[0].status, "RECORDED");
+   pass("Invoice details record a fully allocated payment through the permission-gated receipt API.");
+
+
   for (const width of [1365, 768, 390]) {
     await assertNoPageOverflow(page, width);
     await page.goto(`${baseUrl}/customers`);
