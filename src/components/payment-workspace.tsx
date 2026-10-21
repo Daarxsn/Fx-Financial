@@ -189,7 +189,6 @@ export function PaymentWorkspace() {
       }, createKey);
       if (!result.response.ok) throw new Error(result.body.error?.message ?? "Receipt could not be recorded.");
       const data = record(result.body.data);
-      setSuccess("Receipt " + str(data.receiptReference) + " recorded. Invoice balances change only when an allocation is made.");
       setForm(current => ({ ...current, amount: "", reference: "", notes: "" }));
       setCreateKey(key());
       await refreshReceipts();
@@ -206,7 +205,6 @@ export function PaymentWorkspace() {
     try {
       const result = await post("/api/v1/invoices/" + invoiceId + "/allocations", { paymentId: selected.id, amount: allocationAmount }, allocationKey);
       if (!result.response.ok) throw new Error(result.body.error?.message ?? "Receipt allocation failed.");
-      setSuccess("Receipt allocation saved. The server updated the invoice balance using recorded allocations.");
       setAllocationKey(key());
       await refreshReceipts();
       await openReceipt(selected.id);
