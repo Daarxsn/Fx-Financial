@@ -2951,6 +2951,133 @@ try {
   assert.equal(rateLimited.response.status, 429, "account-based login throttle activates at the configured threshold");
   assert.ok(Number(rateLimited.response.headers.get("retry-after")) > 0);
 
+  // Pack 4 Part B: issued-document correction requests never mutate the source before independent review.
+  async function p4CreateIssuedInvoice(label) {
+    const id=randomUUID();
+    await db.execute(
+      "INSERT INTO invoices (id,legal_entity_id,brand_id,customer_id,document_type,lifecycle_status,payment_terms_days,currency,subtotal,discount_total,tax_total,grand_total) VALUES (?, ?, NULL, ?, 'INVOICE','DRAFT',30,'INR',100.0000,0,0.0000,100.0000)",
+      [id,entityA.id,created.body.data.id],
+    );
+    await db.execute(
+      "INSERT INTO invoice_lines (id,invoice_id,line_number,description,quantity,unit_price,discount_amount,tax_rate,tax_code,tax_rule_id,tax_registration_id,tax_amount,line_total) VALUES (?,?,1,?,1.0000,100.0000,0,0.000000,?,?,?,0.0000,100.0000)",
+      [randomUUID(),id,"CI Pack4 "+label,phase6bTaxCode,phase6bTaxRuleId,phase6bRegistrationId],
+    );
+    const issued=await call("/api/v1/invoices/"+id+"/issue",{
+      method:"POST",headers:{"Idempotency-Key":"p4-issue-"+label.toLowerCase()+"-"+randomUUID()},
+      body:JSON.stringify({documentDate:issueDate}),
+    },phase6aSession.jar);
+    assert.equal(issued.response.status,200,"Pack 4 correction fixture invoice issues: "+JSON.stringify(issued.body?.error??null));
+    return {id,number:issued.body.data.invoiceNumber};
+  }
+  const p4Reviewer=await seedUser("finance_admin","p4-reviewer-"+suffix+"@example.invalid","ACTIVE",
+    "Pack4 Reviewer Password #5!",[entityA.id]);
+  const p4ReviewerSession=await login(p4Reviewer);
+
+  const p4CancelSource=await p4CreateIssuedInvoice("cancel");
+  const p4CancelKey="p4-cancel-request-"+randomUUID();
+  const p4CancelReason="Correct issuer invoice duplicate from a disposable CI fixture.";
+  const p4CancelRequest=await call("/api/v1/correction-requests",{
+    method:"POST",headers:{"Idempotency-Key":p4CancelKey},
+    body:JSON.stringify({invoiceId:p4CancelSource.id,correctionType:"CANCEL",reason:p4CancelReason}),
+  },phase6aSession.jar);
+  assert.equal(p4CancelRequest.response.status,201,"issued invoice can request a governed cancellation");
+  assert.equal(p4CancelRequest.body.data.status,"PENDING_REVIEW");
+  assert.equal(p4CancelRequest.body.data.invoiceNumber,p4CancelSource.number);
+  const p4CancelReplay=await call("/api/v1/correction-requests",{
+    method:"POST",headers:{"Idempotency-Key":p4CancelKey},
+    body:JSON.stringify({invoiceId:p4CancelSource.id,correctionType:"CANCEL",reason:p4CancelReason}),
+  },phase6aSession.jar);
+  assert.equal(p4CancelReplay.response.status,200,"same-key correction request replays the existing request");
+  assert.equal(p4CancelReplay.body.data.id,p4CancelRequest.body.data.id);
+  assert.equal(p4CancelReplay.body.data.idempotentReplay,true);
+  const p4CancelConflict=await call("/api/v1/correction-requests",{
+    method:"POST",headers:{"Idempotency-Key":p4CancelKey},
+    body:JSON.stringify({invoiceId:p4CancelSource.id,correctionType:"CANCEL",reason:"Conflicting correction reason payload."}),
+  },phase6aSession.jar);
+  assert.equal(p4CancelConflict.response.status,409,"correction request idempotency rejects a changed payload");
+  const p4DuplicatePending=await call("/api/v1/correction-requests",{
+    method:"POST",headers:{"Idempotency-Key":"p4-duplicate-pending-"+randomUUID()},
+    body:JSON.stringify({invoiceId:p4CancelSource.id,correctionType:"DEBIT_NOTE",reason:"Attempt another correction while one is pending."}),
+  },phase6aSession.jar);
+  assert.equal(p4DuplicatePending.response.status,409,"one pending correction request per invoice is enforced");
+  assert.equal(p4DuplicatePending.body.error.code,"CORRECTION_ALREADY_PENDING");
+  const p4SourceBeforeReview=await call("/api/v1/invoices/"+p4CancelSource.id,{},phase6aSession.jar);
+  assert.equal(p4SourceBeforeReview.body.data.lifecycleStatus,"ISSUED","request creation cannot mutate an issued invoice");
+  assert.equal(p4SourceBeforeReview.body.data.invoiceNumber,p4CancelSource.number);
+  const p4SelfReview=await call("/api/v1/correction-requests/"+p4CancelRequest.body.data.id+"/decision",{
+    method:"POST",body:JSON.stringify({decision:"APPROVE",reason:"Requester attempts to approve their own correction."}),
+  },phase6aSession.jar);
+  assert.equal(p4SelfReview.response.status,409,"correction requester cannot approve their own request");
+  assert.equal(p4SelfReview.body.error.code,"SEPARATION_OF_DUTIES");
+  const p4Queue=await call("/api/v1/correction-requests?status=PENDING_REVIEW&invoiceId="+p4CancelSource.id,{},p4ReviewerSession.jar);
+  assert.equal(p4Queue.response.status,200,"independent reviewer can read the scoped correction queue");
+  assert.equal(p4Queue.body.data.length,1);
+  assert.equal(p4Queue.body.data[0].history.length,1,"correction request history retains its REQUESTED event");
+  const p4CancelReview=await call("/api/v1/correction-requests/"+p4CancelRequest.body.data.id+"/decision",{
+    method:"POST",body:JSON.stringify({decision:"APPROVE",reason:"CI fixture independent review confirms test cancellation."}),
+  },p4ReviewerSession.jar);
+  assert.equal(p4CancelReview.response.status,200,"approved correction may execute only under approved cancellation policy");
+  assert.equal(p4CancelReview.body.data.status,"EXECUTED");
+  const [p4CancelledRows]=await db.execute("SELECT lifecycle_status,invoice_number,cancellation_reason,cancelled_by FROM invoices WHERE id=?",[p4CancelSource.id]);
+  assert.equal(p4CancelledRows[0].lifecycle_status,"CANCELLED");
+  assert.equal(p4CancelledRows[0].invoice_number,p4CancelSource.number,"cancellation preserves the allocated invoice number");
+  assert.equal(p4CancelledRows[0].cancellation_reason,p4CancelReason);
+  assert.equal(p4CancelledRows[0].cancelled_by,p4Reviewer.userId,"the independent reviewer is recorded as cancelling actor");
+  const [p4CancelEvents]=await db.execute("SELECT event_type FROM invoice_correction_request_events WHERE request_id=? ORDER BY created_at,id",[p4CancelRequest.body.data.id]);
+  assert.deepEqual(p4CancelEvents.map(row=>row.event_type),["REQUESTED","EXECUTED"]);
+  const p4CancelHistory=await call("/api/v1/correction-requests?status=all&invoiceId="+p4CancelSource.id,{},p4ReviewerSession.jar);
+  assert.equal(p4CancelHistory.body.data[0].history.length,2,"request history includes the executed decision");
+  const [p4CancelAudit]=await db.execute("SELECT COUNT(*) AS n FROM audit_events WHERE action IN ('invoice.cancelled','invoice.correction.executed') AND entity_id IN (?,?)",[p4CancelSource.id,p4CancelRequest.body.data.id]);
+  assert.equal(Number(p4CancelAudit[0].n),2,"cancellation and review execution each emit an audit event");
+  console.log("PASS: Pack 4 correction request idempotency, one-pending guard, immutable source invoice, maker-checker separation and audited cancellation pass.");
+
+  const p4PaymentGuardSource=await p4CreateIssuedInvoice("payment-guard");
+  const p4TestPayment=await call("/api/v1/invoices/"+p4PaymentGuardSource.id+"/payments",{
+    method:"POST",headers:{"Idempotency-Key":"p4-payment-before-correction-"+randomUUID()},
+    body:JSON.stringify({amount:"1.0000",paymentDate:issueDate,method:"bank transfer",reference:"CI-P4-PAY-"+suffix,notes:"Pack 4 payment-state guard fixture"}),
+  },phase6aSession.jar);
+  assert.equal(p4TestPayment.response.status,201,"Pack 4 payment guard invoice accepts an in-scope payment");
+  const p4PaidCancelRequest=await call("/api/v1/correction-requests",{
+    method:"POST",headers:{"Idempotency-Key":"p4-paid-cancel-"+randomUUID()},
+    body:JSON.stringify({invoiceId:p4PaymentGuardSource.id,correctionType:"CANCEL",reason:"Request cancellation for an invoice with a recorded payment."}),
+  },phase6aSession.jar);
+  assert.equal(p4PaidCancelRequest.response.status,201);
+  const p4PaidCancelReview=await call("/api/v1/correction-requests/"+p4PaidCancelRequest.body.data.id+"/decision",{
+    method:"POST",body:JSON.stringify({decision:"APPROVE",reason:"Review attempt checks active recorded payment allocations."}),
+  },p4ReviewerSession.jar);
+  assert.equal(p4PaidCancelReview.response.status,409,"cancellation with active recorded allocations must be blocked");
+  assert.equal(p4PaidCancelReview.body.error.code,"PAYMENT_STATE_GUARD");
+  const p4PaidAfterGuard=await call("/api/v1/invoices/"+p4PaymentGuardSource.id,{},phase6aSession.jar);
+  assert.equal(p4PaidAfterGuard.body.data.lifecycleStatus,"ISSUED","payment guard must preserve the issued invoice");
+  const p4StillPending=await call("/api/v1/correction-requests?status=PENDING_REVIEW&invoiceId="+p4PaymentGuardSource.id,{},p4ReviewerSession.jar);
+  assert.equal(p4StillPending.body.data.length,1,"blocked execution leaves request available for further review");
+  console.log("PASS: Pack 4 cancellation refuses active recorded allocations and leaves source invoice/request unchanged.");
+
+  const p4NoteSource=await p4CreateIssuedInvoice("note-policy");
+  const p4NoteRequest=await call("/api/v1/correction-requests",{
+    method:"POST",headers:{"Idempotency-Key":"p4-credit-note-"+randomUUID()},
+    body:JSON.stringify({invoiceId:p4NoteSource.id,correctionType:"CREDIT_NOTE",reason:"Request credit note after a documented source-invoice issue."}),
+  },phase6aSession.jar);
+  assert.equal(p4NoteRequest.response.status,201);
+  const p4NoteExecution=await call("/api/v1/correction-requests/"+p4NoteRequest.body.data.id+"/decision",{
+    method:"POST",body:JSON.stringify({decision:"APPROVE",reason:"Credit-note treatment is not implemented until tax/numbering review."}),
+  },p4ReviewerSession.jar);
+  assert.equal(p4NoteExecution.response.status,409,"credit-note execution must fail closed without approved implementation");
+  assert.equal(p4NoteExecution.body.error.code,"CORRECTION_TREATMENT_BLOCKED");
+  const p4NoteSourceAfter=await call("/api/v1/invoices/"+p4NoteSource.id,{},phase6aSession.jar);
+  assert.equal(p4NoteSourceAfter.body.data.lifecycleStatus,"ISSUED","blocked credit-note request cannot change source invoice");
+  const p4NoteReject=await call("/api/v1/correction-requests/"+p4NoteRequest.body.data.id+"/decision",{
+    method:"POST",body:JSON.stringify({decision:"REJECT",reason:"Reject until the issuer-approved statutory note treatment is available."}),
+  },p4ReviewerSession.jar);
+  assert.equal(p4NoteReject.response.status,200);
+  assert.equal(p4NoteReject.body.data.status,"REJECTED");
+  const p4NoteHistory=await call("/api/v1/correction-requests?status=all&invoiceId="+p4NoteSource.id,{},p4ReviewerSession.jar);
+  assert.equal(p4NoteHistory.body.data[0].history.length,2,"blocked note execution does not add a fabricated event; rejection is audited");
+
+  const p4NoQueueUser=await call("/api/v1/correction-requests?status=all",{},p3NoReverseSession.jar);
+  assert.equal(p4NoQueueUser.response.status,403,"users without approvals:read or invoice draft-update cannot access correction requests");
+  console.log("PASS: Pack 4 keeps credit-note execution blocked, permits an independently reasoned rejection, and enforces correction queue access.");
+
   const dbSessions = await db.execute("SELECT COUNT(*) AS count FROM auth_sessions WHERE user_id=?", [staff.userId]);
   assert.ok(Number(dbSessions[0][0].count) >= 1);
   console.log("PASS: Phase 05B authorization tests cover the exact seven-role grant matrix, effective session permissions, role-by-role reads/writes of every implemented protected data surface, anonymous denial, CSRF, account lifecycle, privilege escalation prevention, scope-change session revocation and rate limiting; customer/catalog API contracts and decimal serialization also pass.");
