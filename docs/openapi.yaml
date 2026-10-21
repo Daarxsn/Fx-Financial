@@ -841,7 +841,7 @@ paths:
       - { $ref: "#/components/parameters/InvoiceId" }
     post:
       tags: [Invoices]
-      summary: Issue a draft invoice, credit note or debit note with validated tax, numbering and an immutable configuration snapshot
+      summary: Issue a draft invoice after policy and technical readiness checks; credit/debit-note issuance is blocked pending an approved source-linked correction workflow
       operationId: issueInvoice
       x-implementation-status: implemented
       parameters:
@@ -871,7 +871,9 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
+        "409":
+          description: Policy/readiness conflict; draft credit/debit-note records are rejected with CORRECTION_TREATMENT_BLOCKED until an approved source-linked correction workflow is implemented.
+          $ref: "#/components/responses/Conflict"
         "422": { $ref: "#/components/responses/ValidationError" }
   /api/v1/invoices/{invoiceId}/cancel:
     parameters:
