@@ -98,6 +98,16 @@ export async function POST(request: NextRequest, context: { params: Promise<{ in
       await conn.rollback();
       return jsonNoStore({ error: { code: "NOT_FOUND", message: "Invoice not found in your assigned scope." } }, 404);
     }
+    // Credit/debit-note sequencing and templates alone do not make a legal correction flow.
+    // Until an issuer-approved workflow creates a linked note with verified tax/statutory
+    // treatment, never issue or replay note documents through the generic invoice endpoint.
+    if (invoice.document_type === "CREDIT_NOTE" || invoice.document_type === "DEBIT_NOTE") {
+      await conn.rollback();
+      return jsonNoStore({ error: {
+        code: "CORRECTION_TREATMENT_BLOCKED",
+        message: "Credit/debit notes cannot be issued through the generic invoice endpoint. An approved, source-linked correction workflow with issuer-specific tax, numbering and statutory treatment is required.",
+      } }, 409);
+    }
     if (invoice.lifecycle_status === "ISSUED") {
       const issuedDocumentDate = invoice.invoice_date instanceof Date
         ? invoice.invoice_date.toISOString().slice(0, 10)
@@ -124,8 +134,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ in
       await conn.rollback();
       return jsonNoStore({ error: { code: "CONFIGURATION_CONFLICT", message: "Only draft invoices can be issued." } }, 409);
     }
-    if (invoice.document_type !== "INVOICE" && invoice.document_type !== "CREDIT_NOTE" && invoice.document_type !== "DEBIT_NOTE") {
-      throw new ConfigurationConflictError("Only invoice, credit-note and debit-note records can be issued through this endpoint.");
+    if (invoice.document_type !== "INVOICE") {
+      throw new ConfigurationConflictError("Only an invoice can be issued through this endpoint; credit/debit notes require the governed correction workflow.");
     }
     const unresolvedPolicyDecisions = await unresolvedInvoicePolicyDecisions(conn, invoice.legal_entity_id);
     if (unresolvedPolicyDecisions.length) {

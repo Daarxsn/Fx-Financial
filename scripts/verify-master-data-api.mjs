@@ -1488,18 +1488,49 @@ try {
     method:"POST",headers:{"Idempotency-Key":"p6b-debit-"+phase6bSuffix.toLowerCase()+"-001"},
     body:JSON.stringify({documentDate:issueDate}),
   },phase6aSession.jar);
-  assert.equal(debitIssue.response.status,200,"debit note issues through the secured transactional path: "+JSON.stringify(debitIssue.body?.error??null));
-  assert.match(debitIssue.body.data.invoiceNumber,/^P6B-DN-/);
-  const [debitSnapshotRows]=await db.execute(
-    "SELECT resource_type,configuration_sha256,numbering_config_id,template_id FROM document_configuration_snapshots WHERE resource_id=?",
+  assert.equal(debitIssue.response.status,409,"generic invoice issue endpoint must not issue a debit note without a source-linked correction flow");
+  assert.equal(debitIssue.body.error.code,"CORRECTION_TREATMENT_BLOCKED");
+  const [debitStateRows]=await db.execute(
+    "SELECT lifecycle_status,invoice_number,issue_idempotency_key FROM invoices WHERE id=?",
     [debitNoteId],
   );
-  assert.equal(debitSnapshotRows.length,1);
-  assert.equal(debitSnapshotRows[0].resource_type,"DEBIT_NOTE");
-  assert.equal(debitSnapshotRows[0].numbering_config_id,debitNumbering.body.data.id);
-  assert.equal(debitSnapshotRows[0].template_id,debitTemplate.body.data.templateId);
-  assert.equal(debitSnapshotRows[0].configuration_sha256,debitIssue.body.data.configurationSha256);
-  console.log("PASS: debit notes use their own approved numbering series and preserve the selected immutable configuration snapshot.");
+  assert.equal(debitStateRows[0].lifecycle_status,"DRAFT");
+  assert.equal(debitStateRows[0].invoice_number,null,"blocked note issuance must not reserve a legal document number");
+  assert.equal(debitStateRows[0].issue_idempotency_key,null);
+  const [debitSnapshotRows]=await db.execute(
+    "SELECT id FROM document_configuration_snapshots WHERE resource_id=?",
+    [debitNoteId],
+  );
+  assert.equal(debitSnapshotRows.length,0,"blocked debit note must not capture an issue snapshot");
+
+  const creditNoteId=randomUUID();
+  await db.execute(
+    "INSERT INTO invoices (id,legal_entity_id,brand_id,customer_id,document_type,lifecycle_status,payment_terms_days,currency,subtotal,discount_total,tax_total,grand_total) VALUES (?, ?, NULL, ?, 'CREDIT_NOTE','DRAFT',30,'INR',100.0000,0,18.0000,118.0000)",
+    [creditNoteId,entityA.id,created.body.data.id],
+  );
+  await db.execute(
+    "INSERT INTO invoice_lines (id,invoice_id,line_number,description,quantity,unit_price,discount_amount,tax_rate,tax_code,tax_rule_id,tax_registration_id,tax_amount,line_total) VALUES (?,?,1,'CI credit-note line',1.0000,100.0000,0,18.000000,?,?,?,18.0000,118.0000)",
+    [randomUUID(),creditNoteId,phase6bTaxCode,phase6bTaxRuleId,phase6bRegistrationId],
+  );
+  const creditIssue=await call("/api/v1/invoices/"+creditNoteId+"/issue",{
+    method:"POST",headers:{"Idempotency-Key":"p6b-credit-"+phase6bSuffix.toLowerCase()+"-001"},
+    body:JSON.stringify({documentDate:issueDate}),
+  },phase6aSession.jar);
+  assert.equal(creditIssue.response.status,409,"generic invoice issue endpoint must not issue a credit note without source linkage and approved treatment");
+  assert.equal(creditIssue.body.error.code,"CORRECTION_TREATMENT_BLOCKED");
+  const [creditStateRows]=await db.execute(
+    "SELECT lifecycle_status,invoice_number,issue_idempotency_key FROM invoices WHERE id=?",
+    [creditNoteId],
+  );
+  assert.equal(creditStateRows[0].lifecycle_status,"DRAFT");
+  assert.equal(creditStateRows[0].invoice_number,null);
+  assert.equal(creditStateRows[0].issue_idempotency_key,null);
+  const [creditSnapshotRows]=await db.execute(
+    "SELECT id FROM document_configuration_snapshots WHERE resource_id=?",
+    [creditNoteId],
+  );
+  assert.equal(creditSnapshotRows.length,0);
+  console.log("PASS: note series/templates remain configurable, but generic issuance blocks credit/debit notes before number reservation and immutable snapshot capture until source-linked correction treatment is implemented.");
 
   const unitCode = "P6A_" + suffix.toUpperCase();
   const unitCreated = await call("/api/v1/business-units", {
