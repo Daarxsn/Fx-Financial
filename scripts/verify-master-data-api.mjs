@@ -332,6 +332,22 @@ try {
     "VALUES (?, ?, ?, JSON_OBJECT('line1', 'CI-only fixture'), 'INR', TRUE)",
     [testLegalEntityId, "CI Test Legal Entity " + suffix, "CI Test Entity " + suffix],
   );
+  // This legacy fixture is inserted directly for RBAC testing, so seed the same pending
+  // issuer-policy records that the production legal-entity API creates transactionally.
+  const p4SeedEntityPolicies = [
+    ["D-02","Numbering","Use an approved server-side sequence per issuer and document type.","Business owner and finance/accounting","Awaiting issuer-specific numbering format and evidence."],
+    ["D-03","Financial year","Configure the actual issuer financial-year boundary and timezone.","Finance/accounting owner","Awaiting issuer-specific financial-year/timezone decision."],
+    ["D-04","Currency","Use the legal entity currency from approved issuer records.","Finance/accounting owner","Awaiting explicit currency approval from authoritative records."],
+    ["D-06","Tax registrations and rule matrix","Use approved effective-dated tax rules and matching registrations.","Finance/accounting and qualified tax reviewer","Awaiting issuer-specific tax matrix approval."],
+    ["D-07","Payment terms and due dates","Use approved issuer/customer contract terms and snapshot due dates.","Finance and business owner","Awaiting issuer-specific payment-terms decision."],
+    ["D-11","E-invoice and statutory applicability","Record an evidenced statutory applicability decision; do not infer electronic submission.","Tax/accounting owner; tax/legal where required","Awaiting issuer-specific statutory applicability evidence."],
+  ];
+  for (const [decisionKey,topic,recommendation,approver,rationale] of p4SeedEntityPolicies) {
+    await db.execute(
+      "INSERT IGNORE INTO business_policy_decisions (id,decision_key,legal_entity_id,topic,recommended_starting_point,required_approver,requires_issue_gate,status,rationale) VALUES (?,?,?,?,?,?,TRUE,'PENDING',?)",
+      [randomUUID(),decisionKey,testLegalEntityId,topic,recommendation,approver,rationale],
+    );
+  }
   const staff = await seedUser("invoice_creator", "staff-" + suffix + "@example.invalid");
   const viewer = await seedUser("auditor", "viewer-" + suffix + "@example.invalid", "ACTIVE", "Viewer Strong Password #5!", [testLegalEntityId]);
   const admin = await seedUser("system_admin", "admin-" + suffix + "@example.invalid", "ACTIVE", "Admin Strong Password #5!");
