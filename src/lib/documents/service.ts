@@ -1,7 +1,8 @@
 import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
-import type { PoolConnection, RowDataPacket } from "mysql2/promise";
+import type { RowDataPacket } from "mysql2";
+import type { PoolConnection } from "mysql2/promise";
 import { pool } from "@/lib/db/pool";
 import { canonicalDocumentJson, captureDocumentContentSnapshot, type ContentCaptureReason, type ContentSourceType } from "@/lib/documents/snapshots";
 import { renderDocumentPdf, type PdfSnapshot } from "@/lib/documents/pdf";
