@@ -50,7 +50,10 @@ const EXPECTED_PERMISSION_KEYS = [
   "reports:read",
   "audit:read",
   "users:manage",
-  "settings:manage"
+  "settings:manage",
+  "email:send",
+  "email:read",
+  "reminders:manage"
 ];
 
 // Exact CI baseline. Catch accidental permission additions/removals without changing the production
@@ -80,7 +83,10 @@ const EXPECTED_ROLE_GRANTS = {
     "approvals:decide",
     "reports:read",
     "audit:read",
-    "settings:manage"
+    "settings:manage",
+    "email:send",
+    "email:read",
+    "reminders:manage"
   ],
   "invoice_creator": [
     "customers:read",
@@ -98,7 +104,9 @@ const EXPECTED_ROLE_GRANTS = {
     "catalog:read",
     "invoices:read",
     "invoices:issue",
-    "quotations:read"
+    "quotations:read",
+    "email:send",
+    "email:read"
   ],
   "payment_recorder": [
     "customers:read",
@@ -120,7 +128,8 @@ const EXPECTED_ROLE_GRANTS = {
     "quotations:read",
     "approvals:read",
     "reports:read",
-    "audit:read"
+    "audit:read",
+    "email:read"
   ]
 };
 
