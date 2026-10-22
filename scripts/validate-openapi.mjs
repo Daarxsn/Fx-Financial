@@ -163,6 +163,9 @@ const expectedImplemented = new Set([
   "PATCH /api/v1/quotations/{quotationId}",
   "POST /api/v1/quotations/{quotationId}/status",
   "POST /api/v1/quotations/{quotationId}/convert",
+  "GET /api/v1/documents/{sourceType}/{sourceId}",
+  "POST /api/v1/documents/{sourceType}/{sourceId}/generate",
+  "GET /api/v1/documents/files/{documentId}",
 ]);
 for (const endpoint of expectedImplemented) {
   if (!implemented.has(endpoint)) fail(`known implemented route missing or not marked implemented: ${endpoint}`);
