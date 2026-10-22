@@ -250,11 +250,17 @@ jobs:
           trap 'kill "$production_pid" 2>/dev/null || true' EXIT
           production_code=""
           for attempt in $(seq 1 30); do
-            production_code="$(curl -sS -D "$RUNNER_TEMP/production-headers.txt" -o "$RUNNER_TEMP/production-health.json" -w '%{http_code}' http://127.0.0.1:3004/api/health || true)"
+            # Exercise a page that does not depend on the database. This test isolates the
+            # production HTTP-header contract from the independent database-health contract.
+            production_code="$(curl -sS -D "$RUNNER_TEMP/production-headers.txt" -o "$RUNNER_TEMP/production-login.html" -w '%{http_code}' http://127.0.0.1:3004/login || true)"
             if [ "$production_code" = "200" ]; then break; fi
             sleep 2
           done
-          test "$production_code" = "200"
+          if [ "$production_code" != "200" ]; then
+            echo "Production Next.js server did not serve /login (HTTP $production_code). Startup log follows:"
+            cat "$RUNNER_TEMP/next-production-headers.log"
+            exit 1
+          fi
           node -e 'const h=require("node:fs").readFileSync(process.env.RUNNER_TEMP+"/production-headers.txt","utf8").toLowerCase(); for(const x of ["content-security-policy:","x-frame-options: deny","x-content-type-options: nosniff","referrer-policy: no-referrer","permissions-policy: camera=(), microphone=(), geolocation=()","cross-origin-opener-policy: same-origin","strict-transport-security: max-age=31536000"]) if(!h.includes(x)){console.error("Missing production security header: "+x);process.exit(1)} if(h.includes("x-powered-by:"))process.exit(1); console.log("PASS: production HTTP response includes CSP, frame/MIME/referrer/permissions/COOP/HSTS headers and omits X-Powered-By.")'
           kill "$production_pid" 2>/dev/null || true
           wait "$production_pid" 2>/dev/null || true
