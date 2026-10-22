@@ -168,7 +168,8 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
     rows.forEach((raw,index)=>{
       const item=object(raw);
       const description=text(item.description,"Item / service");
-      const descHeight=doc.heightOfString(description,{width:width-310,fontSize:8});
+      doc.font(fontName).fontSize(8);
+      const descHeight=doc.heightOfString(description,{width:width-310});
       const rowHeight=Math.max(24,descHeight+10);
       if(doc.y+rowHeight>bottom()){
         doc.addPage();doc.y=38;drawLineHeader();
