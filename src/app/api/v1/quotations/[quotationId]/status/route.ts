@@ -120,7 +120,9 @@ export async function POST(request: NextRequest, context: Context) {
       return jsonNoStore({ error: { code: "VERSION_CONFLICT", message: "Quotation state changed while updating. Refresh and retry." } }, 409);
     }
     // Save the lifecycle-specific PDF content before committing the transition. Each snapshot is immutable.
-    await captureDocumentSourceSnapshot(conn, "QUOTATION", quotationId, actor.userId, target === "SENT" ? "ISSUED" : "STATUS_CHANGE");
+    if (quotationNumber) {
+      await captureDocumentSourceSnapshot(conn, "QUOTATION", quotationId, actor.userId, target === "SENT" ? "ISSUED" : "STATUS_CHANGE");
+    }
     await auditQuotationChange(conn, actor.userId, quotationId, "quotation.status.changed", "Quotation status changed",
       { status: current, recordVersion: input.expectedVersion },
       { status: target, recordVersion: input.expectedVersion + 1, quotationNumber, reason: input.reason ?? null });
