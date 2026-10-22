@@ -3201,6 +3201,133 @@ try {
   assert.ok(p5ReceiptHistory.body.data.some(item => item.id === p5ReceiptPdf.body.data.id));
   console.log("PASS: Pack 5 authenticated invoice/quotation/receipt PDF generation, duplicate suppression, explicit immutable regeneration, SHA-256 download integrity, no-store headers, anonymous denial and legal-entity isolation.");
 
+  // Pack 6: email outbox, idempotent delivery, verified webhook evidence and approved reminders.
+  const p6Anonymous = await call("/api/v1/email/outbox?sourceType=INVOICE&sourceId=" + p4NoteSource.id);
+  assert.equal(p6Anonymous.response.status, 401, "email history rejects anonymous access");
+  const p6Preview = await call("/api/v1/email/outbox?sourceType=INVOICE&sourceId=" + p4NoteSource.id, {}, phase6aSession.jar);
+  assert.equal(p6Preview.response.status, 200, "authorized email preview succeeds");
+  assert.match(p6Preview.body.data.defaultRecipientEmail, /example\.invalid$/);
+
+  const p6Key = randomUUID();
+  const p6Body = {
+    sourceType: "INVOICE",
+    sourceId: p4NoteSource.id,
+    recipientEmail: p6Preview.body.data.defaultRecipientEmail,
+    recipientConfirmed: true,
+  };
+  const p6Queue = await call("/api/v1/email/outbox", {
+    method: "POST", headers: { "Idempotency-Key": p6Key }, body: JSON.stringify(p6Body),
+  }, phase6aSession.jar);
+  assert.equal(p6Queue.response.status, 202, "email request is durably queued");
+  assert.equal(p6Queue.body.data.status, "QUEUED");
+  assert.match(p6Queue.body.data.attachmentSha256, /^[a-f0-9]{64}$/);
+  assert.ok(Number(p6Queue.body.data.attachmentByteSize) > 1000);
+  const p6Replay = await call("/api/v1/email/outbox", {
+    method: "POST", headers: { "Idempotency-Key": p6Key }, body: JSON.stringify(p6Body),
+  }, phase6aSession.jar);
+  assert.equal(p6Replay.response.status, 200, "same idempotency key replays existing outbox record");
+  assert.equal(p6Replay.body.data.id, p6Queue.body.data.id);
+  assert.equal(p6Replay.body.data.idempotentReplay, true);
+  const p6Unconfirmed = await call("/api/v1/email/outbox", {
+    method: "POST", headers: { "Idempotency-Key": randomUUID() },
+    body: JSON.stringify({ ...p6Body, recipientConfirmed: false }),
+  }, phase6aSession.jar);
+  assert.equal(p6Unconfirmed.response.status, 422, "recipient confirmation is mandatory");
+
+  const p6CronDenied = await fetch(new URL("/api/cron/email-outbox", baseUrl), { cache: "no-store" });
+  assert.equal(p6CronDenied.status, 401, "worker endpoint requires scheduler credential");
+  const p6Cron = await fetch(new URL("/api/cron/email-outbox", baseUrl), {
+    headers: { Authorization: "Bearer ci-pack6-cron-secret-long-enough-000000000000" }, cache: "no-store",
+  });
+  assert.equal(p6Cron.status, 200, "worker sends queued message through test provider");
+  const p6MessagesResponse = await fetch("http://127.0.0.1:3030/__test/messages", {
+    headers: { "X-Test-Token": "ci-email-test-only" }, cache: "no-store",
+  });
+  assert.equal(p6MessagesResponse.status, 200);
+  const p6Messages = await p6MessagesResponse.json();
+  assert.equal(p6Messages.count, 1, "idempotency replay does not send duplicate email");
+  assert.equal(p6Messages.messages[0].attachmentCount, 1, "email attaches one checksum-verified PDF");
+  assert.equal(p6Messages.messages[0].to[0], p6Body.recipientEmail);
+  const p6SentHistory = await call("/api/v1/email/outbox?sourceType=INVOICE&sourceId=" + p4NoteSource.id, {}, phase6aSession.jar);
+  const p6Sent = p6SentHistory.body.data.items.find(item => item.id === p6Queue.body.data.id);
+  assert.equal(p6Sent.status, "SENT", "provider acceptance is not confused with final delivery");
+  assert.ok(p6Sent.providerMessageId);
+
+  const p6WebhookId = "evt-pack6-" + randomUUID();
+  const p6WebhookTimestamp = String(Math.floor(Date.now() / 1000));
+  const p6WebhookPayload = JSON.stringify({ type: "email.delivered", data: { id: p6Sent.providerMessageId } });
+  const p6WebhookSignature = createHmac("sha256", Buffer.from("ci-email-webhook-secret"))
+    .update(p6WebhookId + "." + p6WebhookTimestamp + "." + p6WebhookPayload).digest("base64");
+  const p6WebhookHeaders = {
+    "Content-Type": "application/json",
+    "svix-id": p6WebhookId,
+    "svix-timestamp": p6WebhookTimestamp,
+    "svix-signature": "v1," + p6WebhookSignature,
+  };
+  const p6Webhook = await fetch(new URL("/api/webhooks/resend", baseUrl), {
+    method: "POST", headers: p6WebhookHeaders, body: p6WebhookPayload, cache: "no-store",
+  });
+  assert.equal(p6Webhook.status, 200, "valid signed webhook accepted");
+  const p6WebhookReplay = await fetch(new URL("/api/webhooks/resend", baseUrl), {
+    method: "POST", headers: p6WebhookHeaders, body: p6WebhookPayload, cache: "no-store",
+  });
+  assert.equal(p6WebhookReplay.status, 200);
+  assert.equal((await p6WebhookReplay.json()).data.duplicate, true, "provider webhook replay is idempotent");
+  const p6DeliveredHistory = await call("/api/v1/email/outbox?sourceType=INVOICE&sourceId=" + p4NoteSource.id, {}, phase6aSession.jar);
+  const p6Delivered = p6DeliveredHistory.body.data.items.find(item => item.id === p6Queue.body.data.id);
+  assert.equal(p6Delivered.status, "DELIVERED", "signed delivery event updates delivery status");
+  assert.ok(p6Delivered.events.some(event => event.type === "PROVIDER_WEBHOOK:email.delivered"));
+
+  const p6Approver = await seedUser("finance_admin", "p6-approver-" + suffix + "@example.invalid", "ACTIVE",
+    "Pack6 Approver Password #5!", [entityA.id]);
+  const p6ApproverSession = await login(p6Approver);
+  const p6PolicyRequest = await call("/api/v1/reminders/policies", {
+    method: "POST",
+    body: JSON.stringify({ legalEntityId: entityA.id, firstReminderAfterDays: 3, maxReminders: 2, intervalDays: 7 }),
+  }, p4ReviewerSession.jar);
+  assert.equal(p6PolicyRequest.response.status, 201, "reminder policy starts pending finance approval");
+  assert.equal(p6PolicyRequest.body.data.status, "PENDING_APPROVAL");
+  const p6SelfApprove = await call("/api/v1/reminders/policies/" + p6PolicyRequest.body.data.id + "/approve", {
+    method: "POST",
+    body: JSON.stringify({ approvalReference: "CI-SELF-APPROVAL", evidenceNotes: "A fixture rationale that must be rejected by separation of duties." }),
+  }, p4ReviewerSession.jar);
+  assert.equal(p6SelfApprove.response.status, 409, "policy requester cannot approve the same policy");
+  assert.equal(p6SelfApprove.body.error.code, "SEPARATION_OF_DUTIES_REQUIRED");
+  const p6PolicyApproved = await call("/api/v1/reminders/policies/" + p6PolicyRequest.body.data.id + "/approve", {
+    method: "POST",
+    body: JSON.stringify({
+      approvalReference: "CI-NOT-REAL-PACK6-" + suffix,
+      evidenceNotes: "Disposable CI fixture only; this is not company approval and must not be used for production.",
+    }),
+  }, p6ApproverSession.jar);
+  assert.equal(p6PolicyApproved.response.status, 200, "independent finance approver can activate policy with evidence");
+  assert.equal(p6PolicyApproved.body.data.status, "ACTIVE");
+
+  await db.execute("UPDATE invoices SET due_date=DATE_SUB(CURDATE(),INTERVAL 8 DAY) WHERE id=?", [p4NoteSource.id]);
+  const p6ReminderCron = await fetch(new URL("/api/cron/email-outbox", baseUrl), {
+    headers: { Authorization: "Bearer ci-pack6-cron-secret-long-enough-000000000000" }, cache: "no-store",
+  });
+  assert.equal(p6ReminderCron.status, 200, "scheduler can queue and send overdue reminder");
+  const p6ReminderHistory = await call("/api/v1/email/outbox?sourceType=INVOICE&sourceId=" + p4NoteSource.id, {}, phase6aSession.jar);
+  const p6Reminder = p6ReminderHistory.body.data.items.find(item => item.messageKind === "OVERDUE_REMINDER");
+  assert.ok(p6Reminder, "active overdue policy creates separate reminder record");
+  assert.ok(["SENT", "DELIVERED"].includes(p6Reminder.status));
+  assert.match(p6Reminder.attachmentSha256, /^[a-f0-9]{64}$/);
+  const p6Disabled = await call("/api/v1/reminders/policies/" + p6PolicyRequest.body.data.id + "/disable", {
+    method: "POST", body: JSON.stringify({ reason: "Disable after automated acceptance test." }),
+  }, p4ReviewerSession.jar);
+  assert.equal(p6Disabled.response.status, 200);
+  assert.equal(p6Disabled.body.data.status, "DISABLED");
+  const p6FinalCron = await fetch(new URL("/api/cron/email-outbox", baseUrl), {
+    headers: { Authorization: "Bearer ci-pack6-cron-secret-long-enough-000000000000" }, cache: "no-store",
+  });
+  assert.equal(p6FinalCron.status, 200);
+  const p6FinalMessages = await fetch("http://127.0.0.1:3030/__test/messages", {
+    headers: { "X-Test-Token": "ci-email-test-only" }, cache: "no-store",
+  }).then(response => response.json());
+  assert.equal(p6FinalMessages.count, 2, "one original message and one reminder are sent without duplicates");
+  console.log("PASS: Pack 6 durable outbox, idempotent replay, verified PDF attachment, signed/idempotent webhooks, delivery timeline, independent reminder approval, overdue scheduling and disable checks.");
+
   const p4NoQueueUser=await call("/api/v1/correction-requests?status=all",{},p3NoReverseSession.jar);
   assert.equal(p4NoQueueUser.response.status,403,"users without approvals:read or invoice draft-update cannot access correction requests");
   console.log("PASS: Pack 4 keeps credit-note execution blocked, permits an independently reasoned rejection, and enforces correction queue access.");
