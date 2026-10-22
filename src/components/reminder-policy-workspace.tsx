@@ -10,7 +10,6 @@ type Policy={
  approvedAt:string|null;disabledAt:string|null;disableReason:string|null;
 };
 type Api<T>={data?:T;error?:{message?:string;code?:string}};
-const uuid=()=>crypto.randomUUID();
 
 export function ReminderPolicyWorkspace(){
  const [entities,setEntities]=useState<Entity[]>([]);
@@ -54,7 +53,7 @@ export function ReminderPolicyWorkspace(){
   finally{setLoading(false);}
  },[request]);
 
- useEffect(()=>{void refresh();},[refresh]);
+ useEffect(()=>{void Promise.resolve().then(()=>refresh());},[refresh]);
 
  async function csrf(){
   const {response,body}=await request("/api/v1/auth/csrf");
