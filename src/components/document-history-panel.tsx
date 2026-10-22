@@ -8,7 +8,7 @@ type EventItem = { type: string; previousStatus: string | null; status: string; 
 type DocumentItem = {
   id: string; contentSnapshotId: string; sourceType: SourceType; sourceDocumentId: string; documentNumber: string;
   mimeType: string; byteSize: number | null; fileSha256: string | null; status: "PENDING" | "READY" | "FAILED";
-  generationAttempts: number; lastErrorCode: string | null; createdAt: string; readyAt: string | null; events: EventItem[];
+  generationAttempts: number; lastErrorCode: string | null; createdAt: string; readyAt: string | null; reused?: boolean; events: EventItem[];
 };
 type Props = { sourceType: SourceType; sourceId: string };
 
