@@ -59,6 +59,8 @@ const amt = (value: unknown) => text(value,"0.0000");
 
 export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date | string): Promise<Buffer> {
   return await new Promise<Buffer>((resolveBuffer,rejectBuffer) => {
+    let rendererStage = "document-setup";
+    try {
     const config = object(snapshot.configurationSnapshot);
     const brand = object(config.brand);
     const template = object(config.template);
@@ -83,7 +85,13 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
     });
     const chunks:Buffer[]=[];
     doc.on("data",(chunk:Buffer)=>chunks.push(Buffer.from(chunk)));
-    doc.on("error",rejectBuffer);
+    doc.on("error",(error: unknown)=>{
+      console.error("PDF renderer stream failed",{
+        stage:rendererStage,
+        errorName:error instanceof Error?error.name:"UnknownError",
+      });
+      rejectBuffer(error);
+    });
     doc.on("end",()=>resolveBuffer(Buffer.concat(chunks)));
     let fontName = "Helvetica";
     const embedded = fontPath();
@@ -104,6 +112,7 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
     const body=(size=8)=>doc.font(fontName).fontSize(size).fillColor("#172033");
     const ensure=(height:number)=>{if(doc.y+height>bottom())doc.addPage();};
 
+    rendererStage = "header";
     doc.rect(0,0,doc.page.width,13).fill(accent);
     doc.y=36;
     doc.font(fontName).fontSize(8).fillColor(accent).text(brandName || "FALCHION XENIAA",left,doc.y,{width:width*0.62});
@@ -114,6 +123,7 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
     doc.y=Math.max(doc.y+8,88);
     line(doc.y);doc.moveDown(0.7);
 
+    rendererStage = "issuer-customer";
     const identityY=doc.y;
     const half=(width-20)/2;
     doc.font(fontName).fontSize(8).fillColor(accent).text("ISSUED BY",left,identityY,{width:half});
@@ -137,6 +147,7 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
     doc.y=Math.max(doc.y,identityY+84);
     line(doc.y);doc.moveDown(0.6);
 
+    rendererStage = "document-metadata";
     const meta=[
       ["DOCUMENT DATE",snapshot.documentDate?.slice(0,10) ?? "—"],
       ["DUE DATE",snapshot.sourceType==="INVOICE"?snapshot.dueDate?.slice(0,10) ?? "—":"—"],
@@ -152,6 +163,7 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
     });
     doc.y=my+31;line(doc.y);doc.moveDown(0.6);
 
+    rendererStage = "line-items";
     const rows=Array.isArray(snapshot.lines)?snapshot.lines:[];
     const drawLineHeader=()=>{
       const y=doc.y;
@@ -185,6 +197,7 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
     });
     if(!rows.length){body(8);doc.text("No item lines are present in this source snapshot.");doc.moveDown(0.4);}
 
+    rendererStage = "totals-and-payment";
     const totalsX=right-220;
     const totalRows=snapshot.sourceType==="RECEIPT"
       ? [["RECEIPT AMOUNT",amt(snapshot.grandTotal)]]
@@ -218,6 +231,7 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       doc.font(fontName).fontSize(8).fillColor(accent).text("NOTES",left,doc.y);
       doc.moveDown(0.3);body(8).text(text(snapshot.notes),left,doc.y,{width,lineGap:2});
     }
+    rendererStage = "footer";
     const entityCfg=object(config.legalEntity);
     const footer=text(templateConfig.footer ?? templateConfig.terms ?? entityCfg.invoiceFooter,"");
     if(footer){
@@ -234,6 +248,14 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       doc.font(fontName).fontSize(7).fillColor("#667085").text("Falchion Xeniaa · rendered from an immutable content snapshot",left,y,{width:width*0.78});
       doc.font(fontName).fontSize(7).fillColor("#667085").text("Page "+(p+1)+" of "+pages.count,right-width*0.2,y,{width:width*0.2,align:"right"});
     }
+    rendererStage = "finalize";
     doc.end();
+    } catch (error) {
+      console.error("PDF renderer failed",{
+        stage:rendererStage,
+        errorName:error instanceof Error?error.name:"UnknownError",
+      });
+      rejectBuffer(error);
+    }
   });
 }
