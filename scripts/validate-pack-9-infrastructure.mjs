@@ -63,6 +63,12 @@ check("browser acceptance includes login, invoice/payment, correction, and repor
   browser.includes("UI login opens the protected workspace") &&
   browser.toLowerCase().includes("invoice") && browser.toLowerCase().includes("payment") &&
   browser.includes("correction request") && browser.includes("Pack 7 reporting screen"));
+check("browser acceptance verifies settings readiness and protected PDF generation/download",
+  browser.includes("Core issuance checks passed") &&
+  browser.includes("Advanced settings") &&
+  browser.includes("PDF documents and history") &&
+  browser.includes("content-digest") &&
+  browser.includes("download.saveAs"));
 check("production database connections require TLS and validated certificates",
   pool.includes('sslSetting !== "true"') &&
   pool.includes('process.env.NODE_ENV === "production" && sslSetting !== "true"') &&

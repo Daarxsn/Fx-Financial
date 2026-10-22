@@ -56,7 +56,7 @@ After a Git-linked Preview deploy finishes, verify the exact commit deployed and
 SMOKE_BASE_URL=https://your-actual-preview-origin.example npm run pack9:smoke
 ~~~
 
-Deployment mode checks /login, security headers, DB health, anonymous CSRF bootstrap/cookie, and anonymous denial on a protected customer API. It does not create or issue financial data. In staging, also verify PDF generation/download scope, private object-storage integrity, email delivery to a controlled recipient, signed webhook handling, and worker authorization/processing with synthetic data only.
+Deployment mode checks /login, security headers, DB health, anonymous CSRF bootstrap/cookie, and anonymous denial on a protected customer API. It does not create or issue financial data. The disposable-MySQL browser suite also exercises the Settings readiness state and generates/downloads a test issued-invoice PDF through the protected file route. In staging, independently verify PDF generation/download scope, private object-storage integrity, email delivery to a controlled recipient, signed webhook handling, and worker authorization/processing with synthetic data only.
 
 ### Five-minute email worker gate
 vercel.json schedules /api/cron/email-outbox every five minutes. Official Vercel docs say Hobby cron schedules are once daily, while Pro/Enterprise support per-minute scheduling: https://vercel.com/docs/cron-jobs/usage-and-pricing.

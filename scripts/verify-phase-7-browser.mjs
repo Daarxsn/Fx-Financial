@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { randomBytes, randomUUID, scrypt as scryptCallback } from "node:crypto";
 import mysql from "mysql2/promise";
 import { chromium } from "playwright";
@@ -299,6 +299,18 @@ try {
   assert.match(String(issuedBrowserSnapshots[0].configuration_sha256), /^[0-9a-f]{64}$/);
   pass("Invoice workspace edits the draft, issues it, allocates a number, and persists one integrity-hashed snapshot.");
 
+  // Pack 9 browser acceptance: the onboarding/settings surface reports readiness for the real test entity.
+  await page.goto(baseUrl + "/settings");
+  await page.getByRole("heading", { name: "Your invoicing workspace", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "Core issuance checks passed", exact: true }).waitFor();
+  pass("Settings onboarding confirms first-invoice readiness for the authorized legal entity.");
+  await page.getByRole("button", { name: "Advanced settings", exact: true }).click();
+  await page.getByRole("heading", { name: "Company & invoice configuration", exact: true }).waitFor();
+  await page.getByRole("button", { name: /Tax Registrations & rules/ }).waitFor();
+  await page.getByRole("button", { name: "Back to quick setup", exact: true }).click();
+  await page.getByRole("heading", { name: "Your invoicing workspace", exact: true }).waitFor();
+  pass("Advanced setup remains available without replacing the simplified Settings entry point.");
+
   // Pack 2 Part B: create, send, accept and convert a quotation through its real workspace.
   const quotationUiDate = new Date().toISOString().slice(0, 10);
   const quotationValidUntilDate = new Date(quotationUiDate + "T00:00:00.000Z");
@@ -409,6 +421,35 @@ try {
    const targetInvoiceRow = page.locator("tbody tr").filter({ hasText: invoiceByLineRows[0].invoice_number });
    await targetInvoiceRow.getByRole("button", { name: "Details", exact: true }).click();
    await page.getByRole("heading", { name: invoiceByLineRows[0].invoice_number, exact: true }).waitFor();
+
+   // Pack 9 browser acceptance: generate and download a private PDF from the issued source record.
+   const pdfPanel = page.locator("section.master-data-panel").filter({
+     has: page.getByRole("heading", { name: "PDF documents and history", exact: true }),
+   });
+   await pdfPanel.waitFor({ state: "visible" });
+   await pdfPanel.getByRole("button", { name: "Generate PDF", exact: true }).click();
+   await pdfPanel.getByText("The PDF was generated, checksum-verified, and stored as a new history item.", { exact: true }).waitFor();
+   const pdfRow = pdfPanel.locator("tbody tr").first();
+   await pdfRow.getByText("READY", { exact: true }).waitFor();
+   const pdfFileResponsePromise = page.waitForResponse(response => {
+     const url = new URL(response.url());
+     return url.pathname.startsWith("/api/v1/documents/files/") && response.request().method() === "GET";
+   });
+   const pdfDownloadPromise = page.waitForEvent("download");
+   await pdfRow.getByRole("link", { name: "Download PDF", exact: true }).click();
+   const [pdfFileResponse, pdfDownload] = await Promise.all([pdfFileResponsePromise, pdfDownloadPromise]);
+   assert.equal(pdfFileResponse.status(), 200, "authorized PDF file route returns HTTP 200");
+   assert.equal(pdfFileResponse.headers()["content-type"], "application/pdf");
+   assert.match(pdfFileResponse.headers()["content-digest"] ?? "", /^sha-256=:/);
+   assert.equal(pdfFileResponse.headers()["x-content-type-options"], "nosniff");
+   assert.equal(pdfDownload.suggestedFilename(), invoiceByLineRows[0].invoice_number + ".pdf");
+   const pdfPath = artifactDirectory + "/issued-invoice-" + suffix + ".pdf";
+   await pdfDownload.saveAs(pdfPath);
+   const pdfBytes = await readFile(pdfPath);
+   assert.ok(pdfBytes.byteLength > 512, "downloaded PDF contains a non-trivial document payload");
+   assert.equal(pdfBytes.subarray(0, 5).toString("ascii"), "%PDF-", "downloaded document has the PDF file signature");
+   pass("Issued invoice PDF is generated and downloaded through the re-authorized private file route with integrity headers.");
+
    await page.locator("#invoice-payment-amount").fill("10.0000");
    await page.locator("#invoice-payment-date").fill(invoiceUiDate);
    await page.locator("#invoice-payment-method").selectOption("CASH");
