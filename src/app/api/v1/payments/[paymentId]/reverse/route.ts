@@ -6,6 +6,7 @@ import { pool } from "@/lib/db/pool";
 import { requirePermission } from "@/lib/auth/authorize";
 import { assertCsrf } from "@/lib/auth/csrf";
 import { apiError, jsonNoStore } from "@/lib/http/api-response";
+import { captureDocumentSourceSnapshot } from "@/lib/documents/service";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -128,6 +129,8 @@ export async function POST(request:NextRequest,context:Context){
     [randomUUID(),actor.userId,invoiceId,JSON.stringify({paidAmount:money(beforeBalance.paid),outstandingBalance:money(beforeOutstanding)}),
      JSON.stringify({paymentId,reversalEventId:eventId,paidAmount:money(nextPaid),outstandingBalance:money(nextOutstanding),reason:input.reason})]);
   }
+  // Reversal creates a new immutable receipt snapshot; the original receipt remains preserved.
+  await captureDocumentSourceSnapshot(conn,"RECEIPT",paymentId,actor.userId,"RECEIPT_REVERSED");
   await conn.commit();
   return jsonNoStore({data:{id:payment.id,receiptReference:payment.receipt_reference??"RCPT-"+payment.id.replaceAll("-","").toUpperCase(),
    legalEntityId:payment.legal_entity_id,customerId:payment.customer_id,amount:money(units(payment.amount)),currency:payment.currency,
