@@ -7,6 +7,7 @@ import { apiError, jsonNoStore } from "@/lib/http/api-response";
 import { calendarDateInTimeZone, captureDocumentConfigurationSnapshot } from "@/lib/configuration/service";
 import { quotationStatusSchema } from "@/lib/validation/quotation";
 import { auditQuotationChange, normalizeStoredJson, QuotationValidationError, quoteSnapshotObject } from "@/lib/finance/quotation-service";
+import { captureDocumentSourceSnapshot } from "@/lib/documents/service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -118,6 +119,8 @@ export async function POST(request: NextRequest, context: Context) {
       await conn.rollback();
       return jsonNoStore({ error: { code: "VERSION_CONFLICT", message: "Quotation state changed while updating. Refresh and retry." } }, 409);
     }
+    // Save the lifecycle-specific PDF content before committing the transition. Each snapshot is immutable.
+    await captureDocumentSourceSnapshot(conn, "QUOTATION", quotationId, actor.userId, target === "SENT" ? "ISSUED" : "STATUS_CHANGE");
     await auditQuotationChange(conn, actor.userId, quotationId, "quotation.status.changed", "Quotation status changed",
       { status: current, recordVersion: input.expectedVersion },
       { status: target, recordVersion: input.expectedVersion + 1, quotationNumber, reason: input.reason ?? null });
