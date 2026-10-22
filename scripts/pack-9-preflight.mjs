@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { accessSync, constants } from "node:fs";
+import { isIP } from "node:net";
 
 const targetFlag = process.argv.find((arg) => arg.startsWith("--target="));
 const target = targetFlag ? targetFlag.slice("--target=".length) : "";
@@ -31,9 +32,35 @@ function requireValue(key, options = {}) {
   return entry;
 }
 
+function isLoopbackOrLinkLocalDatabaseHost(rawHost) {
+  const host = rawHost.trim().toLowerCase().replace(/^\\[|\\]$/g, "").replace(/\\.$/, "");
+  if (host === "localhost" || host.endsWith(".localhost") || host === "localhost.localdomain") return true;
+
+  const ipVersion = isIP(host);
+  if (ipVersion === 4) {
+    const octets = host.split(".").map(Number);
+    return octets[0] === 0 || octets[0] === 127 ||
+      (octets[0] === 169 && octets[1] === 254);
+  }
+  if (ipVersion === 6) {
+    if (host === "::" || host === "::1") return true;
+    // IPv4-mapped loopback/unspecified/link-local forms should not bypass the guard.
+    const mappedIpv4 = host.match(/(?:^|:)ffff:(\\d{1,3}(?:\\.\\d{1,3}){3})$/i)?.[1];
+    if (mappedIpv4 && isLoopbackOrLinkLocalDatabaseHost(mappedIpv4)) return true;
+    // IPv6 link-local is fe80::/10.
+    if (/^fe[89ab][0-9a-f]:/i.test(host)) return true;
+  }
+  return false;
+}
+
 const databaseHost = requireValue("DATABASE_HOST", { nonPlaceholder: true });
-if (databaseHost && ["localhost", "127.0.0.1", "::1"].includes(databaseHost.toLowerCase())) {
-  errors.push("DATABASE_HOST must refer to the remote managed database, not loopback");
+if (databaseHost) {
+  if (/[\\s/@?#]/.test(databaseHost)) {
+    errors.push("DATABASE_HOST must be a hostname or IP address, not a URL or path");
+  }
+  if (isLoopbackOrLinkLocalDatabaseHost(databaseHost)) {
+    errors.push("DATABASE_HOST must refer to the remote managed database, not loopback or link-local networking");
+  }
 }
 for (const key of ["DATABASE_NAME", "DATABASE_USER"]) {
   requireValue(key, { nonPlaceholder: true });
@@ -80,8 +107,8 @@ if (caPath && caPem) {
   } catch {
     errors.push("DATABASE_SSL_CA_PATH is not readable by this process");
   }
-} else if (caPem && !caPem.includes("-----BEGIN CERTIFICATE-----")) {
-  errors.push("DATABASE_SSL_CA must contain PEM certificate content");
+} else if (caPem && !/-----BEGIN CERTIFICATE-----[\\s\\S]+-----END CERTIFICATE-----/.test(caPem)) {
+  errors.push("DATABASE_SSL_CA must contain a complete PEM certificate block");
 }
 
 const storageDriver = requireValue("DOCUMENTS_STORAGE_DRIVER");
@@ -141,12 +168,17 @@ if (value("RESEND_API_URL")) {
   }
 }
 
-if (process.env.VERCEL === "1" && process.env.VERCEL_ENV) {
-  if (target === "production" && process.env.VERCEL_ENV !== "production") {
-    errors.push("The requested target does not match VERCEL_ENV");
-  }
-  if (target !== "production" && process.env.VERCEL_ENV === "production") {
-    errors.push("Refusing to validate a production deployment as preview/staging");
+if (process.env.VERCEL === "1") {
+  const deploymentEnvironment = value("VERCEL_ENV");
+  if (!deploymentEnvironment) {
+    errors.push("VERCEL_ENV is required when preflight runs inside Vercel");
+  } else {
+    if (target === "production" && deploymentEnvironment !== "production") {
+      errors.push("The requested target does not match VERCEL_ENV");
+    }
+    if (target !== "production" && deploymentEnvironment === "production") {
+      errors.push("Refusing to validate a production deployment as preview/staging");
+    }
   }
 }
 
