@@ -21,6 +21,10 @@ function constantTimeEqual(left: string, right: string): boolean {
 
 function expectedOrigin(request: NextRequest): string {
   const configured = process.env.APP_ORIGIN?.trim();
+  // Production must use a deployment-controlled public origin, not request Host headers.
+  if (process.env.NODE_ENV === "production" && !configured) {
+    throw new CsrfError("ORIGIN_MISMATCH");
+  }
   if (configured) {
     try {
       const url = new URL(configured);
