@@ -267,8 +267,10 @@ jobs:
           trap - EXIT
       - name: Install Playwright Chromium for Phase 7 browser acceptance
         run: |
+          # GitHub-hosted Ubuntu runners already carry Chromium's shared libraries.
+          # Avoid a second apt repository refresh here; it can stall the whole acceptance job.
           npm install --no-save --no-audit playwright@1.64.1
-          npx playwright install --with-deps chromium
+          npx playwright install chromium
       - name: Run Phase 7 browser acceptance against disposable MySQL
         env:
           DATABASE_HOST: 127.0.0.1
