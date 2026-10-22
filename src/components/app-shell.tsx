@@ -8,23 +8,27 @@ import { Icon, type IconName } from "@/components/icon";
 import { IconButton, LoadingState } from "@/components/ui";
 
 type NavItem = { label: string; href: string; icon: IconName; badge?: string; permission?: string };
-type NavGroup = { label: string; items: NavItem[] };
+type NavGroup = { label: string; items: NavItem[]; advanced?: boolean };
 
+// Everyday billing is the default navigation. Secondary finance/admin modules stay available under More tools.
 const navGroups: NavGroup[] = [
   { label: "Workspace", items: [{ label: "Overview", href: "/", icon: "overview" }] },
+  { label: "Invoices", items: [{ label: "Invoices", href: "/invoices", icon: "invoice" }] },
   { label: "Manage", items: [
-    { label: "Invoices", href: "/invoices", icon: "invoice" },
-    { label: "Quotations", href: "/quotations", icon: "quote" },
     { label: "Customers", href: "/customers", icon: "users" },
-    { label: "Items & services", href: "/catalog", icon: "box" },
-  ] },
-  { label: "Track", items: [
     { label: "Payments", href: "/payments", icon: "wallet" },
+  ] },
+  { label: "Setup", items: [{ label: "Settings", href: "/settings", icon: "settings", permission: "settings:manage" }] },
+  { label: "More tools", advanced: true, items: [
+    { label: "Quotations", href: "/quotations", icon: "quote" },
+    { label: "Items & services", href: "/catalog", icon: "box" },
     { label: "Reports", href: "/reports", icon: "chart", permission: "reports:read" },
     { label: "Audit trail", href: "/audit", icon: "shield", permission: "audit:read" },
     { label: "Approvals", href: "/approvals", icon: "check", permission: "approvals:read" },
+    { label: "Policy decisions", href: "/policy-decisions", icon: "file", permission: "settings:manage" },
+    { label: "Reminder policies", href: "/reminders", icon: "mail", permission: "reminders:manage" },
+    { label: "Users & access", href: "/access", icon: "users", permission: "users:manage" },
   ] },
-  { label: "Configure", items: [{ label: "Settings", href: "/settings", icon: "settings", permission: "settings:manage" }, { label: "Policy decisions", href: "/policy-decisions", icon: "file", permission: "settings:manage" }, { label: "Reminder policies", href: "/reminders", icon: "mail", permission: "reminders:manage" }, { label: "Users & access", href: "/access", icon: "users", permission: "users:manage" }] },
 ];
 
 const navByPath = new Map(navGroups.flatMap((group) => group.items).map((item) => [item.href, item]));
@@ -54,6 +58,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [authBusy, setAuthBusy] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [advancedNavOpen, setAdvancedNavOpen] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const mobileWasOpen = useRef(false);
   const selected = navByPath.get(pathname) ?? navGroups.flatMap((group) => group.items).find((item) => item.href !== "/" && pathname.startsWith(item.href));
@@ -246,10 +251,16 @@ export function AppShell({ children }: { children: ReactNode }) {
           {navGroups.map((group) => {
             const visibleItems = group.items.filter((item) => !item.permission || currentUser?.permissions.includes(item.permission));
             if (!visibleItems.length) return null;
+            const containsCurrentPath = visibleItems.some((item) => pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)));
+            const groupExpanded = !group.advanced || advancedNavOpen || containsCurrentPath;
             return (
-              <div className="nav-group" key={group.label}>
-                <p className="nav-group__label">{group.label}</p>
-                {visibleItems.map((item) => {
+              <div className={group.advanced ? "nav-group nav-group--advanced" : "nav-group"} key={group.label}>
+                {group.advanced ? (
+                  <button type="button" className="nav-group__label nav-group__toggle" aria-expanded={groupExpanded} onClick={() => setAdvancedNavOpen((open) => !open)}>
+                    <span>{group.label}</span><span className="nav-group__toggle-hint">{groupExpanded ? "Hide" : "Show"}</span>
+                  </button>
+                ) : <p className="nav-group__label">{group.label}</p>}
+                {groupExpanded ? visibleItems.map((item) => {
                   const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
                   return (
                     <Link
@@ -264,7 +275,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                       {active ? <span className="nav-item__indicator" aria-hidden="true" /> : null}
                     </Link>
                   );
-                })}
+                }) : null}
               </div>
             );
           })}

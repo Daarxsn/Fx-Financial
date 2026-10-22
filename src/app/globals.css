@@ -1517,3 +1517,10 @@ a, button, input, select, textarea { transition-duration: 160ms; }
 .quick-setup-readiness li > span { flex:1 1 auto; color:var(--ink); font-size:12px; line-height:1.55; }
 .quick-setup-readiness .button { flex:0 0 auto; }
 @media (max-width:560px) { .quick-setup-readiness li { align-items:stretch; flex-direction:column; } .quick-setup-readiness .button { align-self:flex-start; } }
+
+
+/* Low-friction sidebar: keep the billing journey visible and tuck secondary modules away until needed. */
+.nav-group__toggle { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; margin:0; border:0; background:transparent; color:inherit; font:inherit; text-align:left; cursor:pointer; }
+.nav-group__toggle:focus-visible { outline:2px solid var(--focus, #b58a42); outline-offset:3px; border-radius:5px; }
+.nav-group__toggle-hint { color:var(--muted); font-size:10px; font-weight:650; text-transform:none; letter-spacing:0; }
+.nav-group--advanced { margin-top:2px; padding-top:1px; }
