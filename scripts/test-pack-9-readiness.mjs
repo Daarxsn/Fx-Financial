@@ -2,24 +2,31 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 
+function syntheticSecret(prefix, length = 40) {
+  // Generate non-credential test values at runtime. No secret-shaped literal is stored in Git.
+  return prefix + Array.from({ length }, (_, index) =>
+    String.fromCharCode(65 + ((index * 7 + prefix.charCodeAt(0)) % 26))
+  ).join("");
+}
+
 const synthetic = {
   DATABASE_HOST: "db-staging.internal.fx",
   DATABASE_PORT: "3306",
   DATABASE_NAME: "falchion_staging",
   DATABASE_USER: "falchion_runtime",
-  DATABASE_PASSWORD: "DbPassw0rd!Extra_4927",
+  DATABASE_PASSWORD: syntheticSecret("DbPass", 28),
   DATABASE_SSL: "true",
-  SESSION_SECRET: "Pack9Synthetic_Session_Secret-2026-Preview.42",
+  SESSION_SECRET: syntheticSecret("Session", 40),
   APP_ORIGIN: "https://preview.falchionxeniaa.in",
   DOCUMENTS_STORAGE_DRIVER: "s3",
   DOCUMENTS_STORAGE_BUCKET: "falchion-documents-staging-123",
   DOCUMENTS_STORAGE_REGION: "ap-south-1",
-  DOCUMENTS_STORAGE_ACCESS_KEY_ID: "FXSTAGINGACCESSKEY9K4Q2P7M",
-  DOCUMENTS_STORAGE_SECRET_ACCESS_KEY: "S3StorageSecret-Stage_2026_9xQ7pB4",
-  RESEND_API_KEY: "re_9Hk43pQb6Vx7mD8sT2wF5aL",
+  DOCUMENTS_STORAGE_ACCESS_KEY_ID: syntheticSecret("AccessKey", 28),
+  DOCUMENTS_STORAGE_SECRET_ACCESS_KEY: syntheticSecret("Storage", 36),
+  RESEND_API_KEY: "re_" + syntheticSecret("Mail", 28),
   RESEND_FROM_EMAIL: "Billing <billing@falchionxeniaa.in>",
-  RESEND_WEBHOOK_SECRET: "whsec_9fC8xB4aD7gJ2kL5mN1pQ6rS3tV8wY0z",
-  CRON_SECRET: "Cron_Key_9cD2fH7jK4mP8rS1vX5aQ3bN6tW0",
+  RESEND_WEBHOOK_SECRET: syntheticSecret("Webhook", 44),
+  CRON_SECRET: syntheticSecret("Scheduler", 44),
 };
 
 function run(target, overrides = {}) {
