@@ -18,7 +18,8 @@ try {
   console.error("SMOKE_BASE_URL must be a valid origin URL");
   process.exit(2);
 }
-const loopback = ["localhost", "127.0.0.1", "::1"].includes(base.hostname);
+const host = base.hostname.replace(/^\\[|\\]$/g, "").toLowerCase();
+const loopback = ["localhost", "127.0.0.1", "::1"].includes(host) || host.startsWith("127.");
 if (base.origin !== rawOrigin || base.pathname !== "/" || base.search || base.hash ||
     !["https:", "http:"].includes(base.protocol) || (base.protocol === "http:" && !loopback)) {
   console.error("SMOKE_BASE_URL must be an exact HTTPS origin; HTTP is permitted only for loopback CI tests");
@@ -33,6 +34,7 @@ function pass(message) {
 async function get(path) {
   return fetch(new URL(path, base.origin), {
     cache: "no-store",
+    redirect: "manual",
     signal: AbortSignal.timeout(15000),
   });
 }
@@ -45,7 +47,7 @@ function requireHeader(headers, name, expected) {
 
 async function main() {
   const login = await get("/login");
-  if (login.status !== 200) throw new Error("Login page did not return HTTP 200");
+  if (login.status !== 200) throw new Error("Login page did not return HTTP 200 without a redirect");
   if (!(login.headers.get("content-type") || "").toLowerCase().includes("text/html")) {
     throw new Error("Login route did not return HTML");
   }
