@@ -54,6 +54,13 @@ function assertNoSecrets(output) {
     assert.ok(!output.includes(synthetic[key]), "Preflight output must not reveal " + key);
   }
 }
+function expectRejected(label, target, overrides, message) {
+  const result = run(target, overrides);
+  assert.notEqual(result.status, 0, label + " must fail closed: " + outputOf(result));
+  assert.match(outputOf(result), message, label + " should explain its rejection");
+  assertNoSecrets(outputOf(result));
+  console.log("PASS: " + label + " is rejected without secret leakage.");
+}
 
 const valid = run("staging");
 assert.equal(valid.status, 0, "valid synthetic staging configuration should pass: " + outputOf(valid));
@@ -61,28 +68,26 @@ assert.match(valid.stdout, /PASS: runtime, origin, TLS, private storage, email, 
 assertNoSecrets(outputOf(valid));
 console.log("PASS: valid staging configuration passes without outputting secret values.");
 
-const invalidTls = run("staging", { DATABASE_SSL: "false" });
-assert.equal(invalidTls.status, 1, "plaintext database transport must fail closed");
-assert.match(outputOf(invalidTls), /DATABASE_SSL must be true/);
-assertNoSecrets(outputOf(invalidTls));
-console.log("PASS: plaintext database configuration is rejected without secret leakage.");
+expectRejected("plaintext database transport", "staging", { DATABASE_SSL: "false" }, /DATABASE_SSL must be true/);
+expectRejected("non-HTTPS app origin", "staging", { APP_ORIGIN: "http://preview.falchionxeniaa.in" }, /APP_ORIGIN must be the exact HTTPS origin/);
+for (const host of ["127.0.0.1", "127.44.2.3", "localhost.", "[::1]", "0.0.0.0", "169.254.169.254", "::ffff:127.0.0.1"]) {
+  expectRejected("unsafe database host " + host, "staging", { DATABASE_HOST: host }, /DATABASE_HOST must refer to the remote managed database/);
+}
+expectRejected("malformed database host URL", "staging", { DATABASE_HOST: "https://db-staging.internal.fx" }, /DATABASE_HOST must be a hostname or IP address/);
+expectRejected("invalid storage endpoint transport", "staging", { DOCUMENTS_STORAGE_ENDPOINT: "http://storage.internal.fx" }, /DOCUMENTS_STORAGE_ENDPOINT must use HTTPS/);
+expectRejected("incomplete database CA PEM", "staging", { DATABASE_SSL_CA: "-----BEGIN CERTIFICATE----- invalid" }, /DATABASE_SSL_CA must contain a complete PEM certificate block/);
+expectRejected("conflicting CA configuration", "staging", { DATABASE_SSL_CA_PATH: "/tmp/ca.pem", DATABASE_SSL_CA: "-----BEGIN CERTIFICATE-----\\nabc\\n-----END CERTIFICATE-----" }, /Set only one of DATABASE_SSL_CA_PATH or DATABASE_SSL_CA/);
+expectRejected("missing KMS key", "staging", { DOCUMENTS_STORAGE_SERVER_SIDE_ENCRYPTION: "aws:kms", DOCUMENTS_STORAGE_KMS_KEY_ID: "" }, /DOCUMENTS_STORAGE_KMS_KEY_ID is missing/);
+expectRejected("invalid sender address", "staging", { RESEND_FROM_EMAIL: "not-an-email" }, /RESEND_FROM_EMAIL must contain a valid sender email address/);
+expectRejected("production mail endpoint override", "production", { RESEND_API_URL: "http://127.0.0.1:3030" }, /RESEND_API_URL overrides are forbidden for production/);
+expectRejected("missing Vercel deployment environment", "production", { VERCEL: "1", VERCEL_ENV: "" }, /VERCEL_ENV is required when preflight runs inside Vercel/);
+expectRejected("production configuration checked as staging", "staging", { VERCEL: "1", VERCEL_ENV: "production" }, /Refusing to validate a production deployment as preview\\/staging/);
 
-const invalidOrigin = run("staging", { APP_ORIGIN: "http://preview.falchionxeniaa.in" });
-assert.equal(invalidOrigin.status, 1, "non-HTTPS origin must fail closed");
-assert.match(outputOf(invalidOrigin), /APP_ORIGIN must be the exact HTTPS origin/);
-assertNoSecrets(outputOf(invalidOrigin));
-console.log("PASS: non-HTTPS APP_ORIGIN is rejected without secret leakage.");
+const invalidTarget = spawnSync(process.execPath, ["scripts/pack-9-preflight.mjs", "--target=prod"], {
+  cwd: process.cwd(), env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "/tmp" }, encoding: "utf8", timeout: 15000,
+});
+assert.equal(invalidTarget.status, 2, "unsupported target must produce a usage error");
+assert.match(outputOf(invalidTarget), /Usage: npm run pack9:preflight/);
+console.log("PASS: unsupported preflight target is rejected with a usage error.");
 
-const loopbackDatabase = run("staging", { DATABASE_HOST: "127.0.0.1" });
-assert.equal(loopbackDatabase.status, 1, "deployment target cannot use loopback database host");
-assert.match(outputOf(loopbackDatabase), /DATABASE_HOST must refer to the remote managed database/);
-assertNoSecrets(outputOf(loopbackDatabase));
-console.log("PASS: loopback database host is rejected for deployment targets.");
-
-const productionMockMailer = run("production", { RESEND_API_URL: "http://127.0.0.1:3030" });
-assert.equal(productionMockMailer.status, 1, "production cannot override Resend with a local mock endpoint");
-assert.match(outputOf(productionMockMailer), /RESEND_API_URL overrides are forbidden for production/);
-assertNoSecrets(outputOf(productionMockMailer));
-console.log("PASS: production mail endpoint override is rejected without secret leakage.");
-
-console.log("Pack 9 preflight tests passed: 5 scenarios.");
+console.log("Pack 9 preflight tests passed: 20 scenarios.");
