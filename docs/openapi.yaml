@@ -1519,6 +1519,202 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/email/outbox:
+    get:
+      tags: [Communications]
+      summary: List email delivery status and append-only provider evidence within assigned legal-entity scope
+      operationId: listEmailOutbox
+      x-implementation-status: implemented
+      parameters:
+        - in: query
+          name: sourceType
+          schema: { type: string, enum: [INVOICE, QUOTATION, RECEIPT] }
+        - in: query
+          name: sourceId
+          schema: { $ref: "#/components/schemas/Uuid" }
+      responses:
+        "200":
+          description: Recent scoped outbox records, provider identifiers, PDF checksum and sanitized event timeline
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmailOutboxResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [Communications]
+      summary: Queue a document email after explicit recipient confirmation using a verified private PDF
+      operationId: queueDocumentEmail
+      x-implementation-status: implemented
+      parameters:
+        - { $ref: "#/components/parameters/CsrfToken" }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { $ref: "#/components/schemas/Uuid" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [sourceType, sourceId, recipientEmail, recipientConfirmed]
+              properties:
+                sourceType: { type: string, enum: [INVOICE, QUOTATION, RECEIPT] }
+                sourceId: { $ref: "#/components/schemas/Uuid" }
+                recipientEmail: { type: string, format: email, maxLength: 320 }
+                recipientConfirmed: { type: boolean, const: true }
+      responses:
+        "200":
+          description: Existing idempotent request returned without creating another email
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmailOutboxResponse" }
+        "202":
+          description: Durable email request accepted into the outbox; provider delivery is asynchronous
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmailOutboxResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503":
+          description: Provider is not configured or the private PDF cannot be verified
+  /api/v1/email/outbox/{outboxId}/retry:
+    parameters:
+      - in: path
+        name: outboxId
+        required: true
+        schema: { $ref: "#/components/schemas/Uuid" }
+    post:
+      tags: [Communications]
+      summary: Manually queue a retry only for an email confirmed as failed
+      operationId: retryFailedEmail
+      x-implementation-status: implemented
+      parameters:
+        - { $ref: "#/components/parameters/CsrfToken" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        "202":
+          description: Failed message has been re-queued for delivery
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmailOutboxResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/v1/reminders/policies:
+    get:
+      tags: [Communications]
+      summary: List reminder policy versions and recorded approval evidence within assigned entity scope
+      operationId: listReminderPolicies
+      x-implementation-status: implemented
+      responses:
+        "200":
+          description: Reminder policy versions, status and approval history metadata
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReminderPolicyResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Communications]
+      summary: Request an overdue reminder policy that remains pending until independent finance approval
+      operationId: requestReminderPolicy
+      x-implementation-status: implemented
+      parameters:
+        - { $ref: "#/components/parameters/CsrfToken" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [legalEntityId, firstReminderAfterDays, maxReminders, intervalDays]
+              properties:
+                legalEntityId: { $ref: "#/components/schemas/Uuid" }
+                firstReminderAfterDays: { type: integer, minimum: 1, maximum: 365 }
+                maxReminders: { type: integer, minimum: 1, maximum: 6 }
+                intervalDays: { type: integer, minimum: 1, maximum: 90 }
+      responses:
+        "201":
+          description: Pending-approval policy request recorded; no reminders are sent yet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReminderPolicyResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/reminders/policies/{policyId}/approve:
+    parameters:
+      - in: path
+        name: policyId
+        required: true
+        schema: { $ref: "#/components/schemas/Uuid" }
+    post:
+      tags: [Communications]
+      summary: Independently approve and activate a reminder policy with evidence
+      operationId: approveReminderPolicy
+      x-implementation-status: implemented
+      parameters:
+        - { $ref: "#/components/parameters/CsrfToken" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [approvalReference, evidenceNotes]
+              properties:
+                approvalReference: { type: string, minLength: 3, maxLength: 255 }
+                evidenceNotes: { type: string, minLength: 20, maxLength: 2000 }
+      responses:
+        "200": { description: Policy independently approved and activated }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/reminders/policies/{policyId}/disable:
+    parameters:
+      - in: path
+        name: policyId
+        required: true
+        schema: { $ref: "#/components/schemas/Uuid" }
+    post:
+      tags: [Communications]
+      summary: Disable reminder policy with an audited reason
+      operationId: disableReminderPolicy
+      x-implementation-status: implemented
+      parameters:
+        - { $ref: "#/components/parameters/CsrfToken" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 1000 }
+      responses:
+        "200": { description: Policy disabled and audit event recorded }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
   /api/v1/documents/{fileId}:
     parameters:
       - { $ref: "#/components/parameters/FileId" }
@@ -3146,12 +3342,53 @@ components:
       properties:
         data:
           type: object
-          required: [id, status, queuedAt]
           properties:
             id: { $ref: "#/components/schemas/Uuid" }
-            status: { type: string, enum: [QUEUED, PROCESSING, SENT, FAILED, CANCELLED] }
-            queuedAt: { type: string, format: date-time }
+            sourceType: { type: string, enum: [INVOICE, QUOTATION, RECEIPT] }
+            sourceDocumentId: { $ref: "#/components/schemas/Uuid" }
+            legalEntityId: { $ref: "#/components/schemas/Uuid" }
+            documentNumber: { type: string }
+            messageKind: { type: string, enum: [DOCUMENT, OVERDUE_REMINDER] }
+            recipientEmail: { type: string, format: email }
+            subject: { type: string }
+            attachmentSha256: { type: [string, "null"], pattern: "^[a-f0-9]{64}$" }
+            attachmentByteSize: { type: [integer, "null"], minimum: 0 }
+            providerMessageId: { type: [string, "null"] }
+            status: { type: string, enum: [QUEUED, SENDING, SENT, DELIVERED, DELIVERY_DELAYED, BOUNCED, COMPLAINED, FAILED, REQUIRES_REVIEW] }
+            attemptCount: { type: integer, minimum: 0 }
+            nextAttemptAt: { type: [string, "null"], format: date-time }
+            lastErrorCode: { type: [string, "null"] }
+            idempotentReplay: { type: boolean }
+            items: { type: array, items: { type: object } }
+            defaultRecipientEmail: { type: string, format: email }
+            recipientName: { type: string }
+          additionalProperties: true
         meta: { $ref: "#/components/schemas/Meta" }
+    ReminderPolicyResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          oneOf:
+            - type: array
+              items: { $ref: "#/components/schemas/ReminderPolicy" }
+            - $ref: "#/components/schemas/ReminderPolicy"
+        meta: { $ref: "#/components/schemas/Meta" }
+    ReminderPolicy:
+      type: object
+      required: [id, legalEntityId, version, firstReminderAfterDays, maxReminders, intervalDays, status]
+      properties:
+        id: { $ref: "#/components/schemas/Uuid" }
+        legalEntityId: { $ref: "#/components/schemas/Uuid" }
+        version: { type: integer, minimum: 1 }
+        firstReminderAfterDays: { type: integer, minimum: 1, maximum: 365 }
+        maxReminders: { type: integer, minimum: 1, maximum: 6 }
+        intervalDays: { type: integer, minimum: 1, maximum: 90 }
+        status: { type: string, enum: [PENDING_APPROVAL, ACTIVE, DISABLED] }
+        requestedBy: { $ref: "#/components/schemas/Uuid" }
+        approvedBy: { type: [string, "null"], format: uuid }
+        approvalReference: { type: [string, "null"] }
+        approvalEvidenceNotes: { type: [string, "null"] }
     ReminderListResponse:
       type: object
       required: [data, meta]
