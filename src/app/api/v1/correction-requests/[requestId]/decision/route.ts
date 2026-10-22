@@ -7,6 +7,7 @@ import { requirePermission } from "@/lib/auth/authorize";
 import { requireFinanceConfigurationApprover } from "@/lib/configuration/authorization";
 import { assertCsrf } from "@/lib/auth/csrf";
 import { apiError, jsonNoStore } from "@/lib/http/api-response";
+import { captureDocumentSourceSnapshot } from "@/lib/documents/service";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 const schema=z.object({decision:z.enum(["APPROVE","REJECT"]),reason:z.string().trim().min(10).max(1000)}).strict();
@@ -69,6 +70,7 @@ export async function POST(request:NextRequest,context:{params:Promise<{requestI
    "UPDATE invoices SET lifecycle_status='CANCELLED',cancelled_at=NOW(3),cancelled_by=?,cancellation_reason=?,updated_at=NOW(3) WHERE id=? AND lifecycle_status='ISSUED'",
    [actor.userId,item.reason,item.invoice_id]);
   if(cancelled.affectedRows!==1){await conn.rollback();return jsonNoStore({error:{code:"CORRECTION_SOURCE_CHANGED",message:"The invoice state changed before cancellation. Refresh and re-review."}},409);}
+   await captureDocumentSourceSnapshot(conn,"INVOICE",item.invoice_id,actor.userId,"STATUS_CHANGE");
   await conn.execute<ResultSetHeader>("UPDATE invoice_correction_requests SET status='EXECUTED',reviewed_by=?,review_decision='APPROVE',review_reason=?,reviewed_at=NOW(3),executed_at=NOW(3),updated_at=NOW(3) WHERE id=? AND status='PENDING_REVIEW'",[actor.userId,input.reason,requestId]);
   await conn.execute("INSERT INTO invoice_correction_request_events (id,request_id,event_type,previous_status,new_status,reason,actor_id) VALUES (?,?,'EXECUTED','PENDING_REVIEW','EXECUTED',?,?)",[randomUUID(),requestId,input.reason,actor.userId]);
   await conn.execute("INSERT INTO audit_events (id,actor_id,action,entity_type,entity_id,outcome,before_json,after_json,correlation_id,change_reason) VALUES (?,?,'invoice.cancelled','invoice',?,'SUCCESS',?,?,?,?)",[randomUUID(),actor.userId,item.invoice_id,JSON.stringify({status:"ISSUED",invoiceNumber:item.invoice_number_snapshot}),JSON.stringify({status:"CANCELLED",correctionRequestId:requestId,cancelledBy:actor.userId}),randomUUID(),item.reason]);
