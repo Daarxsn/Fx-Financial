@@ -267,7 +267,11 @@ export default function SettingsPage(){
  const activeEntities=entities.filter(e=>e.isActive);
  const quickEntity=activeEntities.find(e=>e.id===entityId)??activeEntities[0]??null;
  const quickReadiness=quickEntity?readiness[quickEntity.id]:undefined;
- const failedReadinessChecks=quickReadiness?.checks.filter(c=>!c.passed).length??0;
+ const failedReadinessChecks=quickReadiness?.checks.filter(c=>!c.passed)??[];
+ const readinessTab=(key:string):Tab=>({
+  taxApproval:"tax",taxRules:"tax",defaultTaxCode:"tax",numbering:"numbering",invoiceTemplate:"templates",
+  legalName:"company",address:"company",currency:"company",businessDate:"company",active:"company",configurationVersion:"company",
+ } as Record<string,Tab>)[key]??"company";
  if(!showAdvancedSettings)return <div className="page page--configuration page--quick-settings">
   <Breadcrumbs items={[{label:"Workspace",href:"/"},{label:"Settings"}]}/>
   <PageHeader eyebrow="INVOICING SETUP" title="Your invoicing workspace" description="Set up only what you need to start creating and sending invoices. Advanced finance controls remain available when you need them." action={<Button variant="secondary" onClick={()=>setShowAdvancedSettings(true)}>Advanced settings</Button>}/>
@@ -303,9 +307,9 @@ export default function SettingsPage(){
     </Card>}
     {activeEntities.length>0?<Card className="quick-setup-card quick-setup-status-card">
      <p className="eyebrow">FIRST INVOICE STATUS</p>
-     {quickReadiness?.ready?<h2>Core issuance checks passed</h2>:<h2>{quickReadiness?failedReadinessChecks+" setup checks need attention":"Invoice readiness has not been verified yet"}</h2>}
-     <p>{quickReadiness?.ready?"Your current setup passed the available readiness checks. You can continue to create a draft and review the issue step.":"We keep this summary simple here. Open Advanced settings only when you need to review the tax, numbering, and other required invoice controls."}</p>
-     {!quickReadiness?.ready?<Button variant="secondary" onClick={()=>{setTab("company");setShowAdvancedSettings(true)}}>Review invoice readiness</Button>:null}
+     {quickReadiness?.ready?<h2>Core issuance checks passed</h2>:<h2>{quickReadiness?failedReadinessChecks.length+" setup checks need attention":"Invoice readiness has not been verified yet"}</h2>}
+     <p>{quickReadiness?.ready?"Your current setup passed the available readiness checks. You can continue to create a draft and review the issue step.":"Here are the exact items that must be fixed before an invoice can be issued. Use Fix to open the relevant section; optional brand and business-unit settings are not part of this checklist."}</p>
+     {quickReadiness&&!quickReadiness.ready?<ul className="quick-setup-readiness">{quickReadiness.checks.filter(c=>!c.passed).map(c=><li key={c.key}><span>{c.message}</span><Button size="sm" variant="secondary" onClick={()=>{setTab(readinessTab(c.key));setShowAdvancedSettings(true)}}>Fix</Button></li>)}</ul>:null}
     </Card>:null}
    </section>
    <aside className="quick-setup-secondary">

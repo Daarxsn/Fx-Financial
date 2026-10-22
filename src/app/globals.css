@@ -1511,3 +1511,9 @@ a, button, input, select, textarea { transition-duration: 160ms; }
  .invoice-setup-actions { width:100%; }
  .invoice-setup-actions .button { width:100%; justify-content:center; }
 }
+
+.quick-setup-readiness { display:grid; gap:0; padding:0; margin:14px 0 0; list-style:none; }
+.quick-setup-readiness li { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:12px 0; border-top:1px solid var(--line); }
+.quick-setup-readiness li > span { flex:1 1 auto; color:var(--ink); font-size:12px; line-height:1.55; }
+.quick-setup-readiness .button { flex:0 0 auto; }
+@media (max-width:560px) { .quick-setup-readiness li { align-items:stretch; flex-direction:column; } .quick-setup-readiness .button { align-self:flex-start; } }
