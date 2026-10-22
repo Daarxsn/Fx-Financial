@@ -6,6 +6,7 @@ import { pool } from "@/lib/db/pool";
 import { requirePermission } from "@/lib/auth/authorize";
 import { assertCsrf } from "@/lib/auth/csrf";
 import { apiError, jsonNoStore } from "@/lib/http/api-response";
+import { captureDocumentSourceSnapshot } from "@/lib/documents/service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -133,6 +134,7 @@ export async function POST(request:NextRequest,context:Context){
     JSON.stringify({paidAmount:money(alreadyPaid),outstandingBalance:money(outstanding)}),
     JSON.stringify({allocationId,paymentId:payment.id,amount:money(requested),receiptReference:payment.receipt_reference,
      paidAmount:money(alreadyPaid+requested),outstandingBalance:money(total>alreadyPaid+requested?total-alreadyPaid-requested:0n)})]);
+   await captureDocumentSourceSnapshot(conn,"INVOICE",invoiceId,actor.userId,"STATUS_CHANGE");
   await conn.commit();
   const nextAllocated=allocated+requested;
   return jsonNoStore({data:{id:allocationId,paymentId:payment.id,receiptReference:payment.receipt_reference??"RCPT-"+payment.id.replaceAll("-","").toUpperCase(),
