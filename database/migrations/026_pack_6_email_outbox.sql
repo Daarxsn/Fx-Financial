@@ -1,5 +1,9 @@
 -- Pack 6 Part A: durable transactional email outbox and append-only delivery evidence.
 -- Forward-only: never edit migrations 001–025.
+-- Migration 002 created an unused legacy email_outbox shape. Preserve it under an explicit archival name
+-- before creating the Pack 6 schema; never drop prior queue/history data during this upgrade.
+RENAME TABLE email_outbox TO email_outbox_legacy_002;
+
 CREATE TABLE email_outbox (
   id CHAR(36) NOT NULL PRIMARY KEY,
   request_idempotency_key CHAR(36) NOT NULL,
