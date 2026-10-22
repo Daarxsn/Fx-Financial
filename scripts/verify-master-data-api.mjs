@@ -3138,7 +3138,7 @@ try {
   const p5InvoiceFirst = await call("/api/v1/documents/INVOICE/" + p4NoteSource.id + "/generate", {
     method: "POST", body: JSON.stringify({}),
   }, phase6aSession.jar);
-  assert.equal(p5InvoiceFirst.response.status, 201, "issued invoice PDF is generated and stored");
+  assert.equal(p5InvoiceFirst.response.status, 201, "issued invoice PDF is generated and stored; response=" + JSON.stringify(p5InvoiceFirst.body?.error ?? p5InvoiceFirst.body));
   assert.equal(p5InvoiceFirst.body.data.status, "READY");
   assert.match(p5InvoiceFirst.body.data.fileSha256, /^[a-f0-9]{64}$/);
   assert.ok(Number(p5InvoiceFirst.body.data.byteSize) > 1000);
