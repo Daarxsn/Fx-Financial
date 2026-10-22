@@ -49,6 +49,11 @@ function getConfig(): StorageConfig {
   const accessKeyId = process.env.DOCUMENTS_STORAGE_ACCESS_KEY_ID ?? "";
   const secretAccessKey = process.env.DOCUMENTS_STORAGE_SECRET_ACCESS_KEY ?? "";
   const endpoint = process.env.DOCUMENTS_STORAGE_ENDPOINT?.trim() || undefined;
+  if (endpoint && process.env.NODE_ENV === "production") {
+    let parsedEndpoint: URL;
+    try { parsedEndpoint = new URL(endpoint); } catch { throw failConfig(); }
+    if (parsedEndpoint.protocol !== "https:" || parsedEndpoint.username || parsedEndpoint.password) throw failConfig();
+  }
   if (!bucket || !region || !accessKeyId || !secretAccessKey) throw failConfig();
   const rawEncryption = process.env.DOCUMENTS_STORAGE_SERVER_SIDE_ENCRYPTION?.trim() || "AES256";
   if (rawEncryption !== "AES256" && rawEncryption !== "aws:kms") throw failConfig();
