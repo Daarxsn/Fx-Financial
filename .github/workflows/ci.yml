@@ -62,7 +62,7 @@ jobs:
           npm run db:seed:reference
 
           # Verify migration ledger and repeatable seed counts without dumping row contents.
-          node -e 'const mysql=require("mysql2/promise"); (async()=>{const c=await mysql.createConnection({host:process.env.DATABASE_HOST,port:Number(process.env.DATABASE_PORT),database:process.env.DATABASE_NAME,user:process.env.DATABASE_USER,password:process.env.DATABASE_PASSWORD}); const [[migrations],[permissions],[roles],[roleMappings]]=await Promise.all([c.query("SELECT COUNT(*) AS n FROM schema_migrations"),c.query("SELECT COUNT(*) AS n FROM app_permissions"),c.query("SELECT COUNT(*) AS n FROM app_roles"),c.query("SELECT COUNT(*) AS n FROM role_permissions")]); if(Number(migrations[0].n)!==27 || Number(permissions[0].n)!==27 || Number(roles[0].n)!==7 || Number(roleMappings[0].n)!==86) { await c.end(); process.exit(1) }; console.log("PASS: 27 migration records, 27 permission definitions, 7 role definitions and 86 role-permission mappings."); await c.end()})().catch(()=>process.exit(1))'
+          node -e 'const mysql=require("mysql2/promise"); (async()=>{const c=await mysql.createConnection({host:process.env.DATABASE_HOST,port:Number(process.env.DATABASE_PORT),database:process.env.DATABASE_NAME,user:process.env.DATABASE_USER,password:process.env.DATABASE_PASSWORD}); const [[migrations],[permissions],[roles],[roleMappings]]=await Promise.all([c.query("SELECT COUNT(*) AS n FROM schema_migrations"),c.query("SELECT COUNT(*) AS n FROM app_permissions"),c.query("SELECT COUNT(*) AS n FROM app_roles"),c.query("SELECT COUNT(*) AS n FROM role_permissions")]); if(Number(migrations[0].n)!==28 || Number(permissions[0].n)!==27 || Number(roles[0].n)!==7 || Number(roleMappings[0].n)!==86) { await c.end(); process.exit(1) }; console.log("PASS: 28 migration records, 27 permission definitions, 7 role definitions and 86 role-permission mappings."); await c.end()})().catch(()=>process.exit(1))'
 
           # Negative network-path test: the verifier must fail without exposing raw diagnostics.
           if DATABASE_PORT=1 DATABASE_SSL=true npm run db:verify > "$RUNNER_TEMP/db-negative-test.log" 2>&1; then
@@ -91,8 +91,8 @@ jobs:
           restored_migrations="$(mysql --defaults-extra-file="$client_config" falchion_ci_restore -Nse 'SELECT COUNT(*) FROM schema_migrations')"
           test "$source_tables" -gt 0
           test "$source_tables" = "$restored_tables"
-          test "$restored_migrations" = "27"
-          echo "PASS: 27 MySQL 8 migrations/idempotency, repeated reference seed, safe failure behavior and logical dump/restore verified."
+          test "$restored_migrations" = "28"
+          echo "PASS: 28 MySQL 8 migrations/idempotency, repeated reference seed, safe failure behavior and logical dump/restore verified."
 
       - name: Verify health endpoint success and safe failure responses
         env:
