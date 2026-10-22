@@ -243,6 +243,7 @@ try {
   await assertStatus(exportResult, 200, "authorized CSV export");
   assert.match(exportResult.response.headers.get("content-type") ?? "", /text\/csv/i);
   assert.match(exportResult.response.headers.get("content-disposition") ?? "", /falchion-invoices-report/);
+  assert.match(exportResult.text.split("\r\n", 1)[0], /Legal entity/, "invoice CSV identifies the legal entity");
   assert.ok(exportResult.text.includes("'=PACK7FORMULA" + suffix), "formula-leading customer text is escaped for spreadsheet safety");
   assert.equal(exportResult.text.includes(outsideCustomerName), false, "CSV excludes out-of-scope customer data");
   assert.equal(exportResult.text.includes("p7a-" + suffix.toLowerCase() + "@example.invalid"), false, "CSV omits customer email under the approved field allowlist");
@@ -252,6 +253,7 @@ try {
     await assertStatus(otherExport, 200, kind + " CSV export");
     assert.match(otherExport.response.headers.get("content-type") ?? "", /text\/csv/i);
     assert.ok(otherExport.text.length > 0, kind + " CSV has a header row");
+    assert.match(otherExport.text.split("\r\n", 1)[0], /Legal entity/, kind + " CSV identifies the legal entity");
   }
   const oversizedExport = await request("/api/v1/reports/invoices/export?" + period + "&status=ALL&rowLimit=10001",
     { method: "POST", body: "{}" }, jar);

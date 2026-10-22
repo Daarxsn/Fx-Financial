@@ -452,22 +452,36 @@ try {
 
 
 
+    const reportsSummaryResponse = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.pathname === "/api/v1/reports/summary" && response.request().method() === "GET" && response.status() === 200;
+    });
+    const invoiceReportResponse = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.pathname === "/api/v1/reports/invoices" && response.request().method() === "GET" && response.status() === 200;
+    });
     await page.goto(`${baseUrl}/reports`);
+     await Promise.all([reportsSummaryResponse, invoiceReportResponse]);
      await page.getByRole("heading", { name: "Reports", exact: true }).waitFor();
      await page.getByRole("heading", { name: "Business summary", exact: true }).waitFor();
      await page.getByRole("heading", { name: "Invoice report", exact: true }).waitFor();
      await page.getByText(/Provisional metric definitions — finance approval pending/).waitFor();
-     await page.getByText(/matching row/).waitFor();
+     await page.getByText(invoiceByLineRows[0].invoice_number, { exact: true }).waitFor();
      await page.locator(".report-filter-panel").waitFor({ state: "visible" });
-     assert.equal(await page.getByRole("alert").count(), 0, "reports workspace loads without a surfaced API error");
+     assert.equal(await page.locator(".report-workspace [role=alert]").count(), 0, "reports workspace loads without a surfaced API error");
      pass("Pack 7 reporting screen connects to secured summary and invoice-report APIs with provisional-metric warning.");
 
+     const auditEventsResponse = page.waitForResponse(response => {
+       const url = new URL(response.url());
+       return url.pathname === "/api/v1/audit" && response.request().method() === "GET" && response.status() === 200;
+     });
      await page.goto(`${baseUrl}/audit`);
+     await auditEventsResponse;
      await page.getByRole("heading", { name: "Audit trail", exact: true }).waitFor();
      await page.getByRole("heading", { name: "Recorded actions", exact: true }).waitFor();
      await page.locator(".audit-filter-panel").waitFor({ state: "visible" });
      await page.getByText(/matching event|No events match/).waitFor();
-     assert.equal(await page.getByRole("alert").count(), 0, "audit workspace loads without a surfaced API error");
+     assert.equal(await page.locator(".audit-workspace [role=alert]").count(), 0, "audit workspace loads without a surfaced API error");
      pass("Pack 7 audit screen loads the scoped event-search interface without surfacing sensitive payloads.");
 
      await page.goto(baseUrl + "/");

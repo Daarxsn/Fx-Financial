@@ -15,7 +15,7 @@ const RESOURCE_PERMISSION: Record<ReportKind, string> = {
 };
 const EXPORT_FIELDS: Record<ReportKind, Array<{ key: string; label: string }>> = {
   invoices: [
-    { key: "documentType", label: "Document type" }, { key: "documentNumber", label: "Document number" },
+    { key: "legalEntityName", label: "Legal entity" }, { key: "documentType", label: "Document type" }, { key: "documentNumber", label: "Document number" },
     { key: "status", label: "Status" }, { key: "date", label: "Document date" },
     { key: "dueDate", label: "Due date" }, { key: "customerName", label: "Customer" },
     { key: "currency", label: "Currency" }, { key: "subtotal", label: "Subtotal" },
@@ -24,13 +24,13 @@ const EXPORT_FIELDS: Record<ReportKind, Array<{ key: string; label: string }>> =
     { key: "outstandingBalance", label: "Outstanding balance" },
   ],
   quotations: [
-    { key: "quotationNumber", label: "Quotation number" }, { key: "status", label: "Status" },
+    { key: "legalEntityName", label: "Legal entity" }, { key: "quotationNumber", label: "Quotation number" }, { key: "status", label: "Status" },
     { key: "date", label: "Quotation date" }, { key: "validUntil", label: "Valid until" },
     { key: "customerName", label: "Customer" }, { key: "currency", label: "Currency" },
     { key: "total", label: "Quotation total" },
   ],
   payments: [
-    { key: "receiptReference", label: "Receipt reference" }, { key: "paymentDate", label: "Payment date" },
+    { key: "legalEntityName", label: "Legal entity" }, { key: "receiptReference", label: "Receipt reference" }, { key: "paymentDate", label: "Payment date" },
     { key: "customerName", label: "Customer" }, { key: "currency", label: "Currency" },
     { key: "amount", label: "Receipt amount" }, { key: "method", label: "Method" },
     { key: "status", label: "Status" }, { key: "allocatedAmount", label: "Allocated amount" },

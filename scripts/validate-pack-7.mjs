@@ -34,6 +34,7 @@ const checks=[
  ["metric glossary retains finance owner approval gate",glossary.includes("business/finance approval pending")&&glossary.includes("PENDING_FINANCE_APPROVAL")],
  ["different currencies are never added together",glossary.includes("Amounts in different currencies are never added together")],
  ["exports use field allowlists, formula-safe CSV, CSRF, limits and audit",http.includes("EXPORT_FIELDS")&&http.includes("buildCsv")&&http.includes("assertCsrf(request)")&&http.includes("rowLimit > 10000")&&http.includes('"report.exported"')],
+ ["all four report exports include legal-entity identity",(http.match(/key: "legalEntityName", label: "Legal entity"/g)||[]).length===4&&apiTest.includes("CSV identifies the legal entity")],
  ["report and audit pagination use the documented meta shape",http.includes("meta: { pagination: result.pagination")&&auditRoute.includes("meta: { pagination: result.pagination")],
  ["audit requires permission and omits raw payloads",auditRoute.includes('requirePermission("audit:read")')&&!audit.includes("before_json")&&!audit.includes("after_json")],
  ["audit search includes policy decisions, correction actions, payment reversals, documents, email and reminders",["business_policy_decision_events","invoice_correction_request_events","payment_reversal_events","generated_document_events","email_outbox_events","reminder_policy_events"].every(name=>audit.includes(name))],
