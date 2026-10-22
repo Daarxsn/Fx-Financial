@@ -3255,7 +3255,7 @@ try {
 
   const p6WebhookId = "evt-pack6-" + randomUUID();
   const p6WebhookTimestamp = String(Math.floor(Date.now() / 1000));
-  const p6WebhookPayload = JSON.stringify({ type: "email.delivered", data: { id: p6Sent.providerMessageId } });
+  const p6WebhookPayload = JSON.stringify({ type: "email.delivered", data: { email_id: p6Sent.providerMessageId } });
   const p6WebhookSignature = createHmac("sha256", Buffer.from("ci-email-webhook-secret"))
     .update(p6WebhookId + "." + p6WebhookTimestamp + "." + p6WebhookPayload).digest("base64");
   const p6WebhookHeaders = {
