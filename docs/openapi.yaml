@@ -1091,6 +1091,126 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/documents/{sourceType}/{sourceId}:
+    parameters:
+      - in: path
+        name: sourceType
+        required: true
+        schema: { type: string, enum: [INVOICE, QUOTATION, RECEIPT] }
+      - in: path
+        name: sourceId
+        required: true
+        schema: { $ref: "#/components/schemas/Uuid" }
+    get:
+      tags: [Documents]
+      summary: List private PDF artifacts and append-only generation/download events for a scoped financial document
+      operationId: listGeneratedDocumentHistory
+      x-implementation-status: implemented
+      responses:
+        "200":
+          description: Up to 25 recent artifacts with status, digest, byte count and generation events; storage keys are never returned
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, contentSnapshotId, sourceType, sourceDocumentId, documentNumber, status, generationAttempts]
+                      properties:
+                        id: { $ref: "#/components/schemas/Uuid" }
+                        contentSnapshotId: { $ref: "#/components/schemas/Uuid" }
+                        sourceType: { type: string, enum: [INVOICE, QUOTATION, RECEIPT] }
+                        sourceDocumentId: { $ref: "#/components/schemas/Uuid" }
+                        documentNumber: { type: string }
+                        status: { type: string, enum: [PENDING, READY, FAILED] }
+                        byteSize: { type: [integer, "null"], minimum: 0 }
+                        fileSha256: { type: [string, "null"], pattern: "^[a-f0-9]{64}$" }
+                        events: { type: array, items: { type: object } }
+                  meta:
+                    type: object
+                    additionalProperties: true
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503":
+          description: Private storage or database is unavailable
+  /api/v1/documents/{sourceType}/{sourceId}/generate:
+    parameters:
+      - in: path
+        name: sourceType
+        required: true
+        schema: { type: string, enum: [INVOICE, QUOTATION, RECEIPT] }
+      - in: path
+        name: sourceId
+        required: true
+        schema: { $ref: "#/components/schemas/Uuid" }
+    post:
+      tags: [Documents]
+      summary: Generate or explicitly regenerate a private PDF from an immutable source snapshot
+      description: Ordinary retries reuse a current verified artifact or an active generation lease. forceNew creates a distinct artifact and never overwrites prior history.
+      operationId: generateDocumentPdf
+      x-implementation-status: implemented
+      parameters:
+        - { $ref: "#/components/parameters/CsrfToken" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                forceNew: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Existing verified PDF was reused
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: object } } }
+        "201":
+          description: New PDF was rendered from the immutable snapshot, stored privately and integrity-verified
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: object } } }
+        "202":
+          description: A generation lease is already active; refresh history for the result
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503":
+          description: PDF rendering or private object storage is unavailable; a failed attempt is retained for retry
+  /api/v1/documents/files/{documentId}:
+    parameters:
+      - in: path
+        name: documentId
+        required: true
+        schema: { $ref: "#/components/schemas/Uuid" }
+    get:
+      tags: [Documents]
+      summary: Download a private, checksum-verified PDF artifact in the caller's legal-entity scope
+      operationId: downloadGeneratedDocumentPdf
+      x-implementation-status: implemented
+      responses:
+        "200":
+          description: Private PDF bytes with no-store headers and a Content-Digest SHA-256 value
+          headers:
+            Cache-Control: { schema: { type: string } }
+            Content-Digest: { schema: { type: string } }
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503":
+          description: Artifact storage could not be verified; bytes are not returned
   /api/v1/payments/options:
     get:
       tags: [Payments]
