@@ -18,7 +18,7 @@ try {
   console.error("SMOKE_BASE_URL must be a valid origin URL");
   process.exit(2);
 }
-const host = base.hostname.replace(/^\\[|\\]$/g, "").toLowerCase();
+const host = base.hostname.replace(/^\[|\]$/g, "").toLowerCase();
 const loopback = ["localhost", "127.0.0.1", "::1"].includes(host) || host.startsWith("127.");
 if (base.origin !== rawOrigin || base.pathname !== "/" || base.search || base.hash ||
     !["https:", "http:"].includes(base.protocol) || (base.protocol === "http:" && !loopback)) {
