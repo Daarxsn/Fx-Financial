@@ -183,7 +183,7 @@ async function appendEmailEvent(
     [randomUUID(), outboxId, eventType, previousStatus, newStatus, actorId, providerEventId, reasonCode, payloadSha256, metadata ? JSON.stringify(metadata) : null],
   );
 }
-async function loadSource(sourceType: EmailSourceType, sourceId: string): Promise<SourceRow> {
+async function loadSource(sourceType: EmailSourceType, sourceId: string, requireSendable = true): Promise<SourceRow> {
   let rows: SourceRow[] = [];
   if (sourceType === "INVOICE") {
     const [result] = await pool.execute<SourceRow[]>(
@@ -205,7 +205,8 @@ async function loadSource(sourceType: EmailSourceType, sourceId: string): Promis
     rows = result;
   }
   if (!rows.length) throw new EmailWorkflowError("EMAIL_SOURCE_NOT_FOUND", 404, "The financial document is not available for email.");
-  if (!rows[0].legal_entity_id || !rows[0].document_number || !sourcePermissionCheckStatus(sourceType, rows[0].status)) {
+  if (!rows[0].legal_entity_id || !rows[0].document_number ||
+      (requireSendable && !sourcePermissionCheckStatus(sourceType, rows[0].status))) {
     throw new EmailWorkflowError("EMAIL_SOURCE_NOT_SENDABLE", 409, "Only active issued invoices, sent or accepted quotations, and recorded receipts can be emailed.");
   }
   return rows[0];
@@ -236,7 +237,7 @@ async function findExistingByKey(key: string, payloadHash: string): Promise<Reco
 }
 
 export async function getEmailSourcePreview(sourceType: EmailSourceType, sourceId: string) {
-  const source = await loadSource(sourceType, sourceId);
+  const source = await loadSource(sourceType, sourceId, false);
   const snapshot = await latestSnapshot(sourceType, sourceId);
   const content = object(snapshot.content_json);
   const customer = object(content.customer);
@@ -550,7 +551,7 @@ export async function processEmailOutboxBatch(limit = 3): Promise<{ claimed: num
         counts.failed++;
       }
     } catch (error) {
-      const retrySafe = Number(row.attempt_count) < 5 && Date.now() - new Date(row.created_at).getTime() < 20 * 60 * 60 * 1000;
+      const retrySafe = Number(row.attempt_count) + 1 < 5 && Date.now() - new Date(row.created_at).getTime() < 20 * 60 * 60 * 1000;
       if (retrySafe) {
         const conn = await pool.getConnection();
         try {
