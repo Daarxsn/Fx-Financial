@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import type { ResultSetHeader, RowDataPacket, PoolConnection } from "mysql2";
+import type { RowDataPacket, PoolConnection } from "mysql2";
 import { pool } from "@/lib/db/pool";
 import { generateDocumentPdf, downloadGeneratedDocument, type DocumentSourceType } from "@/lib/documents/service";
 
@@ -281,7 +281,7 @@ export async function queueDocumentEmail(input: {
   if (pdfRecord.status !== "READY" || !pdfRecord.id) {
     throw new EmailWorkflowError("DOCUMENT_GENERATION_PENDING", 409, "The verified PDF is still being prepared. Refresh the document history before sending email.");
   }
-  const pdf = await downloadGeneratedDocument(String(pdfRecord.id), input.actorId);
+  const pdf = await downloadGeneratedDocument(String(pdfRecord.id), input.actorId, false);
   const config = object(content.configurationSnapshot);
   const brand = object(config.brand);
   const templateConfig = object(object(config.template).config);
@@ -506,7 +506,7 @@ export async function processEmailOutboxBatch(limit = 3): Promise<{ claimed: num
         tags: [{ name:"fx-outbox-id",value:row.id }],
       };
       if (row.generated_document_id) {
-        const pdf = await downloadGeneratedDocument(row.generated_document_id,null);
+        const pdf = await downloadGeneratedDocument(row.generated_document_id,null,false);
         if (!row.attachment_sha256 || pdf.fileSha256 !== row.attachment_sha256 ||
             (row.attachment_byte_size != null && pdf.bytes.length !== Number(row.attachment_byte_size))) {
           await finishAttempt(row,token,"FAILED","ATTACHMENT_INTEGRITY_FAILURE");
@@ -531,7 +531,7 @@ export async function processEmailOutboxBatch(limit = 3): Promise<{ claimed: num
       if (response.ok && typeof responseBody.id === "string") {
         await finishAttempt(row,token,"SENT",null,responseBody.id);
         counts.sentToProvider++;
-      } else if (isRetryableHttp(response.status) && Number(row.attempt_count) < 5) {
+      } else if (isRetryableHttp(response.status) && Number(row.attempt_count) + 1 < 5) {
         const delay = retryDelaySeconds(Number(row.attempt_count));
         const conn = await pool.getConnection();
         try {
