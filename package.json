@@ -31,6 +31,7 @@
     "pack9:test": "node scripts/test-pack-9-readiness.mjs",
     "pack9:preflight": "node --env-file-if-exists=.env.local scripts/pack-9-preflight.mjs",
     "pack9:smoke": "node scripts/smoke-deployment.mjs",
+    "pack9:smoke-test": "node scripts/test-pack-9-smoke.mjs",
     "pack8:query-plans": "node scripts/verify-pack-8-query-plans.mjs"
   },
   "dependencies": {
