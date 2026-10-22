@@ -324,20 +324,33 @@ A chunk is accepted only when all applicable statements below are true:
 
 ### Pack 7 — Dashboard, reports, audit and exports
 
-**Goal:** business-readable data that reconciles to persisted financial records.
+**Goal:** business-readable operational reporting that reconciles to persisted financial records without crossing legal-entity or currency boundaries.
 
-| Chunk | Work | Acceptance evidence |
+| Chunk | Delivered implementation | Acceptance evidence |
 |---|---|---|
-| 7.1 | Define finance-approved metric definitions: issued value, paid amount, outstanding, overdue, quotations won/expired, reversals, date basis, currency and treatment of cancelled/credit/debit documents. | Metric glossary approved and linked to the decision packet. |
-| 7.2 | Implement bounded, entity-scoped dashboard queries; aggregate using exact DB decimals and handle time zone/date range explicitly. | Dashboard numbers reconcile to known seeded integration fixtures. |
-| 7.3 | Implement invoice/quotation/customer/payment reports with filters, stable sort order and pagination. | Combined filters and permission/scope cases covered. |
-| 7.4 | Implement bulk exports with approved fields, row limits, access checks, audit event and safe filenames/content types. | Cross-entity export denied; export values reconcile to report queries. |
-| 7.5 | Implement CSV spreadsheet-injection protections for user-controlled cells and safe handling of formula-leading values. | Export security tests pass without changing legitimate stored financial values. |
-| 7.6 | Add searchable audit views for issue, correction, payment, reversal, file access where required, settings, exports and email sending. | Read access itself is permission-scoped; events are append-only and PII-minimized. |
-| 7.7 | Reconcile reports/exports against invoice/payment data for unpaid, partial, paid, reversed, corrected and cancelled cases. | Automated reconciliation suite passes. |
-| 7.8 | Finish dashboard/reporting states and large-data performance checks. | Empty/no-match/error/loading states work; query limits/indexes are validated. |
+| 7.1 | Added a provisional reporting metric glossary covering invoice movements, cancelled invoices, issued credit/debit notes, quotation outcomes, recorded/reversed receipts, unallocated receipts, outstanding balances, overdue balances, dates and currency. | `docs/pack-7-metric-glossary.md` names each basis and exclusion. The definitions and report responses stay marked `PENDING_FINANCE_APPROVAL` until an authorized owner signs the glossary; this is an external business gate, not a code-completion assertion. |
+| 7.2 | Added a dashboard summary API and overview snapshot with date-window, legal-entity and currency separation, exact-decimal values, separate period movement and current-balance snapshot metrics, and restricted visibility. | Disposable-MySQL integration tests compare summary counts and exact decimal values to inserted source fixtures; unauthorized/out-of-scope entity summaries are not returned. |
+| 7.3 | Added invoice, quotation, payment and customer-activity report endpoints with validated inclusive date filters (maximum 366 days), bounded pagination, stable ordering, search/status filters and entity scope derived from the authenticated session. | Pack 7 API acceptance verifies scoped rows, resource permissions, invalid/oversized date windows, empty-page totals, invoice allocation balances, draft balance exclusion, quotation values, recorded/reversed receipt treatment and customer linkage. |
+| 7.4 | Added four POST-only report CSV exports with CSRF/origin verification, explicit field allowlists, a 10,000-row limit, formula-safe CSV encoding, useful legal-entity identity in every export, safe content type/filename and `no-store` headers. Each export is audited before its CSV response is returned. | Disposable-MySQL API tests exercise all four export types, formula-leading customer data, excluded out-of-scope data/fields, rejected oversized limits and report-export audit events. |
+| 7.5 | Reused the shared CSV encoder that protects formula-leading values without changing stored source values, and covered the protection with a report-export fixture. | API assertions verify exported formula-leading text is escaped, legitimate stored values remain unchanged in the database, and the export stays limited to approved columns. |
+| 7.6 | Added a searchable, paginated audit API and workspace spanning scoped audit records plus document generation/access, email delivery, reminders, policy decisions, correction requests and payment reversal events. The response omits before/after JSON and provider payloads. | MySQL acceptance verifies entity isolation, reversal-event visibility, anonymous denial and sensitive payload redaction; the UI has search, date/resource/entity filters and loading/empty/error states. |
+| 7.7 | Added source-record reconciliation coverage for invoice value vs recorded allocations, quote totals, recorded and reversed receipt treatment, current outstanding balances and entity-isolation behavior. | Assertions use disposable database records with exact four-place amounts; dashboard and report outputs are checked against the same persisted invoice, quotation, payment and reversal fixtures. Definitions keep currency groups separate. |
+| 7.8 | Connected the reports and audit workspaces to the secured APIs, added the dashboard snapshot to Overview, included responsive no-overflow browser checks, and corrected report/audit acceptance waits to wait for successful API responses and actual rendered data. | Green Playwright browser acceptance visits reports, audit and overview; the full suite tests 1365px, 768px and 390px viewports and requires no uncaught browser JavaScript errors. CI also runs the Pack 7 structural/contract validator. |
 
-**Gate 7:** Dashboard, reports and exports are accurate, permissioned and traceable to source records.
+**Gate 7 — engineering acceptance: PASSED and locked** on commit `2e3da01d49417225d9281b6360517dd797c4a293`; CI run [39762893302](https://github.com/Daarxsn/Fx-Financial/actions/runs/39762893302) and the lockfile workflow [39762893254](https://github.com/Daarxsn/Fx-Financial/actions/runs/39762893254) completed successfully. The CI run passed migration/seed/dump-restore checks, auth/authorization and Pack 7 MySQL API acceptance, Pack 7 contract validation, lint, TypeScript, production build and the Playwright browser acceptance suite.
+
+#### Pack 7 engineering lock record — 2026-10-22
+
+**Disposition: PACK 7 ENGINEERING BASELINE LOCKED; PACK 8 MAY START.** This lock records implementation, integration and automated acceptance. It is not business or finance authorization to use provisional outputs as official financial reports or permission to activate unapproved financial policies.
+
+- [x] Metric definitions and date/currency basis documented, with explicit `PENDING_FINANCE_APPROVAL` status preserved.
+- [x] Dashboard summary and invoice/quotation/payment/customer-activity reports connected to the database through permission- and legal-entity-scoped APIs.
+- [x] Four audited, CSRF-protected CSV exports include legal-entity identity and a fixed field allowlist; formula-leading data is escaped and oversized exports are rejected.
+- [x] Searchable audit view is connected and payload-minimized for policy/correction, payment reversal, document, email and reminder events.
+- [x] Disposable-MySQL tests verify role/scope denial, exact-decimal totals, invoice allocation/outstanding reconciliation, quotation values, recorded/reversed receipts, empty-page pagination, audit redaction and all four exports.
+- [x] Latest main commit `2e3da01d49417225d9281b6360517dd797c4a293` passed full CI run [39762893302](https://github.com/Daarxsn/Fx-Financial/actions/runs/39762893302), including Playwright browser acceptance. Lockfile workflow [39762893254](https://github.com/Daarxsn/Fx-Financial/actions/runs/39762893254) also passed.
+
+**Still required before official/production reporting is enabled:** written approval from finance/accounting for the glossary/date basis and treatment of cancelled, credit-note and debit-note records; approval of overdue/unallocated-receipt semantics; privacy/business approval of report/export allowlists and retention; and recorded approver identity/date/version. These are business-owned gates. Until signed, the application intentionally labels the metrics provisional. The broader product release also remains subject to Pack 8 security/reliability hardening and Pack 9–10 infrastructure, recovery, UAT and go-live gates.
 
 ### Pack 8 — Security, correctness and reliability hardening
 
@@ -419,13 +432,13 @@ To move quickly without building defects into the next phase:
 - Keep a single defect ledger with severity: **P0** data loss/unauthorized finance access/invalid issue; **P1** broken issue, amount, payment, PDF or delivery path; **P2** significant workflow/UX impairment; **P3** non-blocking polish.
 - Do not sacrifice authorization, decimal correctness, transactionality, privacy, migrations, test evidence or restore readiness for speed. Defer optional polish instead.
 
-## 8. Immediate next actions (updated 2026-10-20)
+## 8. Historical execution note (2026-10-20; superseded by dated pack acceptance records)
 
 **Latest verified engineering baseline:** `0026defdf6da109a8379e945b7c3a144ba8d07d6`. The full CI run [39394369865](https://github.com/Daarxsn/Fx-Financial/actions/runs/39394369865) passed, including MySQL-backed authorization/invoice/quotation integration tests, Phase 6B configuration and snapshot checks, exact-decimal calculation tests, lint, TypeScript, production build and Playwright browser acceptance.
 
 **Pack 2 regression fixes verified on this baseline:** issued invoice list and detail use the issue-time customer name snapshot instead of a later mutable customer record; quotation conversion fails closed when an entity timezone is invalid; concurrent same-key invoice issue requests are verified to return one original result and one replay with the same allocated number and snapshot hash; reusing the consumed issue key on a different draft is rejected without issuing the second invoice, advancing the sequence, or creating a snapshot.
 
-Perform in this order:
+Original sequencing note from 2026-10-20 (historical; use the dated lock records above for current pack status):
 
 1. Close the remaining Pack 1 operator gates: verify migrations 011–012, idempotent migration rerun, and customer/catalog CRUD plus CSV import/export against the dedicated Aiven development/testing database with verified TLS. Separately complete manual desktop/tablet/mobile, light/dark, keyboard, screen-reader and contrast review. Do not substitute CI MySQL for these checks.
 2. Continue Pack 2 with targeted checks for quotation send/accept/expire/convert journeys, issue-time snapshots, stale edits, and conflict/idempotency handling across routes and real workspace flows. Implement only evidenced gaps. Keep invoice cancellation/correction blocked until the approved finance/legal policy is explicit.
@@ -433,4 +446,4 @@ Perform in this order:
 4. Close the finance/business/tax decisions in Pack 4. Keep issue/correction paths blocked where actual issuer, tax, numbering, terms or statutory settings are not approved.
 5. Build deterministic snapshot-derived PDFs and private storage, then email/outbox/reminders, reporting/exports, hardening, deployment, recovery verification and UAT in the listed dependency order.
 
-**Current completion rule:** Pack 1 is automated-tested in CI, but not operationally closed until the configured Aiven and manual acceptance evidence is captured. Pack 2 has passed these automated lifecycle regression gates but remains open for broader workflow and operator acceptance. Do not call the product production-ready until every required pack gate is either passed or has an explicitly approved exception, and all legal/finance/runtime gates relevant to actual issuing are signed and evidenced.
+**Historical completion rule from 2026-10-20 — superseded for current status by dated pack lock records above.** Pack-specific engineering locks do not replace manual/operator, finance/legal, infrastructure/recovery, UAT or go-live approvals. Do not call the whole product production-ready until every required pack gate is passed or has an explicitly approved exception and all legal/finance/runtime gates relevant to actual issuing are signed and evidenced.
