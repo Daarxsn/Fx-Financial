@@ -5,6 +5,7 @@ import { cloneElement, isValidElement, useCallback, useEffect, useId, useMemo, u
 import { Button, EmptyState, InlineAlert, LoadingState, StatusBadge } from "@/components/ui";
 import { InvoiceCorrectionPanel } from "@/components/invoice-correction-panel";
 import { DocumentHistoryPanel } from "@/components/document-history-panel";
+import { EmailDeliveryPanel } from "@/components/email-delivery-panel";
 
 type LineKind="ITEM"|"CHARGE"; type DiscountType="AMOUNT"|"PERCENT";
 type LineDraft={key:string;catalogItemId:string;lineKind:LineKind;description:string;unitCode:string;quantity:string;unitPrice:string;discountType:DiscountType;discountValue:string;taxCode:string};
@@ -182,6 +183,7 @@ export function InvoiceWorkspace(){
    </div>
    {Array.isArray(selected.lines)&&selected.lines.length?<div className="data-table-scroll"><table className="data-table"><thead><tr><th>Line</th><th>Qty</th><th>Unit rate</th><th>Discount</th><th>Tax</th><th>Total</th></tr></thead><tbody>{selected.lines.map((v,index)=>{const l=record(v);return <tr key={str(l.id)||index}><td><strong>{str(l.description)}</strong><div className="invoice-workspace-muted">{str(l.unitCode)} · {str(l.lineKind)}</div></td><td>{str(l.quantity)}</td><td>{currency(selected.currency,str(l.unitPrice))}</td><td>{str(l.discountType)==="PERCENT"?str(l.discountValue)+"%":currency(selected.currency,str(l.discountValue))}</td><td>{currency(selected.currency,str(l.taxAmount))}{str(l.taxCode)?" · "+str(l.taxCode):""}</td><td>{currency(selected.currency,str(l.lineTotal))}</td></tr>;})}</tbody></table></div>:<p className="form-hint">No line details returned.</p>}
     {selected.lifecycleStatus!=="DRAFT"?<DocumentHistoryPanel sourceType="INVOICE" sourceId={selected.id}/>:null}
+     {selected.lifecycleStatus==="ISSUED"?<EmailDeliveryPanel sourceType="INVOICE" sourceId={selected.id}/>:null}
    <div className="invoice-editor__actions">{selected.lifecycleStatus==="DRAFT"&&canUpdate?<Button variant="secondary" onClick={()=>{setEditor(true);setDirty(false);}}>Edit draft</Button>:null}{selected.lifecycleStatus==="DRAFT"&&canIssue?<Button disabled={Boolean(issuing)} onClick={()=>void issue(selected)}>{issuing===selected.id?"Issuing…":"Issue invoice"}</Button>:null}</div>
       <section className="master-data-panel" aria-labelledby="invoice-payments-title">
      <div className="master-data-panel__heading"><div><h3 id="invoice-payments-title">Payments and receipts</h3><p>Paid/outstanding values are calculated from recorded allocations. Reversals preserve their ledger history.</p></div><Link href="/payments">Open payment ledger</Link></div>
