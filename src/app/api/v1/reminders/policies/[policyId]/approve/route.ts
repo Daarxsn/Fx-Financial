@@ -25,6 +25,14 @@ export async function POST(request:NextRequest,context:Context) {
     const conn=await pool.getConnection();
     try {
       await conn.beginTransaction();
+      // Use the same entity-first lock order as policy creation to serialize activation safely.
+      const [initialRows]=await conn.execute<(RowDataPacket & {legal_entity_id:string})[]>(
+        "SELECT legal_entity_id FROM overdue_reminder_policies WHERE id=? LIMIT 1",[policyId]);
+      const initial=initialRows[0];
+      if(!initial || !actor.legalEntityIds.includes(initial.legal_entity_id)) throw new EmailWorkflowError("REMINDER_POLICY_NOT_FOUND",404,"The reminder policy is not available in your assigned scope.");
+      const [entityRows]=await conn.execute<(RowDataPacket & {id:string})[]>(
+        "SELECT id FROM legal_entities WHERE id=? LIMIT 1 FOR UPDATE",[initial.legal_entity_id]);
+      if(!entityRows.length) throw new EmailWorkflowError("REMINDER_POLICY_NOT_FOUND",404,"The reminder policy is not available in your assigned scope.");
       const [rows]=await conn.execute<(RowDataPacket & {id:string;legal_entity_id:string;status:string;requested_by:string;version_number:number})[]>(
         "SELECT id,legal_entity_id,status,requested_by,version_number FROM overdue_reminder_policies WHERE id=? LIMIT 1 FOR UPDATE",[policyId]);
       const policy=rows[0];
