@@ -3221,7 +3221,7 @@ try {
   const p6Body = {
     sourceType: "INVOICE",
     sourceId: p4NoteSource.id,
-    recipientEmail: p6Preview.body.data.defaultRecipientEmail,
+    recipientEmail: "alternate-" + suffix + "@example.invalid",
     recipientConfirmed: true,
   };
   const p6Queue = await call("/api/v1/email/outbox", {
@@ -3287,6 +3287,60 @@ try {
   assert.equal(p6Delivered.status, "DELIVERED", "signed delivery event updates delivery status");
   assert.ok(p6Delivered.events.some(event => event.type === "PROVIDER_WEBHOOK:email.delivered"));
 
+  // A late "sent" event must not downgrade a terminal delivered status.
+  const p6LateEventId = "evt-pack6-late-" + randomUUID();
+  const p6LateTimestamp = String(Math.floor(Date.now() / 1000));
+  const p6LatePayload = JSON.stringify({ type: "email.sent", data: { email_id: p6Sent.providerMessageId } });
+  const p6LateSignature = createHmac("sha256", Buffer.from("ci-email-webhook-secret"))
+    .update(p6LateEventId + "." + p6LateTimestamp + "." + p6LatePayload).digest("base64");
+  const p6LateWebhook = await fetch(new URL("/api/webhooks/resend", baseUrl), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "svix-id": p6LateEventId, "svix-timestamp": p6LateTimestamp, "svix-signature": "v1," + p6LateSignature },
+    body: p6LatePayload, cache: "no-store",
+  });
+  assert.equal(p6LateWebhook.status, 200, "late provider event is accepted into the append-only timeline");
+  const p6AfterLate = await call("/api/v1/email/outbox?sourceType=INVOICE&sourceId=" + p4NoteSource.id, {}, phase6aSession.jar);
+  assert.equal(p6AfterLate.body.data.items.find(item => item.id === p6Queue.body.data.id).status, "DELIVERED",
+    "a stale provider webhook must not regress a terminal delivery status");
+
+  // Exercise the same outbox and attachment path for quotation and receipt documents.
+  const p6QuotePreview = await call("/api/v1/email/outbox?sourceType=QUOTATION&sourceId=" + snapshotQuoteId, {}, phase6aSession.jar);
+  assert.equal(p6QuotePreview.response.status, 200);
+  const p6QuoteQueue = await call("/api/v1/email/outbox", {
+    method: "POST",
+    headers: { "Idempotency-Key": randomUUID() },
+    body: JSON.stringify({ sourceType: "QUOTATION", sourceId: snapshotQuoteId, recipientEmail: p6QuotePreview.body.data.defaultRecipientEmail, recipientConfirmed: true }),
+  }, phase6aSession.jar);
+  assert.equal(p6QuoteQueue.response.status, 202, "confirmed quotation email is durably queued");
+  assert.match(p6QuoteQueue.body.data.attachmentSha256, /^[a-f0-9]{64}$/);
+
+  const p6ReceiptPreview = await call("/api/v1/email/outbox?sourceType=RECEIPT&sourceId=" + p5ReceiptId, {}, phase6aSession.jar);
+  assert.equal(p6ReceiptPreview.response.status, 200);
+  const p6ReceiptQueue = await call("/api/v1/email/outbox", {
+    method: "POST",
+    headers: { "Idempotency-Key": randomUUID() },
+    body: JSON.stringify({ sourceType: "RECEIPT", sourceId: p5ReceiptId, recipientEmail: p6ReceiptPreview.body.data.defaultRecipientEmail, recipientConfirmed: true }),
+  }, phase6aSession.jar);
+  assert.equal(p6ReceiptQueue.response.status, 202, "confirmed receipt email is durably queued");
+  assert.match(p6ReceiptQueue.body.data.attachmentSha256, /^[a-f0-9]{64}$/);
+
+  const p6OtherDocsCron = await fetch(new URL("/api/cron/email-outbox", baseUrl), {
+    headers: { Authorization: "Bearer ci-pack6-cron-secret-long-enough-000000000000" }, cache: "no-store",
+  });
+  assert.equal(p6OtherDocsCron.status, 200, "worker sends quotation and receipt documents");
+  const p6OtherDocsMessages = await fetch("http://127.0.0.1:3030/__test/messages", {
+    headers: { "X-Test-Token": "ci-email-test-only" }, cache: "no-store",
+  }).then(response => response.json());
+  assert.equal(p6OtherDocsMessages.count, 3, "invoice, quotation and receipt generate one email each");
+  assert.ok(p6OtherDocsMessages.messages.some(item => item.subject.startsWith("Quotation ")));
+  assert.ok(p6OtherDocsMessages.messages.some(item => item.subject.startsWith("Payment receipt ")));
+  const p6QuoteHistory = await call("/api/v1/email/outbox?sourceType=QUOTATION&sourceId=" + snapshotQuoteId, {}, phase6aSession.jar);
+  const p6QuoteSent = p6QuoteHistory.body.data.items.find(item => item.id === p6QuoteQueue.body.data.id);
+  assert.equal(p6QuoteSent.status, "SENT");
+  const p6ReceiptHistory = await call("/api/v1/email/outbox?sourceType=RECEIPT&sourceId=" + p5ReceiptId, {}, phase6aSession.jar);
+  const p6ReceiptSent = p6ReceiptHistory.body.data.items.find(item => item.id === p6ReceiptQueue.body.data.id);
+  assert.equal(p6ReceiptSent.status, "SENT");
+
   const p6Approver = await seedUser("finance_admin", "p6-approver-" + suffix + "@example.invalid", "ACTIVE",
     "Pack6 Approver Password #5!", [entityA.id]);
   const p6ApproverSession = await login(p6Approver);
@@ -3334,7 +3388,7 @@ try {
   const p6FinalMessages = await fetch("http://127.0.0.1:3030/__test/messages", {
     headers: { "X-Test-Token": "ci-email-test-only" }, cache: "no-store",
   }).then(response => response.json());
-  assert.equal(p6FinalMessages.count, 2, "one original message and one reminder are sent without duplicates");
+  assert.equal(p6FinalMessages.count, 4, "invoice, quotation, receipt and one reminder are sent without duplicates");
   console.log("PASS: Pack 6 durable outbox, idempotent replay, verified PDF attachment, signed/idempotent webhooks, delivery timeline, independent reminder approval, overdue scheduling and disable checks.");
 
   const p4NoQueueUser=await call("/api/v1/correction-requests?status=all",{},p3NoReverseSession.jar);
