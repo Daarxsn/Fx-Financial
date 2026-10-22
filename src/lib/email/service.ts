@@ -282,6 +282,10 @@ export async function queueDocumentEmail(input: {
   if (pdfRecord.status !== "READY" || !pdfRecord.id) {
     throw new EmailWorkflowError("DOCUMENT_GENERATION_PENDING", 409, "The verified PDF is still being prepared. Refresh the document history before sending email.");
   }
+  if (pdfRecord.contentSnapshotId !== snapshot.id) {
+    // Do not pair body text derived from one snapshot with a PDF generated from a different revision.
+    throw new EmailWorkflowError("DOCUMENT_SNAPSHOT_CHANGED", 409, "The document changed while this email was being prepared. Refresh the document and retry.");
+  }
   const pdf = await downloadGeneratedDocument(String(pdfRecord.id), input.actorId, false);
   const config = object(content.configurationSnapshot);
   const brand = object(config.brand);
