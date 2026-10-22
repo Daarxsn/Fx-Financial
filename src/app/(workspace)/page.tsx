@@ -8,11 +8,11 @@ import { PaymentSummary } from "@/components/payment-summary";
 import { DashboardReportSummary } from "@/components/dashboard-report-summary";
 
 const modules = [
-  { number: "01", title: "Invoices", description: "Create drafts, review server-calculated totals and issue after required finance checks.", href: "/invoices", icon: "invoice" as const, status: "Document workflow" },
-  { number: "02", title: "Quotations", description: "Create drafts, track customer decisions and convert accepted quotes into invoice drafts.", href: "/quotations", icon: "quote" as const, status: "Document workflow" },
-  { number: "03", title: "Customers", description: "Manage customer records that can be reused across invoices and quotations.", href: "/customers", icon: "users" as const, status: "Master data" },
-  { number: "04", title: "Items & services", description: "Manage reusable products and services, units and exact-decimal price defaults.", href: "/catalog", icon: "box" as const, status: "Master data" },
-  { number: "05", title: "Payments", description: "Record receipts, allocate payments to issued invoices, and preserve reversal history.", href: "/payments", icon: "wallet" as const, status: "Payment workflow" },
+  { number: "01", title: "Invoices", description: "Prepare invoice drafts, review calculated totals and issue documents when required finance checks are satisfied.", href: "/invoices", icon: "invoice" as const, status: "Document workflow" },
+  { number: "02", title: "Quotations", description: "Prepare quotations, record customer decisions and move accepted quotes into the invoice workflow.", href: "/quotations", icon: "quote" as const, status: "Document workflow" },
+  { number: "03", title: "Customers", description: "Keep customer details consistent and reusable across your financial documents.", href: "/customers", icon: "users" as const, status: "Master data" },
+  { number: "04", title: "Items & services", description: "Maintain reusable products, services, units and price defaults for new documents.", href: "/catalog", icon: "box" as const, status: "Master data" },
+  { number: "05", title: "Payments", description: "Record receipts, allocate payments to invoices and preserve a traceable history.", href: "/payments", icon: "wallet" as const, status: "Payment workflow" },
 ];
 
 export default function HomePage() {
@@ -22,15 +22,15 @@ export default function HomePage() {
       <PageHeader
         eyebrow="FINANCE OPERATIONS"
         title="Your finance, in focus."
-        description="A considered workspace for document creation, customer records and payment tracking—built around accurate data and accountable actions."
+        description="One considered workspace for invoices, quotations, customer records and payment tracking—built around clarity, accurate data and accountable actions."
       />
       <section className="welcome-panel" aria-labelledby="welcome-title">
         <div className="welcome-panel__content">
-          <StatusBadge tone="info" icon="sparkles">Workspace foundation</StatusBadge>
-          <h2 id="welcome-title">A better way to keep business moving.</h2>
+          <StatusBadge tone="info" icon="sparkles">Finance workspace</StatusBadge>
+          <h2 id="welcome-title">Every financial detail, in its place.</h2>
           <p>Use Invoices to create drafts and issue financial documents, or Quotations to prepare quotes, record customer decisions and convert accepted quotes into invoice drafts. Your role, legal-entity access and approved company setup determine which actions are available. PDF generation and email delivery are not enabled yet.</p>
           <div className="welcome-panel__foot">
-            <span className="welcome-panel__live"><span aria-hidden="true" /> UI foundation active</span>
+            <span className="welcome-panel__live"><span aria-hidden="true" /> Workspace active</span>
             <span className="welcome-panel__separator" aria-hidden="true" />
             <span>Secure-by-design architecture</span>
           </div>
@@ -54,7 +54,7 @@ export default function HomePage() {
 
       <div className="section-heading">
         <div><p className="eyebrow">YOUR WORKSPACE</p><h2>Start with the essentials</h2></div>
-        <span className="section-heading__hint">Explore the foundation</span>
+        <span className="section-heading__hint">Built for day-to-day clarity</span>
       </div>
 
       <section className="module-grid" aria-label="Workspace modules">
@@ -86,7 +86,7 @@ export default function HomePage() {
         </Card>
         <Card className="readiness-card">
           <div className="card-heading">
-            <div><h2>Foundation status</h2><p>The shared experience, at a glance.</p></div>
+            <div><h2>Workspace readiness</h2><p>A transparent view of what is available today.</p></div>
             <span className="card-heading__icon"><Icon name="shield" size={19} /></span>
           </div>
           <div className="readiness-list">

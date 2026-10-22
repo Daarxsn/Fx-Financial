@@ -79,19 +79,51 @@ export function DashboardReportSummary() {
       {loading ? <p className="dashboard-report-summary__state" role="status">Loading scoped reporting metrics…</p>
         : error ? <p className="dashboard-report-summary__state dashboard-report-summary__state--error" role="alert">{error}</p>
         : rows.length ? <div className="dashboard-report-summary__grid">
-          {rows.map(row => (
-            <article className="dashboard-report-card" key={row.legalEntityId + ":" + row.currency}>
-              <header><div><h3>{row.legalEntityName}</h3><p>Legal entity scope</p></div><span>{row.currency}</span></header>
-              <dl>
-                <div><dt>Issued invoice value</dt><dd>{row.currency} {row.issuedInvoiceValue}</dd><small>{row.issuedInvoiceCount} invoices in period</small></div>
-                <div><dt>Recorded receipt value</dt><dd>{row.currency} {row.recordedReceiptValue}</dd><small>{row.recordedReceiptCount} receipts in period</small></div>
-                <div><dt>Current outstanding</dt><dd>{row.currency} {row.currentOutstandingBalance}</dd><small>As-of snapshot</small></div>
-                <div><dt>Current overdue</dt><dd>{row.currency} {row.currentOverdueBalance}</dd><small>{row.currentOverdueInvoiceCount} overdue invoices</small></div>
-                <div><dt>Won quotations</dt><dd>{row.quotationsWonCount}</dd><small>{row.currency} {row.quotationsWonValue} provisional value</small></div>
-                <div><dt>Reversed receipts</dt><dd>{row.reversedReceiptCount}</dd><small>{row.currency} {row.reversedReceiptValue} by reversal date</small></div>
-              </dl>
-            </article>
-          ))}
+          {rows.map(row => {
+            const visualRows = [
+              { label: "Issued invoice value", raw: row.issuedInvoiceValue, amount: Number.parseFloat(row.issuedInvoiceValue) || 0, tone: "" },
+              { label: "Recorded receipts", raw: row.recordedReceiptValue, amount: Number.parseFloat(row.recordedReceiptValue) || 0, tone: " dashboard-report-card__bar-fill--receipt" },
+              { label: "Current outstanding", raw: row.currentOutstandingBalance, amount: Number.parseFloat(row.currentOutstandingBalance) || 0, tone: " dashboard-report-card__bar-fill--outstanding" },
+              { label: "Current overdue", raw: row.currentOverdueBalance, amount: Number.parseFloat(row.currentOverdueBalance) || 0, tone: " dashboard-report-card__bar-fill--overdue" },
+            ];
+            const maxAmount = Math.max(0, ...visualRows.map(item => item.amount));
+            return (
+              <article className="dashboard-report-card" key={row.legalEntityId + ":" + row.currency}>
+                <header><div><h3>{row.legalEntityName}</h3><p>Legal entity scope</p></div><span>{row.currency}</span></header>
+                <dl>
+                  <div><dt>Issued invoice value</dt><dd>{row.currency} {row.issuedInvoiceValue}</dd><small>{row.issuedInvoiceCount} invoices in period</small></div>
+                  <div><dt>Recorded receipt value</dt><dd>{row.currency} {row.recordedReceiptValue}</dd><small>{row.recordedReceiptCount} receipts in period</small></div>
+                  <div><dt>Current outstanding</dt><dd>{row.currency} {row.currentOutstandingBalance}</dd><small>As-of snapshot</small></div>
+                  <div><dt>Current overdue</dt><dd>{row.currency} {row.currentOverdueBalance}</dd><small>{row.currentOverdueInvoiceCount} overdue invoices</small></div>
+                  <div><dt>Won quotations</dt><dd>{row.quotationsWonCount}</dd><small>{row.currency} {row.quotationsWonValue} provisional value</small></div>
+                  <div><dt>Reversed receipts</dt><dd>{row.reversedReceiptCount}</dd><small>{row.currency} {row.reversedReceiptValue} by reversal date</small></div>
+                </dl>
+                <section className="dashboard-report-card__visual" aria-label={row.legalEntityName + " amount comparison"}>
+                  <div className="dashboard-report-card__visual-head">
+                    <strong>Amount profile</strong>
+                    <span>Relative scale · this entity and currency</span>
+                  </div>
+                  <div className="dashboard-report-card__bars">
+                    {visualRows.map(item => {
+                      const ratio = maxAmount > 0 ? Math.min(100, (item.amount / maxAmount) * 100) : 0;
+                      return (
+                        <div className="dashboard-report-card__bar-row" key={item.label}>
+                          <div className="dashboard-report-card__bar-label">
+                            <span>{item.label}</span>
+                            <strong>{row.currency} {item.raw}</strong>
+                          </div>
+                          <div className="dashboard-report-card__bar-track" role="meter" aria-label={item.label} aria-valuemin={0} aria-valuemax={Math.max(maxAmount, 1)} aria-valuenow={Math.max(0, item.amount)}>
+                            <span className={"dashboard-report-card__bar-fill" + item.tone} style={{ width: ratio + "%" }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="dashboard-report-card__visual-foot">Issued invoices and receipts use the selected period. Outstanding and overdue balances are a current snapshot. Bars compare amounts only within the same entity and currency.</p>
+                </section>
+              </article>
+            );
+          })}
         </div>
         : <p className="dashboard-report-summary__state">No reporting activity is available for this period and your assigned entity scope.</p>}
     </section>
