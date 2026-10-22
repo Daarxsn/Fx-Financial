@@ -51,6 +51,11 @@ export async function POST(request: NextRequest) {
     const conn=await pool.getConnection();
     try {
       await conn.beginTransaction();
+      // Serialize policy creation per legal entity to prevent concurrent pending/active duplicates.
+      const [entityRows]=await conn.execute<(RowDataPacket & {id:string})[]>(
+        "SELECT id FROM legal_entities WHERE id=? AND is_active=1 LIMIT 1 FOR UPDATE",[input.legalEntityId],
+      );
+      if(!entityRows.length) throw new EmailWorkflowError("REMINDER_POLICY_NOT_FOUND",404,"The active legal entity is not available.");
       const [existing]=await conn.execute<(RowDataPacket & {id:string})[]>(
         "SELECT id FROM overdue_reminder_policies WHERE legal_entity_id=? AND status IN ('PENDING_APPROVAL','ACTIVE') LIMIT 1 FOR UPDATE",
         [input.legalEntityId],
