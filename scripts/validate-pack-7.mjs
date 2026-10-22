@@ -8,7 +8,7 @@ const paths = [
   "src/app/api/v1/reports/invoices/export/route.ts", "src/app/api/v1/reports/quotations/export/route.ts",
   "src/app/api/v1/reports/payments/export/route.ts", "src/app/api/v1/reports/customers/export/route.ts",
   "src/components/report-workspace.tsx", "src/components/audit-workspace.tsx", "src/components/dashboard-report-summary.tsx",
-  "src/app/(workspace)/[section]/page.tsx", "src/components/app-shell.tsx",
+  "src/app/(workspace)/[section]/page.tsx", "src/app/(workspace)/page.tsx", "src/components/app-shell.tsx",
   "src/lib/master-data/csv.ts", "docs/pack-7-metric-glossary.md", "scripts/verify-pack-7-api.mjs",
   ".github/workflows/ci.yml",
 ];
