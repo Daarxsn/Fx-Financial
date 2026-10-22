@@ -8,16 +8,16 @@ This ledger separates source-code evidence from provider and operations proof. A
 
 | ID | Work | Status |
 |---|---|---|
-| 9.1 | CI includes Node 24/npm ci, dependency audit, history secret scan, disposable MySQL migrations/seed/query plans/restore, API/auth, calculations, PDF/storage, UI, Pack 7/8, lint, types, build, production headers and Playwright. Pack 9 adds integration checks. | Await exact-commit CI |
+| 9.1 | CI includes Node 24/npm ci, dependency audit, history secret scan, disposable MySQL migrations/seed/query plans/restore, API/auth, calculations, PDF/storage, UI, Pack 7/8, lint, types, build, production headers and Playwright. Pack 9 adds infra validation, 20 synthetic preflight scenarios, and an HTTP smoke contract suite for success and fail-closed cases. | Await CI for latest main commit |
 | 9.2 | Disposable-MySQL browser acceptance covers login, Settings readiness, customer/catalog, invoice issue, private PDF generation/download, payment, correction, reports and audit; server tests cover document/storage/email contracts. | Code coverage exists; latest commit CI pending |
 | 9.3 | Next.js deployment configuration and smoke command are checked; no Vercel project is linked to this repo in the accessible team. | Project/preview pending |
-| 9.4 | Placeholder-only environment example and preflight cover origin, TLS, session, private storage, mail/webhook/scheduler; synthetic preflight tests cover valid and unsafe configurations. | Implemented; real values unverified |
+| 9.4 | Placeholder-only environment example and preflight cover origin, TLS, session, private storage, mail/webhook/scheduler, loopback/link-local host variants, CA PEM shape, KMS keys, and matching Vercel environment; synthetic tests assert secret-safe failures. | Source tests implemented; real values unverified |
 | 9.5 | Runtime/migrator/backup/read-only identities documented. | Provider grants/credential rotation pending |
 | 9.6 | Runtime requires production TLS; db:verify checks SELECT 1 and active TLS cipher. | Intended Aiven target unverified |
 | 9.7 | CI logical restore tested; provider restore procedure documented. | Managed restore and approved RPO/RTO pending |
 | 9.8 | Migration inventory, backup point, locks, validation and recovery procedure documented. | Change approval pending |
 | 9.9 | No production migration was executed during this source task. | Approval and verified backup pending |
-| 9.10 | Deployment smoke and release procedure added. | Vercel project/domain/env/preview pending |
+| 9.10 | HTTP deployment smoke checks page/security headers, DB health, CSRF bootstrap/cookie, and anonymous denial; contract tests exercise healthy and negative paths. | Tests added to CI; Vercel project/domain/env/Preview pending |
 | 9.11 | Monitoring and alert drill requirements documented. | Actual alerts/delivery unverified |
 | 9.12 | Deployment/rollback/database/email/storage/credential/restore runbooks written. | Second-operator drill pending |
 
