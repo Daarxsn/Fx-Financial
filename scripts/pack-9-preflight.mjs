@@ -44,12 +44,14 @@ function isLoopbackOrLinkLocalDatabaseHost(rawHost) {
   }
   if (ipVersion === 6) {
     if (host === "::" || host === "::1") return true;
-    // IPv4-mapped loopback/unspecified/link-local forms should not bypass the guard.
-    const mappedIpv4 = host.match(/(?:^|:)ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i)?.[1];
-    if (mappedIpv4 && isLoopbackOrLinkLocalDatabaseHost(mappedIpv4)) return true;
+    // IPv4-mapped IPv6 can encode loopback/link-local addresses in dotted or hexadecimal form.
+    if (host.startsWith("::ffff:")) return true;
     // IPv6 link-local is fe80::/10.
     if (/^fe[89ab][0-9a-f]:/i.test(host)) return true;
   }
+  // Some resolvers accept non-canonical IPv4 forms such as 127.1 or a packed integer.
+  // Reject numeric-only forms rather than letting resolver-specific shorthand bypass the check.
+  if (ipVersion === 0 && (/^[0-9.]+$/.test(host) || /^0x[0-9a-f]+$/i.test(host))) return true;
   return false;
 }
 
