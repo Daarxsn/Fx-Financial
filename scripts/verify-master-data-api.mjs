@@ -742,6 +742,13 @@ try {
     method:"POST",headers:{"Idempotency-Key":phase8IdempotencyKey},body:JSON.stringify(phase8DraftBody),
   },phase6aSession.jar);
   assert.equal(phase8Draft.response.status,201,"an authorized request creates a draft and calculates totals server-side: "+JSON.stringify(phase8Draft.body?.error??null));
+  const phase8OutOfScopeReplay=await call("/api/v1/invoices",{
+    method:"POST",headers:{"Idempotency-Key":phase8IdempotencyKey},body:JSON.stringify(phase8DraftBody),
+  },staffSession.jar);
+  assert.equal(phase8OutOfScopeReplay.response.status,404,"out-of-scope invoice creator cannot replay a known invoice idempotency key");
+  assert.equal(phase8OutOfScopeReplay.body.data,undefined,"out-of-scope invoice replay returns no finance record payload");
+  assert.doesNotMatch(JSON.stringify(phase8OutOfScopeReplay.body),new RegExp(phase8Draft.body.data.id),
+    "out-of-scope invoice replay does not disclose the invoice identifier");
   assert.equal(phase8Draft.body.data.lifecycleStatus,"DRAFT");
   assert.equal(phase8Draft.body.data.recordVersion,1);
   assert.equal(phase8Draft.body.data.subtotal,"220.0000","subtotal aggregates net-of-tax bases before discount");
@@ -1777,6 +1784,13 @@ try {
     method: "POST", headers: { "Idempotency-Key": quotationKey }, body: JSON.stringify(quotationPayload),
   }, quotationFinanceSession.jar);
   assert.equal(quotation.response.status, 201, "quotation draft creation uses the quotation permission and assigned entity scope; response=" + JSON.stringify(quotation.body.error ?? quotation.body));
+  const outOfScopeQuotationReplay=await call("/api/v1/quotations",{
+    method:"POST",headers:{"Idempotency-Key":quotationKey},body:JSON.stringify(quotationPayload),
+  },staffSession.jar);
+  assert.equal(outOfScopeQuotationReplay.response.status,404,"out-of-scope quotation writer cannot replay a known quotation idempotency key");
+  assert.equal(outOfScopeQuotationReplay.body.data,undefined,"out-of-scope quotation replay returns no finance record payload");
+  assert.doesNotMatch(JSON.stringify(outOfScopeQuotationReplay.body),new RegExp(quotation.body.data.id),
+    "out-of-scope quotation replay does not disclose the quotation identifier");
   assert.equal(quotation.body.data.status, "DRAFT");
   assert.equal(quotation.body.data.grandTotal, "36.0000", "quotation totals use exact server-side calculation");
   const quotationId = quotation.body.data.id;
