@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button, EmptyState, InlineAlert, LoadingState, StatusBadge } from "@/components/ui";
+import { DocumentHistoryPanel } from "@/components/document-history-panel";
 
 type Entity = { id: string; legalName: string; name: string; currency: string };
 type Customer = { id: string; customerCode: string | null; name: string; email: string | null };
@@ -314,6 +315,7 @@ export function PaymentWorkspace() {
         <div><span>Reference</span><strong>{selected.reference || "Not supplied"}</strong></div>
       </div>
       {selected.customerSnapshot ? <InlineAlert tone="info" title="Customer identity captured on receipt">{str(selected.customerSnapshot.name)} · {str(selected.customerSnapshot.email) || "No email recorded"} · Billing details retained as an immutable receipt snapshot.</InlineAlert> : null}
+      <DocumentHistoryPanel sourceType="RECEIPT" sourceId={selected.id}/>
       {Array.isArray(selected.allocations) && selected.allocations.length ? <div className="data-table-scroll"><table className="data-table">
         <thead><tr><th>Invoice</th><th>Current invoice status</th><th>Allocation amount</th><th>Created at</th></tr></thead>
         <tbody>{selected.allocations.map(allocation => <tr key={allocation.id}><td>{allocation.invoiceNumber || allocation.invoiceId}</td><td>{allocation.invoiceStatus}</td><td>{selected.currency} {allocation.amount}</td><td>{String(allocation.createdAt)}</td></tr>)}</tbody>
