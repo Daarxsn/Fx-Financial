@@ -18,6 +18,7 @@
     "ui:validate": "node scripts/validate-ui-foundation.mjs",
     "config:phase6b-test": "tsx scripts/verify-phase-6b-configuration.ts",
     "finance:calculation-test": "tsx scripts/verify-invoice-calculations.ts",
+    "documents:unit-test": "NODE_OPTIONS=--conditions=react-server tsx scripts/verify-document-pdf.ts",
     "phase7:ui-test": "node scripts/validate-phase-7-ui.mjs",
     "phase7:browser-test": "node scripts/verify-phase-7-browser.mjs",
     "invoice:access-ui-test": "node scripts/validate-quotation-access-ui.mjs"
