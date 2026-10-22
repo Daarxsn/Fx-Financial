@@ -24,7 +24,7 @@ npm run pack9:preflight -- --target=production
 ~~~
 
 Required groups:
-- Database: DATABASE_HOST, DATABASE_PORT, DATABASE_NAME, DATABASE_USER, DATABASE_PASSWORD, DATABASE_SSL=true, and at most one of DATABASE_SSL_CA_PATH or DATABASE_SSL_CA. TLS certificate validation must remain enabled.
+- Database: DATABASE_HOST, DATABASE_PORT, DATABASE_NAME, DATABASE_USER, DATABASE_PASSWORD, DATABASE_SSL=true, and at most one of DATABASE_SSL_CA_PATH or DATABASE_SSL_CA. DATABASE_HOST must refer to the remote managed database, not loopback. TLS certificate validation must remain enabled.
 - Origin/session: unique SESSION_SECRET (at least 32 high-entropy characters) and APP_ORIGIN as the exact HTTPS origin without path/query/fragment/trailing slash.
 - Private PDFs: DOCUMENTS_STORAGE_DRIVER=s3, private bucket, region, access key, secret, HTTPS endpoint if configured, approved server-side encryption; filesystem storage is rejected on Vercel/production.
 - Email/worker: RESEND_API_KEY, verified RESEND_FROM_EMAIL, RESEND_WEBHOOK_SECRET, CRON_SECRET; use separate values per environment.

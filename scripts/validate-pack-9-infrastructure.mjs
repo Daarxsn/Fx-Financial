@@ -26,7 +26,10 @@ const cron = read("src/app/api/cron/email-outbox/route.ts");
 const csrf = read("src/lib/auth/csrf.ts");
 const browser = read("scripts/verify-phase-7-browser.mjs");
 const preflight = read("scripts/pack-9-preflight.mjs");
+const preflightTest = read("scripts/test-pack-9-readiness.mjs");
 const smoke = read("scripts/smoke-deployment.mjs");
+const runbook = read("docs/pack-9-deployment-and-operations-runbook.md");
+const ledger = read("docs/pack-9-readiness-ledger.md");
 const migrations = readdirSync("database/migrations")
   .filter((name) => /^\d{3}_.+\.sql$/.test(name))
   .sort();
@@ -34,7 +37,7 @@ const migrationNumbers = migrations.map((name) => Number(name.slice(0, 3)));
 
 check("required Pack 9 scripts are registered", [
   "db:migrate", "db:verify", "security:audit", "phase7:browser-test",
-  "pack7:api-test", "pack8:validate", "pack9:validate", "pack9:preflight", "pack9:smoke",
+  "pack7:api-test", "pack8:validate", "pack9:validate", "pack9:test", "pack9:preflight", "pack9:smoke",
 ].every((key) => typeof pkg.scripts?.[key] === "string"));
 check("forward-only migrations use a continuous numbered sequence",
   migrations.length > 0 && migrationNumbers.every((number, index) => number === index + 1));
@@ -90,10 +93,23 @@ check("preflight rejects unsafe origin/TLS/storage and missing mail configuratio
   preflight.includes("DATABASE_SSL must be true") &&
   preflight.includes("APP_ORIGIN must be the exact HTTPS origin") &&
   preflight.includes("DOCUMENTS_STORAGE_DRIVER must be s3") &&
+  preflight.includes("DATABASE_HOST must refer to the remote managed database") &&
   preflight.includes("No environment values were printed"));
+check("synthetic preflight tests exercise success and fail-closed cases",
+  preflightTest.includes("valid staging configuration") &&
+  preflightTest.includes("DATABASE_SSL must be true") &&
+  preflightTest.includes("APP_ORIGIN") &&
+  preflightTest.includes("RESEND_API_URL") && wf.includes("npm run pack9:test"));
 check("smoke tests security headers without printing bodies or secrets",
   smoke.includes("SMOKE_BASE_URL") && smoke.includes("strict-transport-security") &&
-  smoke.includes("protected API") && !smoke.includes("console.log(process.env"));
+  smoke.includes("protected customer API") && !smoke.includes("console.log(process.env"));
+check("runbook contains the Vercel cron incompatibility and migration recovery steps",
+  runbook.includes("The observed Hobby plan is incompatible") &&
+  runbook.includes("Never reverse migrations blindly") &&
+  runbook.includes("restore"));
+check("readiness ledger records provider proof as a blocker",
+  ledger.includes("Pack 9 is not a green release gate") &&
+  ledger.includes("no Vercel project is linked"));
 
 if (failures.length) {
   console.error("Pack 9 infrastructure validation failed: " + failures.length + " check(s).");

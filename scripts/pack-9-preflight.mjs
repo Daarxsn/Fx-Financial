@@ -31,7 +31,11 @@ function requireValue(key, options = {}) {
   return entry;
 }
 
-for (const key of ["DATABASE_HOST", "DATABASE_NAME", "DATABASE_USER"]) {
+const databaseHost = requireValue("DATABASE_HOST", { nonPlaceholder: true });
+if (databaseHost && ["localhost", "127.0.0.1", "::1"].includes(databaseHost.toLowerCase())) {
+  errors.push("DATABASE_HOST must refer to the remote managed database, not loopback");
+}
+for (const key of ["DATABASE_NAME", "DATABASE_USER"]) {
   requireValue(key, { nonPlaceholder: true });
 }
 requireValue("DATABASE_PASSWORD", { secret: true, minLength: 8 });

@@ -219,6 +219,8 @@ jobs:
         run: npm run pack8:validate
       - name: Validate Pack 9 deployment and recovery guardrails
         run: npm run pack9:validate
+      - name: Exercise Pack 9 preflight with synthetic environment values
+        run: npm run pack9:test
       - name: Lint
         run: npm run lint
       - name: TypeScript

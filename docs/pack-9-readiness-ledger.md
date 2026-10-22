@@ -11,7 +11,7 @@ This ledger separates source-code evidence from provider and operations proof. A
 | 9.1 | CI includes Node 24/npm ci, dependency audit, history secret scan, disposable MySQL migrations/seed/query plans/restore, API/auth, calculations, PDF/storage, UI, Pack 7/8, lint, types, build, production headers and Playwright. Pack 9 adds integration checks. | Await exact-commit CI |
 | 9.2 | Disposable-MySQL browser acceptance covers login, customer/catalog, invoice/payment/correction/report/audit; server tests cover document/storage/email contracts. | Code coverage exists; preview acceptance pending |
 | 9.3 | Next.js deployment configuration and smoke command are checked; no Vercel project is linked to this repo in the accessible team. | Project/preview pending |
-| 9.4 | Placeholder-only environment example and preflight cover origin, TLS, session, private storage, mail/webhook/scheduler. | Implemented; real values unverified |
+| 9.4 | Placeholder-only environment example and preflight cover origin, TLS, session, private storage, mail/webhook/scheduler; synthetic preflight tests cover valid and unsafe configurations. | Implemented; real values unverified |
 | 9.5 | Runtime/migrator/backup/read-only identities documented. | Provider grants/credential rotation pending |
 | 9.6 | Runtime requires production TLS; db:verify checks SELECT 1 and active TLS cipher. | Intended Aiven target unverified |
 | 9.7 | CI logical restore tested; provider restore procedure documented. | Managed restore and approved RPO/RTO pending |
