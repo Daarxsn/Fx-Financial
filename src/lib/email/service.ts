@@ -516,7 +516,7 @@ export async function processEmailOutboxBatch(limit = 3): Promise<{ claimed: num
           continue;
         }
         const filename = row.document_number.replace(/[^A-Za-z0-9._-]+/g,"_").slice(0,100) + ".pdf";
-        payload.attachments = [{ filename, content:pdf.bytes.toString("base64") }];
+        payload.attachments = [{ filename, content:pdf.bytes.toString("base64"), content_type:"application/pdf" }];
       }
       const response = await fetch(config.baseUrl + "/emails",{
         method:"POST",
@@ -697,7 +697,7 @@ export function verifyResendWebhookSignature(payload: string, headers: { id: str
 export async function recordResendWebhook(payload: string, event: Record<string,unknown>, providerEventId: string) {
   const type = text(event.type);
   const data = object(event.data);
-  const providerMessageId = text(data.id);
+  const providerMessageId = text(data.email_id ?? data.id);
   const payloadDigest = sha256(payload);
   const statusMap: Record<string,EmailOutboxStatus> = {
     "email.sent":"SENT",
