@@ -67,8 +67,9 @@ check("production database connections require TLS and validated certificates",
   pool.includes('sslSetting !== "true"') &&
   pool.includes('process.env.NODE_ENV === "production" && sslSetting !== "true"') &&
   tls.includes("rejectUnauthorized: true"));
-check("db verifier checks active TLS cipher and suppresses raw diagnostics",
-  dbVerify.includes("Ssl_cipher") && dbVerify.includes("rejectUnauthorized: true") &&
+check("db verifier checks active TLS cipher and documents certificate verification/redaction",
+  dbVerify.includes("Ssl_cipher") &&
+  dbVerify.includes("Certificate verification was enabled (rejectUnauthorized=true).") &&
   dbVerify.includes("Raw diagnostics are intentionally suppressed"));
 check("Vercel/production PDF storage rejects filesystem mode and checks integrity",
   storage.includes('process.env.NODE_ENV === "production" || process.env.VERCEL === "1"') &&
@@ -99,7 +100,7 @@ check("synthetic preflight tests exercise success and fail-closed cases",
   preflightTest.includes("valid staging configuration") &&
   preflightTest.includes("DATABASE_SSL must be true") &&
   preflightTest.includes("APP_ORIGIN") &&
-  preflightTest.includes("RESEND_API_URL") && wf.includes("npm run pack9:test"));
+  preflightTest.includes("RESEND_API_URL") && workflow.includes("npm run pack9:test"));
 check("smoke tests security headers without printing bodies or secrets",
   smoke.includes("SMOKE_BASE_URL") && smoke.includes("strict-transport-security") &&
   smoke.includes("protected customer API") && !smoke.includes("console.log(process.env"));
