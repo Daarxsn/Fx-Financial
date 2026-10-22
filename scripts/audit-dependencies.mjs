@@ -67,9 +67,7 @@ for (const [name, expectedParent] of Object.entries(EXPECTED_HIGH_CHAIN)) {
     const proposedFix = item.fixAvailable;
     const onlySuggestedFixIsBreakingDowngrade = proposedFix && typeof proposedFix === "object" &&
       proposedFix.name === "eslint-config-next" && proposedFix.version === "14.2.35" &&
-      proposedFix.isSemVerMajor === true &&
-      manifest.devDependencies?.["eslint-config-next"] === "16.4.0" &&
-      manifest.dependencies?.next === "16.4.0";
+      proposedFix.isSemVerMajor === true;
     if (proposedFix !== false && proposedFix != null && !onlySuggestedFixIsBreakingDowngrade) {
       console.error("npm audit proposed fix metadata: " + JSON.stringify(proposedFix));
       fail("a compatible remediation may now exist for braces; remove the exception and upgrade");
@@ -86,7 +84,9 @@ for (const name of Object.keys(EXPECTED_HIGH_CHAIN)) {
   const entry = lock.packages?.["node_modules/" + name];
   if (!entry || entry.dev !== true) fail("vulnerable toolchain package is no longer proven development-only: " + name);
 }
-if (lock.packages["node_modules/braces"].version !== "3.0.3" ||
+if (manifest.dependencies?.next !== "16.4.0" ||
+    lock.packages["node_modules/next"].version !== "16.4.0" ||
+    lock.packages["node_modules/braces"].version !== "3.0.3" ||
     lock.packages["node_modules/eslint-config-next"].version !== "16.4.0" ||
     lock.packages["node_modules/@next/eslint-plugin-next"].version !== "16.4.0") {
   fail("reviewed dependency versions changed; the existing exception no longer applies");
