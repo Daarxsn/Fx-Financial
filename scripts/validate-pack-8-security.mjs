@@ -1,4 +1,3 @@
-import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -57,7 +56,7 @@ const checks = [
     csvImport.includes("MAX_CSV_BYTES") && csvImport.includes("MAX_CSV_ROWS") && csvImport.includes("assertCsrf") &&
     catalogImport.includes("MAX_CSV_BYTES") && catalogImport.includes("MAX_CSV_ROWS") && catalogImport.includes("assertCsrf")],
   ["explicit dependency advisory audit is required in CI",
-    workflow.includes("npm audit --audit-level=high") && packageJson.scripts["pack8:validate"] === "node scripts/validate-pack-8-security.mjs"],
+    workflow.includes("npm run security:audit") && packageJson.scripts["security:audit"] === "node scripts/audit-dependencies.mjs" && packageJson.scripts["pack8:validate"] === "node scripts/validate-pack-8-security.mjs"],
   ["Pack 8 guardrail validator is wired into CI",
     workflow.includes("npm run pack8:validate")],
 ];
