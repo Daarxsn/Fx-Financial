@@ -74,6 +74,10 @@ export async function POST(request:NextRequest){
   if(!/^[\x21-\x7e]{16,128}$/.test(idempotencyKey))return jsonNoStore({error:{code:"VALIDATION_ERROR",message:"Idempotency-Key must contain 16–128 visible ASCII characters."}},400);
   requestIdempotencyKey=idempotencyKey;
   const input=invoiceDraftCreateSchema.parse(await request.json());
+  // A replay must never disclose an invoice ID or status across legal-entity boundaries.
+  if(!actor.legalEntityIds.includes(input.legalEntityId)) {
+   return jsonNoStore({error:{code:"NOT_FOUND",message:"Legal entity not found in your assigned scope."}},404);
+  }
   const fingerprint=createHash("sha256").update(canonicalJson(input)).digest("hex");
   requestFingerprint=fingerprint;
   conn=await pool.getConnection();await conn.beginTransaction();
