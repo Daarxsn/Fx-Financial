@@ -726,7 +726,17 @@ export async function recordResendWebhook(payload: string, event: Record<string,
       previous=row.status;
       const terminal = ["DELIVERED","BOUNCED","COMPLAINED"].includes(row.status);
       const priority: Record<string,number> = {QUEUED:0,SENDING:0,SENT:1,DELIVERY_DELAYED:2,FAILED:2,DELIVERED:3,BOUNCED:3,COMPLAINED:3,REQUIRES_REVIEW:2};
-      next = terminal && (row.status==="DELIVERED" || priority[target] <= priority[row.status]) ? row.status : target;
+      if (terminal) {
+        // Terminal provider outcomes never regress or contradict each other on a late webhook.
+        next = row.status;
+      } else if (priority[target] < priority[row.status] ||
+          (priority[target] === priority[row.status] && row.status !== target &&
+           ["DELIVERY_DELAYED","FAILED","REQUIRES_REVIEW"].includes(row.status))) {
+        // Delayed, failed, and review states must not be overwritten by lower/equal-priority stale events.
+        next = row.status;
+      } else {
+        next = target;
+      }
       if (next !== row.status) {
         await conn.execute(
           "UPDATE email_outbox SET status=?,delivered_at=CASE WHEN ?='DELIVERED' THEN COALESCE(delivered_at,NOW(3)) ELSE delivered_at END,last_error_code=CASE WHEN ? IN ('BOUNCED','COMPLAINED','FAILED') THEN ? ELSE last_error_code END,updated_at=NOW(3) WHERE id=?",
