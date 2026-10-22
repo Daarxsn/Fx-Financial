@@ -10,6 +10,17 @@ The repository contains 29 forward-only MySQL migrations, database verification 
 
 Pack 9 deployment procedures, the readiness ledger, safe environment preflight, and HTTP smoke test live in [the deployment runbook](docs/pack-9-deployment-and-operations-runbook.md) and [the Pack 9 readiness ledger](docs/pack-9-readiness-ledger.md). These distinguish CI results from required Vercel/Aiven/storage/email/backup/monitoring evidence.
 
+Run the repeatable engineering gates before a release candidate:
+
+```bash
+npm run pack9:validate
+npm run pack9:test
+npm run pack9:smoke-test
+npm run pack9:preflight -- --target=preview
+```
+
+The preflight requires real values from the selected deployment environment and prints no secret values. The automated synthetic tests validate rejection paths; they do not replace live Preview/Staging, provider restore, or operational release evidence.
+
 ## Architecture
 
 - Next.js App Router (no Vite)
