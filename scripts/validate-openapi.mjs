@@ -166,6 +166,13 @@ const expectedImplemented = new Set([
   "GET /api/v1/documents/{sourceType}/{sourceId}",
   "POST /api/v1/documents/{sourceType}/{sourceId}/generate",
   "GET /api/v1/documents/files/{documentId}",
+  "GET /api/v1/email/outbox",
+  "POST /api/v1/email/outbox",
+  "POST /api/v1/email/outbox/{outboxId}/retry",
+  "GET /api/v1/reminders/policies",
+  "POST /api/v1/reminders/policies",
+  "POST /api/v1/reminders/policies/{policyId}/approve",
+  "POST /api/v1/reminders/policies/{policyId}/disable",
 ]);
 for (const endpoint of expectedImplemented) {
   if (!implemented.has(endpoint)) fail(`known implemented route missing or not marked implemented: ${endpoint}`);
