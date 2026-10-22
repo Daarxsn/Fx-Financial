@@ -8,7 +8,7 @@ This ledger separates source-code evidence from provider and operations proof. A
 
 | ID | Work | Status |
 |---|---|---|
-| 9.1 | CI includes Node 24/npm ci, dependency audit, history secret scan, disposable MySQL migrations/seed/query plans/restore, API/auth, calculations, PDF/storage, UI, Pack 7/8, lint, types, build, production headers and Playwright. Pack 9 adds infra validation, 20 synthetic preflight scenarios, and an HTTP smoke contract suite for success and fail-closed cases. | Await CI for latest main commit |
+| 9.1 | CI includes Node 24/npm ci, dependency audit, history secret scan, disposable MySQL migrations/seed/query plans/restore, API/auth, calculations, PDF/storage, UI, Pack 7/8, lint, types, build, production headers and Playwright. Pack 9 adds infra validation, 25 synthetic preflight scenarios, and an HTTP smoke contract suite for success and fail-closed cases. | Await CI for latest main commit |
 | 9.2 | Disposable-MySQL browser acceptance covers login, Settings readiness, customer/catalog, invoice issue, private PDF generation/download, payment, correction, reports and audit; server tests cover document/storage/email contracts. | Code coverage exists; latest commit CI pending |
 | 9.3 | Next.js deployment configuration and smoke command are checked; no Vercel project is linked to this repo in the accessible team. | Project/preview pending |
 | 9.4 | Placeholder-only environment example and preflight cover origin, TLS, session, private storage, mail/webhook/scheduler, loopback/link-local host variants, CA PEM shape, KMS keys, and matching Vercel environment; synthetic tests assert secret-safe failures. | Source tests implemented; real values unverified |
