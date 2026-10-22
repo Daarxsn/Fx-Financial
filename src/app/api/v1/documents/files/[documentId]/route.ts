@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requirePermission } from "@/lib/auth/authorize";
+import { AuthorizationError, requireActiveSession } from "@/lib/auth/authorize";
 import { jsonNoStore } from "@/lib/http/api-response";
 import { assertDocumentScope, findGeneratedDocumentAccessTarget, permissionForDocumentSource } from "@/lib/documents/access";
 import { documentApiError, privatePdfResponse } from "@/lib/documents/http";
@@ -16,9 +16,10 @@ export async function GET(_request: NextRequest, context: Context) {
     if (!/^[0-9a-f-]{36}$/i.test(documentId)) {
       return jsonNoStore({ error: { code: "VALIDATION_ERROR", message: "documentId must be a UUID." } }, 400);
     }
+    const actor = await requireActiveSession();
     const target = await findGeneratedDocumentAccessTarget(documentId);
     if (!target) return jsonNoStore({ error: { code: "DOCUMENT_NOT_FOUND", message: "The requested PDF is not available." } }, 404);
-    const actor = await requirePermission(permissionForDocumentSource(target.sourceType));
+    if (!actor.permissions.includes(permissionForDocumentSource(target.sourceType))) throw new AuthorizationError("FORBIDDEN");
     assertDocumentScope(actor, target.legalEntityId);
     const result = await downloadGeneratedDocument(documentId, actor.userId);
     return privatePdfResponse(result.bytes, result.documentNumber, result.fileSha256);
