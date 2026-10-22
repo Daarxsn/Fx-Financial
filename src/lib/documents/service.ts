@@ -64,7 +64,7 @@ function safeStorageError(error: unknown): string {
   return "DOCUMENT_GENERATION_FAILED";
 }
 function event(
-  conn: PoolConnection, documentId: string, eventType: "REQUESTED" | "RETRY_STARTED" | "READY" | "FAILED" | "DOWNLOADED" | "INTEGRITY_FAILURE",
+  conn: PoolConnection, documentId: string, eventType: "REQUESTED" | "RETRY_STARTED" | "READY" | "FAILED" | "DOWNLOADED" | "EMAIL_ATTACHMENT_VERIFIED" | "INTEGRITY_FAILURE",
   previousStatus: "PENDING" | "READY" | "FAILED" | null, newStatus: "PENDING" | "READY" | "FAILED",
   actorId: string | null, reason: string | null, metadata: Record<string, unknown> | null = null,
 ) {
@@ -439,7 +439,7 @@ export async function listGeneratedDocumentHistory(sourceType: DocumentSourceTyp
   return rows.map(row => ({ ...summary(row), events: eventsByDocument.get(row.id) ?? [] }));
 }
 
-export async function downloadGeneratedDocument(documentId: string, actorId: string | null) {
+export async function downloadGeneratedDocument(documentId: string, actorId: string | null, recordDownloadEvent = true) {
   const [rows] = await pool.execute<GeneratedRow[]>(
     "SELECT id,content_snapshot_id,source_document_type,source_document_id,legal_entity_id,document_number,storage_key,mime_type,byte_size,file_sha256,status,generation_attempts,last_error_code,created_by,created_at,ready_at,generation_started_at,generation_token FROM generated_documents WHERE id=? LIMIT 1",
     [documentId],
@@ -458,7 +458,8 @@ export async function downloadGeneratedDocument(documentId: string, actorId: str
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
-      await event(conn, row.id, "DOWNLOADED", "READY", "READY", actorId, null, { fileSha256: row.file_sha256 });
+      await event(conn, row.id, recordDownloadEvent ? "DOWNLOADED" : "EMAIL_ATTACHMENT_VERIFIED", "READY", "READY", actorId, null,
+        { fileSha256: row.file_sha256, accessPurpose: recordDownloadEvent ? "USER_DOWNLOAD" : "EMAIL_ATTACHMENT" });
       await conn.commit();
     } catch (error) {
       await conn.rollback().catch(() => undefined);
