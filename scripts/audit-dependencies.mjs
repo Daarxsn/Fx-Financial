@@ -64,7 +64,16 @@ for (const [name, expectedParent] of Object.entries(EXPECTED_HIGH_CHAIN)) {
     const exactAdvisory = via.some(entry => entry && typeof entry === "object" &&
       (entry.source === ADVISORY || String(entry.url ?? "").includes(ADVISORY)));
     if (!exactAdvisory) fail("braces is no longer linked solely to the reviewed advisory; review the new audit output");
-    if (item.fixAvailable !== false) fail("a remediation may now exist for braces; remove the exception and upgrade");
+    const proposedFix = item.fixAvailable;
+    const onlySuggestedFixIsBreakingDowngrade = proposedFix && typeof proposedFix === "object" &&
+      proposedFix.name === "eslint-config-next" && proposedFix.version === "14.2.35" &&
+      proposedFix.isSemVerMajor === true &&
+      manifest.devDependencies?.["eslint-config-next"] === "16.4.0" &&
+      manifest.dependencies?.next === "16.4.0";
+    if (proposedFix !== false && proposedFix != null && !onlySuggestedFixIsBreakingDowngrade) {
+      console.error("npm audit proposed fix metadata: " + JSON.stringify(proposedFix));
+      fail("a compatible remediation may now exist for braces; remove the exception and upgrade");
+    }
   } else if (!via.includes(expectedParent)) {
     fail("dependency path changed for " + name + "; review before renewing the exception");
   }
