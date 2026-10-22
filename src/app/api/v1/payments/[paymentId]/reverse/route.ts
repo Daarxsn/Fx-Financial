@@ -131,6 +131,7 @@ export async function POST(request:NextRequest,context:Context){
   }
   // Reversal creates a new immutable receipt snapshot; the original receipt remains preserved.
   await captureDocumentSourceSnapshot(conn,"RECEIPT",paymentId,actor.userId,"RECEIPT_REVERSED");
+  for(const invoiceId of currentIds) await captureDocumentSourceSnapshot(conn,"INVOICE",invoiceId,actor.userId,"STATUS_CHANGE");
   await conn.commit();
   return jsonNoStore({data:{id:payment.id,receiptReference:payment.receipt_reference??"RCPT-"+payment.id.replaceAll("-","").toUpperCase(),
    legalEntityId:payment.legal_entity_id,customerId:payment.customer_id,amount:money(units(payment.amount)),currency:payment.currency,
