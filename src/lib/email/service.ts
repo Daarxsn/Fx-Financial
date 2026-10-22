@@ -370,7 +370,11 @@ export async function retryFailedEmail(outboxId: string, actorId: string) {
     if (!row.attachment_sha256 && row.message_kind === "DOCUMENT") {
       throw new EmailWorkflowError("EMAIL_ATTACHMENT_UNAVAILABLE",409,"The original verified attachment is unavailable; queue a new email after repairing document storage.");
     }
-    await conn.execute("UPDATE email_outbox SET status='QUEUED',next_attempt_at=NOW(3),last_error_code=NULL,lease_token=NULL,lease_until=NULL,updated_at=NOW(3) WHERE id=? AND status='FAILED'",[outboxId]);
+    // An operator retry is allowed only after a confirmed FAILED outcome, never after an uncertain
+    // network result. Give the intentional new attempt a fresh provider key while retaining the
+    // original outbox/request idempotency key for API replay protection.
+    const providerIdempotencyKey = "fx-email-" + randomUUID();
+    await conn.execute("UPDATE email_outbox SET status='QUEUED',provider_idempotency_key=?,next_attempt_at=NOW(3),last_error_code=NULL,lease_token=NULL,lease_until=NULL,updated_at=NOW(3) WHERE id=? AND status='FAILED'",[providerIdempotencyKey,outboxId]);
     await appendEmailEvent(conn,outboxId,"MANUAL_RETRY","FAILED","QUEUED",actorId,"OPERATOR_RETRY");
     const [updated] = await conn.execute<OutboxRow[]>("SELECT * FROM email_outbox WHERE id=? LIMIT 1",[outboxId]);
     await conn.commit();
