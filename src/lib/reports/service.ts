@@ -237,7 +237,7 @@ export async function getReportRows(kind: ReportKind, scope: string[], f: Report
       " FROM invoices i JOIN legal_entities le ON le.id=i.legal_entity_id JOIN customers c ON c.id=i.customer_id" +
       " LEFT JOIN (SELECT pa.invoice_id,SUM(pa.amount) AS paid_total FROM payment_allocations pa JOIN payments p ON p.id=pa.payment_id AND p.status='RECORDED' GROUP BY pa.invoice_id) a ON a.invoice_id=i.id" +
       " WHERE " + where + " ORDER BY COALESCE(i.invoice_date,DATE(i.created_at)) DESC,i.created_at DESC,i.id DESC LIMIT ? OFFSET ?";
-    const [rows] = await pool.execute<(RowDataPacket & {id:string;legal_entity_id:string;legal_entity_name:string;document_type:string;invoice_number:string|null;lifecycle_status:string;report_date:Date|string;due_date:Date|string|null;currency:string;subtotal:string|number;discount_total:string|number;tax_total:string|number;grand_total:string|number;current_customer_name:string;customer_snapshot:unknown;paid_total:string|number;total_count:string|number})[]>(sql,[...params,f.limit,f.offset]);
+    const [rows] = await pool.query<(RowDataPacket & {id:string;legal_entity_id:string;legal_entity_name:string;document_type:string;invoice_number:string|null;lifecycle_status:string;report_date:Date|string;due_date:Date|string|null;currency:string;subtotal:string|number;discount_total:string|number;tax_total:string|number;grand_total:string|number;current_customer_name:string;customer_snapshot:unknown;paid_total:string|number;total_count:string|number})[]>(sql,[...params,f.limit,f.offset]);
     const data = rows.map(r => {
       let customerName = r.current_customer_name;
       const snap = r.customer_snapshot;
@@ -264,7 +264,7 @@ export async function getReportRows(kind: ReportKind, scope: string[], f: Report
       " COALESCE(q.issue_date,DATE(q.created_at)) AS report_date,q.valid_until,q.currency,q.grand_total,q.converted_invoice_id,c.name AS current_customer_name,q.customer_snapshot,COUNT(*) OVER() AS total_count" +
       " FROM quotations q JOIN legal_entities le ON le.id=q.legal_entity_id JOIN customers c ON c.id=q.customer_id WHERE " + where +
       " ORDER BY COALESCE(q.issue_date,DATE(q.created_at)) DESC,q.created_at DESC,q.id DESC LIMIT ? OFFSET ?";
-    const [rows] = await pool.execute<(RowDataPacket & {id:string;legal_entity_id:string;legal_entity_name:string;quotation_number:string|null;effective_status:string;report_date:Date|string;valid_until:Date|string|null;currency:string;grand_total:string|number;converted_invoice_id:string|null;current_customer_name:string;customer_snapshot:unknown;total_count:string|number})[]>(sql,[...queryParams,f.limit,f.offset]);
+    const [rows] = await pool.query<(RowDataPacket & {id:string;legal_entity_id:string;legal_entity_name:string;quotation_number:string|null;effective_status:string;report_date:Date|string;valid_until:Date|string|null;currency:string;grand_total:string|number;converted_invoice_id:string|null;current_customer_name:string;customer_snapshot:unknown;total_count:string|number})[]>(sql,[...queryParams,f.limit,f.offset]);
     const data = rows.map(r => {
       let customerName = r.current_customer_name;
       try { const x = typeof r.customer_snapshot === "string" ? JSON.parse(r.customer_snapshot) : r.customer_snapshot; if (x && typeof x.name === "string" && x.name.trim()) customerName = x.name; } catch { /* safe display fallback */ }
@@ -284,7 +284,7 @@ export async function getReportRows(kind: ReportKind, scope: string[], f: Report
       " FROM payments p JOIN legal_entities le ON le.id=p.legal_entity_id JOIN customers c ON c.id=p.customer_id" +
       " LEFT JOIN (SELECT payment_id,SUM(amount) allocated_total FROM payment_allocations GROUP BY payment_id) a ON a.payment_id=p.id" +
       " WHERE " + where + " ORDER BY p.payment_date DESC,p.created_at DESC,p.id DESC LIMIT ? OFFSET ?";
-    const [rows] = await pool.execute<(RowDataPacket & {id:string;legal_entity_id:string;legal_entity_name:string;receipt_reference:string|null;customer_id:string;customer_name:string;amount:string|number;currency:string;payment_date:Date|string;method:string;reference:string|null;status:string;reversed_at:Date|string|null;allocated_total:string|number;unallocated_total:string|number;total_count:string|number})[]>(sql,[...params,f.limit,f.offset]);
+    const [rows] = await pool.query<(RowDataPacket & {id:string;legal_entity_id:string;legal_entity_name:string;receipt_reference:string|null;customer_id:string;customer_name:string;amount:string|number;currency:string;payment_date:Date|string;method:string;reference:string|null;status:string;reversed_at:Date|string|null;allocated_total:string|number;unallocated_total:string|number;total_count:string|number})[]>(sql,[...params,f.limit,f.offset]);
     return { data: rows.map(r => ({ id:r.id, legalEntityId:r.legal_entity_id, legalEntityName:r.legal_entity_name,
       receiptReference:r.receipt_reference, customerId:r.customer_id, customerName:r.customer_name, amount:money(r.amount), currency:r.currency,
       paymentDate:dateText(r.payment_date), method:r.method, reference:r.reference, status:r.status,
@@ -318,7 +318,7 @@ export async function getReportRows(kind: ReportKind, scope: string[], f: Report
   const customerParams: unknown[] = [...scope, f.from, f.to, ...scope, f.from, f.to, ...scope, f.from, f.to, ...scope, f.from, f.to];
   if (f.query) customerParams.push(pattern, pattern, pattern);
   customerParams.push(f.limit, f.offset);
-  const [customerRows] = await pool.execute<(RowDataPacket & {legal_entity_id:string;legal_entity_name:string;currency:string;customer_id:string;customer_code:string|null;name:string;email:string|null;phone:string|null;is_active:number;issued_invoice_count:string|number;issued_invoice_value:string|number;quotation_count:string|number;won_count:string|number;total_count:string|number})[]>(sql, customerParams);
+  const [customerRows] = await pool.query<(RowDataPacket & {legal_entity_id:string;legal_entity_name:string;currency:string;customer_id:string;customer_code:string|null;name:string;email:string|null;phone:string|null;is_active:number;issued_invoice_count:string|number;issued_invoice_value:string|number;quotation_count:string|number;won_count:string|number;total_count:string|number})[]>(sql, customerParams);
   return { data: customerRows.map(r => ({ legalEntityId:r.legal_entity_id, legalEntityName:r.legal_entity_name, currency:r.currency,
     customerId:r.customer_id, customerCode:r.customer_code, name:r.name, email:r.email, phone:r.phone, status:Number(r.is_active) ? "ACTIVE" : "ARCHIVED",
     issuedInvoiceCount:Number(r.issued_invoice_count), issuedInvoiceValue:money(r.issued_invoice_value), quotationCount:Number(r.quotation_count), quotationsWonCount:Number(r.won_count) })),
