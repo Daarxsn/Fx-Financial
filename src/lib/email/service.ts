@@ -686,7 +686,7 @@ export function verifyResendWebhookSignature(payload: string, headers: { id: str
   try { key=Buffer.from(encodedSecret,"base64"); } catch { return false; }
   if (!key.length) return false;
   const expected = createHmac("sha256",key).update(headers.id + "." + headers.timestamp + "." + payload).digest();
-  const parts = headers.signature.split(/\s+/).flatMap(value=>value.split(",")).filter(value=>value.startsWith("v1,")).map(value=>value.slice(3));
+  const parts = headers.signature.split(/\s+/).filter(value=>value.startsWith("v1,")).map(value=>value.slice(3));
   return parts.some(value=>{
     try { return constantTimeEqual(expected,Buffer.from(value,"base64")); } catch { return false; }
   });
