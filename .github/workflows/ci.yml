@@ -136,6 +136,8 @@ jobs:
 
       - name: Validate OpenAPI contract
         run: npm run api:validate
+      - name: Verify Pack 6 email and reminder invariants
+        run: npm run email:contract-test
       - name: Verify authentication, authorization and master-data API contracts
         env:
           DATABASE_HOST: 127.0.0.1
@@ -149,7 +151,7 @@ jobs:
           RESEND_API_URL: http://127.0.0.1:3030
           RESEND_API_KEY: ci-resend-test-key
           RESEND_FROM_EMAIL: "Falchion CI <billing@example.invalid>"
-          RESEND_WEBHOOK_SECRET: "whsec_Y2ktZW1haWwtd2ViaG9vay1zZWNyZXQ="
+          RESEND_WEBHOOK_SECRET: "Y2ktZW1haWwtd2ViaG9vay1zZWNyZXQ="
           CRON_SECRET: "ci-pack6-cron-secret-long-enough-000000000000"
         run: |
           set -euo pipefail
