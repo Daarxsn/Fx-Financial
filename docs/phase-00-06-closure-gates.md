@@ -37,7 +37,7 @@ This is the pre-Phase-07 release checklist. Do not use this page to infer busine
 - [ ] Review production database grants, session secret, HTTPS APP_ORIGIN, trusted ingress/proxy configuration and any company-mandated MFA/SSO controls.
 - [ ] Approve the Google Fonts dependency or supply licensed self-hosted Sansation/Open Sans fonts.
 - [ ] Perform manual desktop/tablet/mobile + light/dark visual review in a real browser.
-- [ ] Implement/verify an actual branded PDF renderer, private object storage, authorized download and email delivery before claiming those capabilities are live.
+- [ ] Complete Pack 5's validation gate: obtain a green CI run for the latest `main`, manually inspect invoice/quotation/receipt PDFs on screen and in print layout against issuer-approved templates, and provision/verify production private-storage retention and backup. The renderer, storage adapter, scoped history/download API, UI panels and automated coverage have been committed; email delivery is a separate Pack 6 scope.
 
 ## Explicit phase boundary
 
