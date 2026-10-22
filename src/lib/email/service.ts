@@ -1,7 +1,8 @@
 import "server-only";
 
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import type { RowDataPacket, PoolConnection } from "mysql2";
+import type { RowDataPacket } from "mysql2";
+import type { PoolConnection } from "mysql2/promise";
 import { pool } from "@/lib/db/pool";
 import { generateDocumentPdf, downloadGeneratedDocument, type DocumentSourceType } from "@/lib/documents/service";
 
@@ -541,7 +542,7 @@ export async function processEmailOutboxBatch(limit = 3): Promise<{ claimed: num
           if (current.length && current[0].status==="SENDING" && current[0].lease_token===token) {
             await conn.execute("UPDATE email_outbox SET status='QUEUED',last_error_code=?,next_attempt_at=DATE_ADD(NOW(3),INTERVAL ? SECOND),lease_token=NULL,lease_until=NULL,updated_at=NOW(3) WHERE id=?",
               ["PROVIDER_HTTP_" + response.status,delay,row.id]);
-            await appendEmailEvent(conn,row.id,"RETRY_SCHEDULED","SENDING","QUEUED","PROVIDER_HTTP_" + response.status);
+            await appendEmailEvent(conn,row.id,"RETRY_SCHEDULED","SENDING","QUEUED",null,"PROVIDER_HTTP_" + response.status);
           }
           await conn.commit();
         } catch(error) { await conn.rollback().catch(()=>undefined); throw error; } finally { conn.release(); }
@@ -560,7 +561,7 @@ export async function processEmailOutboxBatch(limit = 3): Promise<{ claimed: num
           if (current.length && current[0].status==="SENDING" && current[0].lease_token===token) {
             await conn.execute("UPDATE email_outbox SET status='QUEUED',last_error_code='PROVIDER_NETWORK_UNCERTAIN',next_attempt_at=DATE_ADD(NOW(3),INTERVAL ? SECOND),lease_token=NULL,lease_until=NULL,updated_at=NOW(3) WHERE id=?",
               [retryDelaySeconds(Number(row.attempt_count)),row.id]);
-            await appendEmailEvent(conn,row.id,"RETRY_SCHEDULED","SENDING","QUEUED","PROVIDER_NETWORK_UNCERTAIN");
+            await appendEmailEvent(conn,row.id,"RETRY_SCHEDULED","SENDING","QUEUED",null,"PROVIDER_NETWORK_UNCERTAIN");
           }
           await conn.commit();
         } catch(finishError) { await conn.rollback().catch(()=>undefined); throw finishError; } finally { conn.release(); }
