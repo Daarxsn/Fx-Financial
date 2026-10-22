@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { useRouter } from "next/navigation";
 import { Button, EmptyState, InlineAlert, LoadingState, StatusBadge } from "@/components/ui";
 import { DocumentHistoryPanel } from "@/components/document-history-panel";
+import { EmailDeliveryPanel } from "@/components/email-delivery-panel";
 
 type LineKind = "ITEM" | "CHARGE";
 type DiscountType = "AMOUNT" | "PERCENT";
@@ -513,6 +514,7 @@ export function QuotationWorkspace() {
         })}</tbody>
       </table></div> : null}
       {selected.status!=="DRAFT"&&selected.quotationNumber?<DocumentHistoryPanel sourceType="QUOTATION" sourceId={selected.id}/>:null}
+       {selected.status==="SENT"||selected.status==="ACCEPTED"?<EmailDeliveryPanel sourceType="QUOTATION" sourceId={selected.id}/>:null}
       {selected.convertedInvoiceId ? <InlineAlert tone="success" title="Converted to invoice">
         Invoice draft ID: {selected.convertedInvoiceId}. Open the Invoices workspace to review it.
         <div className="invoice-editor__actions"><Button onClick={() => router.push("/invoices")}>Open invoices</Button></div>
