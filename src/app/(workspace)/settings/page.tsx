@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { BRAND_LOGO_ASSETS, APPROVED_BRAND_COLORS, resolveBrandLogo, isApprovedBrandColor } from "@/lib/brand-assets";
 import { useCallback, useEffect, useState, type FormEvent, type Dispatch, type SetStateAction, type ReactNode, type CSSProperties } from "react";
 import { Breadcrumbs, Button, Card, EmptyState, InlineAlert, LoadingState, PageHeader, StatusBadge, TextField, TextAreaField, SelectField } from "@/components/ui";
@@ -106,6 +107,8 @@ function compactDate(value:string|null|undefined){return value?String(value).sli
 
 export default function SettingsPage(){
  const [tab,setTab]=useState<Tab>("company");
+ const [showAdvancedSettings,setShowAdvancedSettings]=useState(false);
+ const [quickAddEntity,setQuickAddEntity]=useState(false);
  const [entities,setEntities]=useState<Entity[]>([]);const [brands,setBrands]=useState<Brand[]>([]);const [units,setUnits]=useState<Unit[]>([]);
  const [registrations,setRegistrations]=useState<Registration[]>([]);const [taxRules,setTaxRules]=useState<TaxRule[]>([]);
  const [numberings,setNumberings]=useState<Numbering[]>([]);const [templates,setTemplates]=useState<Template[]>([]);
@@ -239,14 +242,94 @@ export default function SettingsPage(){
   setTemplate(templateBlank());
  }
 
+ async function saveQuickSetup(){
+  const countryCode=String(company.countryCode).trim().toUpperCase();
+  if(!/^[A-Z]{2}$/.test(countryCode))throw new Error("Enter the two-letter country code for the business, such as IN.");
+  await api("/api/v1/legal-entities","POST",{
+   legalName:String(company.legalName).trim(),displayName:String(company.displayName).trim(),
+   registrationNumber:String(company.registrationNumber),taxIdentifier:String(company.taxIdentifier),
+   address:{line1:String(company.line1).trim(),line2:String(company.line2),city:String(company.city).trim(),state:String(company.state),postalCode:String(company.postalCode).trim(),countryCode},
+   billingAddress:null,countryCode,currency:String(company.currency),invoiceEmail:String(company.invoiceEmail).trim(),
+   invoicePhone:String(company.invoicePhone).trim(),website:String(company.website),locale:String(company.locale||"en-IN"),
+   timeZone:String(company.timeZone||"Asia/Kolkata"),logoReference:String(company.logoReference),
+   invoiceTerms:String(company.invoiceTerms),invoiceFooter:String(company.invoiceFooter),defaultTaxCode:"",
+   taxSetupStatus:"UNCONFIGURED",taxSetupApprovalReference:"",
+   changeReason:"Initial quick invoicing setup"
+  });
+  setCompany(companyBlank());setQuickAddEntity(false);
+ }
+
  let templatePreviewConfig:Record<string,unknown>|null=null;
  try{const parsed:unknown=JSON.parse(String(template.templateConfig));if(parsed&&typeof parsed==="object"&&!Array.isArray(parsed))templatePreviewConfig=parsed as Record<string,unknown>}catch{/* Invalid JSON should not be rendered as a document. */}
  const tabs:[Tab,string,string][]=[["company","Company & entities","Legal identities"],["brands","Brands","Commercial identities"],["units","Business units","Organization"],["tax","Tax","Registrations & rules"],["numbering","Numbering series","Fiscal-year rules"],["templates","Templates","Document layout"]];
- if(busy)return <div className="page"><Breadcrumbs items={[{label:"Configure"},{label:"Settings",href:"/settings"},{label:"Company & invoicing"}]}/><PageHeader eyebrow="SETTINGS" title="Company & invoice configuration" description="Legal identity, brand mapping, tax setup, numbering and document templates."/><LoadingState label="Loading configuration…"/></div>;
+ if(busy)return <div className="page"><Breadcrumbs items={[{label:"Workspace",href:"/"},{label:"Settings"}]}/><PageHeader eyebrow="INVOICING SETUP" title="Your invoicing workspace" description="Loading your business profile and first-invoice checklist…"/><LoadingState label="Loading your invoicing setup…"/></div>;
+
+ const activeEntities=entities.filter(e=>e.isActive);
+ const quickEntity=activeEntities.find(e=>e.id===entityId)??activeEntities[0]??null;
+ const quickReadiness=quickEntity?readiness[quickEntity.id]:undefined;
+ const failedReadinessChecks=quickReadiness?.checks.filter(c=>!c.passed).length??0;
+ if(!showAdvancedSettings)return <div className="page page--configuration page--quick-settings">
+  <Breadcrumbs items={[{label:"Workspace",href:"/"},{label:"Settings"}]}/>
+  <PageHeader eyebrow="INVOICING SETUP" title="Your invoicing workspace" description="Set up only what you need to start creating and sending invoices. Advanced finance controls remain available when you need them." action={<Button variant="secondary" onClick={()=>setShowAdvancedSettings(true)}>Advanced settings</Button>}/>
+  {error?<div className="config-message"><InlineAlert tone="danger" title="Setup needs attention">{error}</InlineAlert><Button variant="secondary" onClick={()=>void loadAll()}>Reload</Button></div>:null}
+  {notice?<div className="config-message"><InlineAlert tone="success" title="Saved">{notice}</InlineAlert><Button variant="ghost" size="sm" onClick={()=>setNotice("")}>Dismiss</Button></div>:null}
+  <div className="quick-setup-grid">
+   <section className="quick-setup-primary">
+    {activeEntities.length===0||quickAddEntity?<Card className="quick-setup-card">
+     <p className="eyebrow">STEP 1 · BUSINESS BASICS</p>
+     <h2>{quickAddEntity?"Add another business":"Add your business"}</h2>
+     <p className="quick-setup-lead">These are the only details we need to create your supplier profile. We do not fill in tax IDs, tax rates, or bank details for you.</p>
+     <form className="config-form" onSubmit={e=>void mutate(e,saveQuickSetup,"Business profile saved. Next, add your first customer.")}>
+      <Grid>
+       <Input id="quick-legal-name" label="Registered business name" required value={String(company.legalName)} onChange={s=>setValue(setCompany,"legalName",s)}/>
+       <Input id="quick-display-name" label="Name shown on invoices" required value={String(company.displayName)} onChange={s=>setValue(setCompany,"displayName",s)}/>
+       <Input id="quick-country-code" label="Country code" required value={String(company.countryCode)} onChange={s=>setValue(setCompany,"countryCode",s.toUpperCase())} hint="Two letters, such as IN for India."/>
+       <Select id="quick-currency" label="Invoice currency" value={String(company.currency)} onChange={s=>setValue(setCompany,"currency",s)} options={[{value:"INR",label:"INR · Indian rupee"},{value:"AED",label:"AED · UAE dirham"},{value:"USD",label:"USD · US dollar"},{value:"GBP",label:"GBP · Pound sterling"},{value:"EUR",label:"EUR · Euro"}]} required/>
+       <Input id="quick-address-line1" label="Business address" required value={String(company.line1)} onChange={s=>setValue(setCompany,"line1",s)}/>
+       <Input id="quick-city" label="City" required value={String(company.city)} onChange={s=>setValue(setCompany,"city",s)}/>
+       <Input id="quick-state" label="State / region" value={String(company.state)} onChange={s=>setValue(setCompany,"state",s)}/>
+       <Input id="quick-postal-code" label="Postal code" required value={String(company.postalCode)} onChange={s=>setValue(setCompany,"postalCode",s)}/>
+       <Input id="quick-invoice-email" label="Invoice contact email" type="email" value={String(company.invoiceEmail)} onChange={s=>setValue(setCompany,"invoiceEmail",s)} hint="Optional; used for invoice correspondence where configured."/>
+       <Input id="quick-invoice-phone" label="Contact phone" type="tel" value={String(company.invoicePhone)} onChange={s=>setValue(setCompany,"invoicePhone",s)}/>
+      </Grid>
+      <div className="config-form-actions"><span>Tax treatment and numbering will be checked before the first invoice can be issued.</span><Button type="submit" disabled={saving}>{saving?"Saving…":"Save business details"}</Button>{activeEntities.length>0?<Button variant="ghost" onClick={()=>setQuickAddEntity(false)}>Cancel</Button>:null}</div>
+     </form>
+    </Card>:<Card className="quick-setup-card">
+     <p className="eyebrow">YOUR BUSINESS</p>
+     <div className="quick-setup-heading"><div><h2>Business profile</h2><p className="quick-setup-lead">Choose the business that will appear as the supplier on your invoices.</p></div><Button variant="secondary" onClick={()=>{setQuickAddEntity(true);setCompany(companyBlank())}}>Add another business</Button></div>
+     <div className="config-record-list">{activeEntities.map(e=><RecordCard key={e.id} title={e.displayName} subtitle={e.legalName} meta={(e.countryCode??"Country not set")+" · "+e.currency} active={e.isActive}
+      details={<><Detail label="Address">{[e.address?.line1,e.address?.city,e.address?.countryCode??e.countryCode].filter(Boolean).join(", ")||"Address incomplete"}</Detail><Detail label="Tax setup">{e.taxSetupStatus.replaceAll("_"," ").toLowerCase()}</Detail><Detail label="Contact">{e.invoiceEmail||e.invoicePhone||"Not added"}</Detail></>}
+      actions={<><Button size="sm" variant="secondary" onClick={()=>{editEntity(e);setTab("company");setShowAdvancedSettings(true)}}>Edit full details</Button></>}/>)}</div>
+    </Card>}
+    {activeEntities.length>0?<Card className="quick-setup-card quick-setup-status-card">
+     <p className="eyebrow">FIRST INVOICE STATUS</p>
+     {quickReadiness?.ready?<h2>Core issuance checks passed</h2>:<h2>{quickReadiness?failedReadinessChecks+" setup checks need attention":"Invoice readiness has not been verified yet"}</h2>}
+     <p>{quickReadiness?.ready?"Your current setup passed the available readiness checks. You can continue to create a draft and review the issue step.":"We keep this summary simple here. Open Advanced settings only when you need to review the tax, numbering, and other required invoice controls."}</p>
+     {!quickReadiness?.ready?<Button variant="secondary" onClick={()=>{setTab("company");setShowAdvancedSettings(true)}}>Review invoice readiness</Button>:null}
+    </Card>:null}
+   </section>
+   <aside className="quick-setup-secondary">
+    <Card className="quick-setup-card">
+     <p className="eyebrow">YOUR SIMPLE WORKFLOW</p><h2>From draft to paid</h2>
+     <ol className="quick-setup-steps">
+      <li><span>01</span><div><strong>Set up your business</strong><p>{activeEntities.length?"Business profile saved.":"Add the supplier details shown on the invoice."}</p></div></li>
+      <li><span>02</span><div><strong>Add a customer</strong><p>Save the customer and their invoice email.</p><Link href="/customers" className="quick-setup-text-link">Go to customers <span aria-hidden="true">→</span></Link></div></li>
+      <li><span>03</span><div><strong>Create and send an invoice</strong><p>Add line items, review the PDF, then issue and send it from the invoice workflow.</p>{activeEntities.length>0?<Link href="/invoices" className="button button--primary button--md quick-setup-full-link">Open invoices</Link>:<span className="quick-setup-muted">Available after you save a business profile.</span>}</div></li>
+     </ol>
+    </Card>
+    <Card className="quick-setup-card quick-setup-boundary">
+     <p className="eyebrow">WHAT STAYS SIMPLE</p><h2>No setup maze</h2>
+     <p>Brands, business units, template versions, and detailed policy controls stay out of your way unless your business needs them.</p>
+     <p>We will never invent a tax rate, registration number, invoice number, or bank detail. Required issue checks still protect your invoices.</p>
+     <Button variant="ghost" onClick={()=>setShowAdvancedSettings(true)}>Open advanced settings</Button>
+    </Card>
+   </aside>
+  </div>
+ </div>;
 
  return <div className="page page--configuration">
   <Breadcrumbs items={[{label:"Configure"},{label:"Settings",href:"/settings"},{label:"Company & invoicing"}]}/>
-  <PageHeader eyebrow="CONTROLLED CONFIGURATION" title="Company & invoice configuration" description="Manage legal billing identities separately from brands and business units. Configuration changes are audited and versioned."/>
+  <PageHeader eyebrow="ADVANCED CONFIGURATION" title="Company & invoice configuration" description="Detailed company, tax, numbering, brand, and document controls. Changes are audited and versioned." action={<Button variant="secondary" onClick={()=>setShowAdvancedSettings(false)}>Back to quick setup</Button>}/>
   {error?<div className="config-message"><InlineAlert tone="danger" title="Configuration issue">{error}</InlineAlert><Button variant="secondary" onClick={()=>void loadAll()}>Reload</Button></div>:null}
   {notice?<div className="config-message"><InlineAlert tone="success" title="Saved">{notice}</InlineAlert><Button variant="ghost" size="sm" onClick={()=>setNotice("")}>Dismiss</Button></div>:null}
   <div className="config-scope-bar"><div className="config-scope-bar__copy"><span className="config-scope-dot"/><div><strong>Active configuration scope</strong><small>All records and mutations are filtered server-side by legal-entity authorization.</small></div></div>

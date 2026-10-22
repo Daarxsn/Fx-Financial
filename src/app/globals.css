@@ -1477,3 +1477,37 @@ a, button, input, select, textarea { transition-duration: 160ms; }
   .dashboard-report-card__bar-label { align-items: flex-start; flex-direction: column; gap: 2px; }
   .app-footer { align-items: flex-start; flex-direction: column; gap: 8px; padding-inline: 15px; }
 }
+
+
+/* Simplified first-invoice path — keep advanced finance controls available without making them the default. */
+.quick-setup-grid { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(300px,.82fr); align-items:start; gap:18px; margin-top:22px; }
+.quick-setup-primary, .quick-setup-secondary { display:grid; gap:16px; min-width:0; }
+.quick-setup-card { padding:clamp(18px,2.4vw,28px); min-width:0; }
+.quick-setup-card h2 { margin:0; font-size:20px; line-height:1.3; letter-spacing:-.025em; color:var(--ink); }
+.quick-setup-card > .eyebrow { margin:0 0 8px; }
+.quick-setup-lead { margin:8px 0 18px; max-width:680px; color:var(--muted); font-size:13px; line-height:1.65; }
+.quick-setup-heading { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:16px; }
+.quick-setup-heading .quick-setup-lead { margin-bottom:0; }
+.quick-setup-status-card > p:not(.eyebrow) { margin:9px 0 14px; color:var(--muted); font-size:13px; line-height:1.7; }
+.quick-setup-steps { display:grid; gap:0; list-style:none; padding:0; margin:14px 0 0; }
+.quick-setup-steps li { display:grid; grid-template-columns:38px minmax(0,1fr); gap:12px; padding:16px 0; border-top:1px solid var(--line); }
+.quick-setup-steps li > span:first-child { display:grid; place-items:center; width:32px; height:32px; border:1px solid var(--line); border-radius:10px; color:var(--muted); font-size:11px; font-weight:800; }
+.quick-setup-steps strong { color:var(--ink); font-size:13px; }
+.quick-setup-steps p { margin:5px 0 9px; color:var(--muted); font-size:12px; line-height:1.6; }
+.quick-setup-text-link { display:inline-flex; gap:6px; align-items:center; color:var(--accent,#931314); font-size:12px; font-weight:750; text-decoration:none; }
+.quick-setup-text-link:hover { text-decoration:underline; }
+.quick-setup-full-link { display:inline-flex; width:max-content; margin-top:2px; text-decoration:none; }
+.quick-setup-muted { color:var(--muted); font-size:12px; }
+.quick-setup-boundary { background:var(--surface-subtle,var(--surface)); }
+.quick-setup-boundary > p:not(.eyebrow) { margin:10px 0; color:var(--muted); font-size:12px; line-height:1.7; }
+.invoice-setup-callout { display:grid; justify-items:start; gap:10px; margin:12px 0; }
+.invoice-setup-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.invoice-setup-actions .button { text-decoration:none; }
+@media (max-width:900px) { .quick-setup-grid { grid-template-columns:minmax(0,1fr); } }
+@media (max-width:560px) {
+ .quick-setup-card { padding:17px; }
+ .quick-setup-heading { display:grid; }
+ .quick-setup-grid .config-form-grid { grid-template-columns:minmax(0,1fr); }
+ .invoice-setup-actions { width:100%; }
+ .invoice-setup-actions .button { width:100%; justify-content:center; }
+}

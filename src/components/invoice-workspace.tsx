@@ -156,9 +156,15 @@ export function InvoiceWorkspace(){
   {canRead&&!canCreate?<InlineAlert tone="warning" title="Invoice creation permission required">
     You can view invoices, but your role cannot create drafts. Ask an access administrator to assign <code>invoices:draft:create</code> (typically the Finance Administrator or Invoice Creator role) and an active legal-entity scope.
   </InlineAlert>:null}
-  {missingSetup?<InlineAlert tone="warning" title="Invoice creation is not configured">
-    {!options.legalEntities.length&&!options.customers.length?"No active legal entity is assigned to this account and there are no active customers available.":"The invoice form needs an active legal entity in your assigned scope and at least one active customer."} Configure the legal entity in Settings and create customer records before drafting an invoice. No test or placeholder financial data is inserted.
-  </InlineAlert>:null}
+  {missingSetup?<div className="invoice-setup-callout">
+    <InlineAlert tone="warning" title="One quick setup step is still missing">
+     {!options.legalEntities.length&&!options.customers.length?"Add your business profile first, then create the customer you want to invoice.":!options.legalEntities.length?"Add your business profile before creating an invoice.":"Add at least one customer before creating an invoice."} No test or placeholder financial data is inserted.
+    </InlineAlert>
+    <div className="invoice-setup-actions">
+     {!options.legalEntities.length?<Link href="/settings" className="button button--secondary button--md">Set up business</Link>:null}
+     {!options.customers.length?<Link href="/customers" className="button button--primary button--md">Add first customer</Link>:null}
+    </div>
+   </div>:null}
   {error?<InlineAlert tone="danger" title="Invoice action needs attention">{error}</InlineAlert>:null}
   {success?<InlineAlert tone="success" title="Invoice updated">{success}</InlineAlert>:null}
   {optionsLoading?<LoadingState label="Loading legal entities, customers, catalog and approved tax rules…"/>:null}
