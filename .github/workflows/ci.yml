@@ -42,7 +42,7 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit
       - name: Audit dependency advisories
-        run: npm audit --audit-level=high
+        run: npm run security:audit
       - name: Secret scan (repository history)
         uses: gitleaks/gitleaks-action@v2
         env:
