@@ -26,7 +26,8 @@
     "pack7:validate": "node scripts/validate-pack-7.mjs",
     "pack7:api-test": "node scripts/verify-pack-7-api.mjs",
     "pack8:validate": "node scripts/validate-pack-8-security.mjs",
-    "security:audit": "node scripts/audit-dependencies.mjs"
+    "security:audit": "node scripts/audit-dependencies.mjs",
+    "pack8:query-plans": "node scripts/verify-pack-8-query-plans.mjs"
   },
   "dependencies": {
     "mysql2": "^3.24.5",

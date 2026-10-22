@@ -47,7 +47,7 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: MySQL 8 migration, seed, failure-safety and restore integration
+      - name: MySQL 8 migration, seed, query-plan, failure-safety and restore integration
         env:
           DATABASE_HOST: 127.0.0.1
           DATABASE_PORT: 3306
@@ -64,7 +64,10 @@ jobs:
           npm run db:seed:reference
 
           # Verify migration ledger and repeatable seed counts without dumping row contents.
-          node -e 'const mysql=require("mysql2/promise"); (async()=>{const c=await mysql.createConnection({host:process.env.DATABASE_HOST,port:Number(process.env.DATABASE_PORT),database:process.env.DATABASE_NAME,user:process.env.DATABASE_USER,password:process.env.DATABASE_PASSWORD}); const [[migrations],[permissions],[roles],[roleMappings]]=await Promise.all([c.query("SELECT COUNT(*) AS n FROM schema_migrations"),c.query("SELECT COUNT(*) AS n FROM app_permissions"),c.query("SELECT COUNT(*) AS n FROM app_roles"),c.query("SELECT COUNT(*) AS n FROM role_permissions")]); if(Number(migrations[0].n)!==28 || Number(permissions[0].n)!==27 || Number(roles[0].n)!==7 || Number(roleMappings[0].n)!==86) { await c.end(); process.exit(1) }; console.log("PASS: 28 migration records, 27 permission definitions, 7 role definitions and 86 role-permission mappings."); await c.end()})().catch(()=>process.exit(1))'
+          node -e 'const mysql=require("mysql2/promise"); (async()=>{const c=await mysql.createConnection({host:process.env.DATABASE_HOST,port:Number(process.env.DATABASE_PORT),database:process.env.DATABASE_NAME,user:process.env.DATABASE_USER,password:process.env.DATABASE_PASSWORD}); const [[migrations],[permissions],[roles],[roleMappings]]=await Promise.all([c.query("SELECT COUNT(*) AS n FROM schema_migrations"),c.query("SELECT COUNT(*) AS n FROM app_permissions"),c.query("SELECT COUNT(*) AS n FROM app_roles"),c.query("SELECT COUNT(*) AS n FROM role_permissions")]); if(Number(migrations[0].n)!==29 || Number(permissions[0].n)!==27 || Number(roles[0].n)!==7 || Number(roleMappings[0].n)!==86) { await c.end(); process.exit(1) }; console.log("PASS: 29 migration records, 27 permission definitions, 7 role definitions and 86 role-permission mappings."); await c.end()})().catch(()=>process.exit(1))'
+
+          # Seed a disposable representative list workload and verify the query planner sees the required composite indexes.
+          node scripts/verify-pack-8-query-plans.mjs
 
           # Negative network-path test: the verifier must fail without exposing raw diagnostics.
           if DATABASE_PORT=1 DATABASE_SSL=true npm run db:verify > "$RUNNER_TEMP/db-negative-test.log" 2>&1; then
@@ -94,7 +97,7 @@ jobs:
           test "$source_tables" -gt 0
           test "$source_tables" = "$restored_tables"
           test "$restored_migrations" = "28"
-          echo "PASS: 28 MySQL 8 migrations/idempotency, repeated reference seed, safe failure behavior and logical dump/restore verified."
+          echo "PASS: 29 MySQL 8 migrations/idempotency, repeated reference seed, safe failure behavior and logical dump/restore verified."
 
       - name: Verify health endpoint success and safe failure responses
         env:
@@ -111,12 +114,13 @@ jobs:
           trap 'kill "$healthy_pid" 2>/dev/null || true' EXIT
           healthy_code=""
           for attempt in $(seq 1 30); do
-            healthy_code="$(curl -sS -o "$RUNNER_TEMP/health-ok.json" -w '%{http_code}' http://127.0.0.1:3000/api/health || true)"
+            healthy_code="$(curl -sS -D "$RUNNER_TEMP/health-ok.headers" -o "$RUNNER_TEMP/health-ok.json" -w '%{http_code}' http://127.0.0.1:3000/api/health || true)"
             if [ "$healthy_code" = "200" ]; then break; fi
             sleep 2
           done
           test "$healthy_code" = "200"
           node -e 'const h=JSON.parse(require("node:fs").readFileSync(process.env.RUNNER_TEMP+"/health-ok.json","utf8")); if(h.status!=="ok" || h.checks?.database!=="ok") process.exit(1); console.log("PASS: health endpoint returns 200 for a reachable database.")'
+          node -e 'const h=require("node:fs").readFileSync(process.env.RUNNER_TEMP+"/health-ok.headers","utf8").toLowerCase(); for(const x of ["content-security-policy:","x-frame-options: deny","x-content-type-options: nosniff","referrer-policy: no-referrer","permissions-policy: camera=(), microphone=(), geolocation=()","cross-origin-opener-policy: same-origin"]) if(!h.includes(x)) {console.error("Missing security response header: "+x);process.exit(1)} if(/\\nx-powered-by:/i.test(h)) process.exit(1); console.log("PASS: live HTTP response includes the configured browser security headers and omits X-Powered-By.")'
           kill "$healthy_pid" 2>/dev/null || true
           wait "$healthy_pid" 2>/dev/null || true
           trap - EXIT
@@ -228,6 +232,33 @@ jobs:
           DATABASE_SSL: "true"
           SESSION_SECRET: "ci-only-session-secret-value-not-for-production-000000"
 
+
+      - name: Verify production security response headers
+        env:
+          DATABASE_HOST: 127.0.0.1
+          DATABASE_PORT: 3306
+          DATABASE_NAME: falchion_ci
+          DATABASE_USER: root
+          DATABASE_PASSWORD: ci_root_password
+          DATABASE_SSL: "false"
+          SESSION_SECRET: "ci-only-session-secret-value-not-for-production-000000"
+          APP_ORIGIN: "https://ci.example.invalid"
+        run: |
+          set -euo pipefail
+          ./node_modules/.bin/next start --hostname 127.0.0.1 --port 3004 > "$RUNNER_TEMP/next-production-headers.log" 2>&1 &
+          production_pid=$!
+          trap 'kill "$production_pid" 2>/dev/null || true' EXIT
+          production_code=""
+          for attempt in $(seq 1 30); do
+            production_code="$(curl -sS -D "$RUNNER_TEMP/production-headers.txt" -o "$RUNNER_TEMP/production-health.json" -w '%{http_code}' http://127.0.0.1:3004/api/health || true)"
+            if [ "$production_code" = "200" ]; then break; fi
+            sleep 2
+          done
+          test "$production_code" = "200"
+          node -e 'const h=require("node:fs").readFileSync(process.env.RUNNER_TEMP+"/production-headers.txt","utf8").toLowerCase(); for(const x of ["content-security-policy:","x-frame-options: deny","x-content-type-options: nosniff","referrer-policy: no-referrer","permissions-policy: camera=(), microphone=(), geolocation=()","cross-origin-opener-policy: same-origin","strict-transport-security: max-age=31536000"]) if(!h.includes(x)){console.error("Missing production security header: "+x);process.exit(1)} if(/\\nx-powered-by:/i.test(h))process.exit(1); console.log("PASS: production HTTP response includes CSP, frame/MIME/referrer/permissions/COOP/HSTS headers and omits X-Powered-By.")'
+          kill "$production_pid" 2>/dev/null || true
+          wait "$production_pid" 2>/dev/null || true
+          trap - EXIT
       - name: Install Playwright Chromium for Phase 7 browser acceptance
         run: |
           npm install --no-save --no-audit playwright@1.64.1
