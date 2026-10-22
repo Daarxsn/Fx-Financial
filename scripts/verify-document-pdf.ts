@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { renderDocumentPdf, type PdfSnapshot } from "../src/lib/documents/pdf";
 import { getPrivateObject, headPrivateObject, putPrivateObject, PrivateStorageError } from "../src/lib/documents/storage";
 
+async function main(): Promise<void> {
 const original = {
   driver: process.env.DOCUMENTS_STORAGE_DRIVER,
   root: process.env.DOCUMENTS_STORAGE_LOCAL_ROOT,
@@ -136,3 +137,11 @@ try {
   if (original.endpoint === undefined) delete process.env.DOCUMENTS_STORAGE_ENDPOINT;
   else process.env.DOCUMENTS_STORAGE_ENDPOINT = original.endpoint;
 }
+
+
+}
+
+main().catch((error: unknown) => {
+  console.error("PDF/storage unit test failed", error instanceof Error ? error.message : "Unknown error");
+  process.exitCode = 1;
+});
