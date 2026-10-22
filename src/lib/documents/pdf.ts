@@ -206,7 +206,7 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
     }
     if(snapshot.sourceType==="INVOICE"){
       ensure(28);doc.moveDown(0.3);
-      body(8).text("PAYMENT STATUS AT ISSUE: "+text(snapshot.paymentStatus,"ISSUED"),left,doc.y,{width});
+      body(8).text("PAYMENT STATUS AT SNAPSHOT: "+text(snapshot.paymentStatus,"ISSUED"),left,doc.y,{width});
     }
     if(snapshot.reversalReason){
       ensure(32);doc.moveDown(0.4);
