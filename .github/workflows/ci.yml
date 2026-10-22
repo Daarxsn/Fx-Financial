@@ -41,6 +41,8 @@ jobs:
           node-version: 24
       - name: Install dependencies
         run: npm ci --no-audit
+      - name: Audit dependency advisories
+        run: npm audit --audit-level=high
       - name: Secret scan (repository history)
         uses: gitleaks/gitleaks-action@v2
         env:
@@ -209,6 +211,8 @@ jobs:
         run: npm run invoice:access-ui-test
       - name: Validate Pack 7 reporting contracts
         run: npm run pack7:validate
+      - name: Validate Pack 8 security guardrails
+        run: npm run pack8:validate
       - name: Lint
         run: npm run lint
       - name: TypeScript
