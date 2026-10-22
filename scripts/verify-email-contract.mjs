@@ -39,6 +39,7 @@ assert.ok(outboxRoute.includes("recipientConfirmed"), "Email POST must require e
 assert.ok(!service.includes("CUSTOMER_EMAIL_MISSING"), "A confirmed recipient override must not depend on the snapshot suggestion");
 assert.ok(outboxRoute.includes("actor.legalEntityIds"), "Email API must enforce legal-entity scope");
 assert.ok(service.includes("data.email_id ?? data.id"), "Resend webhook must read the documented email_id field");
+assert.ok(service.includes("pdfRecord.contentSnapshotId !== snapshot.id"), "Email content and PDF attachment must be tied to the same immutable snapshot revision");
 assert.ok(service.includes("Terminal provider outcomes never regress"), "Provider webhooks must not regress terminal delivery status");
 assert.ok(retryRoute.includes("retryFailedEmail"), "Manual retry must use the bounded retry workflow");
 assert.ok(webhookRoute.includes("await request.text()"), "Webhook signature must use the exact raw request body");
