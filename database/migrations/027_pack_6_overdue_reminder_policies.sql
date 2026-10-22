@@ -30,3 +30,18 @@ CREATE TABLE overdue_reminder_policies (
     (approved_by IS NOT NULL AND approved_at IS NOT NULL AND approval_reference IS NOT NULL AND approval_evidence_notes IS NOT NULL)
   )
 ) ENGINE=InnoDB;
+
+CREATE TABLE reminder_policy_events (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  reminder_policy_id CHAR(36) NOT NULL,
+  event_type VARCHAR(40) NOT NULL,
+  previous_status VARCHAR(24) NULL,
+  new_status VARCHAR(24) NOT NULL,
+  actor_id CHAR(36) NULL,
+  reason VARCHAR(1000) NULL,
+  approval_reference VARCHAR(255) NULL,
+  metadata_json JSON NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  KEY ix_reminder_policy_events_time (reminder_policy_id,created_at),
+  CONSTRAINT fk_reminder_policy_event_policy FOREIGN KEY (reminder_policy_id) REFERENCES overdue_reminder_policies(id) ON DELETE RESTRICT
+) ENGINE=InnoDB;
