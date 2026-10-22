@@ -70,7 +70,7 @@ console.log("PASS: valid staging configuration passes without outputting secret 
 
 expectRejected("plaintext database transport", "staging", { DATABASE_SSL: "false" }, /DATABASE_SSL must be true/);
 expectRejected("non-HTTPS app origin", "staging", { APP_ORIGIN: "http://preview.falchionxeniaa.in" }, /APP_ORIGIN must be the exact HTTPS origin/);
-for (const host of ["127.0.0.1", "127.44.2.3", "localhost.", "[::1]", "0.0.0.0", "169.254.169.254", "::ffff:127.0.0.1"]) {
+for (const host of ["127.0.0.1", "127.44.2.3", "127.1", "2130706433", "0x7f000001", "localhost.", "[::1]", "0.0.0.0", "169.254.169.254", "::ffff:127.0.0.1", "::ffff:7f00:1", "fe80::1"]) {
   expectRejected("unsafe database host " + host, "staging", { DATABASE_HOST: host }, /DATABASE_HOST must refer to the remote managed database/);
 }
 expectRejected("malformed database host URL", "staging", { DATABASE_HOST: "https://db-staging.internal.fx" }, /DATABASE_HOST must be a hostname or IP address/);
