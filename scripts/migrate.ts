@@ -95,8 +95,17 @@ async function main() {
   }
 }
 
-main().catch(() => {
-  // Driver errors can reveal hostnames, database names, or infrastructure details.
+main().catch((error: unknown) => {
+  // Driver messages can reveal hostnames, database names, SQL values, or infrastructure details.
+  // In ephemeral CI only, expose stable driver classification fields (never SQL text, host or credentials).
+  if (process.env.GITHUB_ACTIONS === "true" && error && typeof error === "object") {
+    const details = error as { code?: unknown; errno?: unknown; sqlState?: unknown };
+    console.error("Migration diagnostic (CI only)", {
+      code: typeof details.code === "string" ? details.code : "UNKNOWN",
+      errno: typeof details.errno === "number" ? details.errno : null,
+      sqlState: typeof details.sqlState === "string" ? details.sqlState : null,
+    });
+  }
   console.error(
     "Migration failed. Check required DATABASE_* settings, TLS configuration, database grants, and migration SQL. Raw database diagnostics are intentionally suppressed.",
   );
