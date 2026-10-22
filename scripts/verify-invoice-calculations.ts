@@ -21,4 +21,14 @@ assert.throws(()=>calculateInvoice([{description:"Over-discount",quantity:"1",un
 assert.throws(()=>calculateInvoice([{description:"Negative quantity",quantity:"-1",unitPrice:"5",taxRatePercent:"18",taxCalculationMode:"EXCLUSIVE"}]),/Quantity/);
 assert.throws(()=>calculateInvoice([{description:"Rate overflow",quantity:"1",unitPrice:"5",taxRatePercent:"100.000001",taxCalculationMode:"EXCLUSIVE"}]),/Tax rate/);
 assert.throws(()=>calculateInvoice([{description:"Percent overflow",quantity:"1",unitPrice:"5",discountType:"PERCENT",discountValue:"100.0001",taxRatePercent:"18",taxCalculationMode:"EXCLUSIVE"}]),/Discount percentage/);
-console.log("PASS: invoice calculation accuracy, exclusive/inclusive tax, percent/fixed discounts, additional charges, four-decimal HALF_UP rounding, outstanding balance, date validation and invalid-value rejection.");
+const maxDecimal = "999999999999999.9999";
+const maxBoundary = calculateInvoice([{description:"DECIMAL upper boundary",quantity:"1.0000",unitPrice:maxDecimal,discountType:"AMOUNT",discountValue:"0.0000",taxRatePercent:"0",taxCalculationMode:"EXCLUSIVE"}]);
+assert.equal(maxBoundary.subtotal,maxDecimal,"DECIMAL(19,4) maximum is preserved exactly");
+assert.equal(maxBoundary.grandTotal,maxDecimal,"maximum supported amount survives the complete calculation without float conversion");
+assert.equal(normalizeMoney(maxDecimal),maxDecimal,"maximum supported amount is preserved by normalization");
+assert.throws(()=>calculateInvoice([{description:"Line extension overflow",quantity:"2.0000",unitPrice:maxDecimal,discountType:"AMOUNT",discountValue:"0.0000",taxRatePercent:"0",taxCalculationMode:"EXCLUSIVE"}]),/DECIMAL\(19,4\) range/);
+assert.throws(()=>calculateInvoice([
+  {description:"Aggregate edge A",quantity:"1.0000",unitPrice:"600000000000000.0000",discountType:"AMOUNT",discountValue:"0.0000",taxRatePercent:"0",taxCalculationMode:"EXCLUSIVE"},
+  {description:"Aggregate edge B",quantity:"1.0000",unitPrice:"600000000000000.0000",discountType:"AMOUNT",discountValue:"0.0000",taxRatePercent:"0",taxCalculationMode:"EXCLUSIVE"},
+]),/Invoice subtotal exceeds/);
+console.log("PASS: invoice calculation accuracy, exclusive/inclusive tax, percent/fixed discounts, additional charges, four-decimal HALF_UP rounding, DECIMAL(19,4) maximum and overflow rejection, outstanding balance, date validation and invalid-value rejection.");
