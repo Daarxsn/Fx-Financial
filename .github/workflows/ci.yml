@@ -96,7 +96,7 @@ jobs:
           restored_migrations="$(mysql --defaults-extra-file="$client_config" falchion_ci_restore -Nse 'SELECT COUNT(*) FROM schema_migrations')"
           test "$source_tables" -gt 0
           test "$source_tables" = "$restored_tables"
-          test "$restored_migrations" = "28"
+          test "$restored_migrations" = "29"
           echo "PASS: 29 MySQL 8 migrations/idempotency, repeated reference seed, safe failure behavior and logical dump/restore verified."
 
       - name: Verify health endpoint success and safe failure responses
@@ -120,7 +120,7 @@ jobs:
           done
           test "$healthy_code" = "200"
           node -e 'const h=JSON.parse(require("node:fs").readFileSync(process.env.RUNNER_TEMP+"/health-ok.json","utf8")); if(h.status!=="ok" || h.checks?.database!=="ok") process.exit(1); console.log("PASS: health endpoint returns 200 for a reachable database.")'
-          node -e 'const h=require("node:fs").readFileSync(process.env.RUNNER_TEMP+"/health-ok.headers","utf8").toLowerCase(); for(const x of ["content-security-policy:","x-frame-options: deny","x-content-type-options: nosniff","referrer-policy: no-referrer","permissions-policy: camera=(), microphone=(), geolocation=()","cross-origin-opener-policy: same-origin"]) if(!h.includes(x)) {console.error("Missing security response header: "+x);process.exit(1)} if(/\\nx-powered-by:/i.test(h)) process.exit(1); console.log("PASS: live HTTP response includes the configured browser security headers and omits X-Powered-By.")'
+          node -e 'const h=require("node:fs").readFileSync(process.env.RUNNER_TEMP+"/health-ok.headers","utf8").toLowerCase(); for(const x of ["content-security-policy:","x-frame-options: deny","x-content-type-options: nosniff","referrer-policy: no-referrer","permissions-policy: camera=(), microphone=(), geolocation=()","cross-origin-opener-policy: same-origin"]) if(!h.includes(x)) {console.error("Missing security response header: "+x);process.exit(1)} if(h.includes("x-powered-by:")) process.exit(1); console.log("PASS: live HTTP response includes the configured browser security headers and omits X-Powered-By.")'
           kill "$healthy_pid" 2>/dev/null || true
           wait "$healthy_pid" 2>/dev/null || true
           trap - EXIT
@@ -255,7 +255,7 @@ jobs:
             sleep 2
           done
           test "$production_code" = "200"
-          node -e 'const h=require("node:fs").readFileSync(process.env.RUNNER_TEMP+"/production-headers.txt","utf8").toLowerCase(); for(const x of ["content-security-policy:","x-frame-options: deny","x-content-type-options: nosniff","referrer-policy: no-referrer","permissions-policy: camera=(), microphone=(), geolocation=()","cross-origin-opener-policy: same-origin","strict-transport-security: max-age=31536000"]) if(!h.includes(x)){console.error("Missing production security header: "+x);process.exit(1)} if(/\\nx-powered-by:/i.test(h))process.exit(1); console.log("PASS: production HTTP response includes CSP, frame/MIME/referrer/permissions/COOP/HSTS headers and omits X-Powered-By.")'
+          node -e 'const h=require("node:fs").readFileSync(process.env.RUNNER_TEMP+"/production-headers.txt","utf8").toLowerCase(); for(const x of ["content-security-policy:","x-frame-options: deny","x-content-type-options: nosniff","referrer-policy: no-referrer","permissions-policy: camera=(), microphone=(), geolocation=()","cross-origin-opener-policy: same-origin","strict-transport-security: max-age=31536000"]) if(!h.includes(x)){console.error("Missing production security header: "+x);process.exit(1)} if(h.includes("x-powered-by:"))process.exit(1); console.log("PASS: production HTTP response includes CSP, frame/MIME/referrer/permissions/COOP/HSTS headers and omits X-Powered-By.")'
           kill "$production_pid" 2>/dev/null || true
           wait "$production_pid" 2>/dev/null || true
           trap - EXIT
