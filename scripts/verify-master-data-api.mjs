@@ -3131,6 +3131,76 @@ try {
   const p4NoteHistory=await call("/api/v1/correction-requests?status=all&invoiceId="+p4NoteSource.id,{},p4ReviewerSession.jar);
   assert.equal(p4NoteHistory.body.data[0].history.length,2,"blocked note execution does not add a fabricated event; rejection is audited");
 
+  // Pack 5: end-to-end immutable snapshots, private PDF generation, scoped history and protected downloads.
+  const p5AnonymousHistory = await call("/api/v1/documents/INVOICE/" + p4NoteSource.id);
+  assert.equal(p5AnonymousHistory.response.status, 401, "document history must reject anonymous access");
+
+  const p5InvoiceFirst = await call("/api/v1/documents/INVOICE/" + p4NoteSource.id + "/generate", {
+    method: "POST", body: JSON.stringify({}),
+  }, phase6aSession.jar);
+  assert.equal(p5InvoiceFirst.response.status, 201, "issued invoice PDF is generated and stored");
+  assert.equal(p5InvoiceFirst.body.data.status, "READY");
+  assert.match(p5InvoiceFirst.body.data.fileSha256, /^[a-f0-9]{64}$/);
+  assert.ok(Number(p5InvoiceFirst.body.data.byteSize) > 1000);
+  const p5InvoiceReplay = await call("/api/v1/documents/INVOICE/" + p4NoteSource.id + "/generate", {
+    method: "POST", body: JSON.stringify({}),
+  }, phase6aSession.jar);
+  assert.equal(p5InvoiceReplay.response.status, 200, "normal generate request reuses the verified latest PDF");
+  assert.equal(p5InvoiceReplay.body.data.id, p5InvoiceFirst.body.data.id);
+  assert.equal(p5InvoiceReplay.body.data.reused, true, "normal generation call must not duplicate a ready artifact");
+  const p5InvoiceRegenerated = await call("/api/v1/documents/INVOICE/" + p4NoteSource.id + "/generate", {
+    method: "POST", body: JSON.stringify({ forceNew: true }),
+  }, phase6aSession.jar);
+  assert.equal(p5InvoiceRegenerated.response.status, 201, "explicit regeneration creates a separate immutable artifact");
+  assert.notEqual(p5InvoiceRegenerated.body.data.id, p5InvoiceFirst.body.data.id);
+  assert.equal(p5InvoiceRegenerated.body.data.status, "READY");
+  const p5InvoiceHistory = await call("/api/v1/documents/INVOICE/" + p4NoteSource.id, {}, phase6aSession.jar);
+  assert.equal(p5InvoiceHistory.response.status, 200);
+  assert.ok(p5InvoiceHistory.body.data.some(item => item.id === p5InvoiceFirst.body.data.id));
+  assert.ok(p5InvoiceHistory.body.data.some(item => item.id === p5InvoiceRegenerated.body.data.id));
+  assert.ok(p5InvoiceHistory.body.data.every(item => !("storageKey" in item)), "private storage keys must not leak through history");
+
+  const p5PdfResponse = await fetch(new URL("/api/v1/documents/files/" + p5InvoiceRegenerated.body.data.id, baseUrl), {
+    headers: { Cookie: cookieHeader(phase6aSession.jar) }, cache: "no-store",
+  });
+  assert.equal(p5PdfResponse.status, 200, "authorized artifact download succeeds");
+  assert.match(p5PdfResponse.headers.get("content-type") ?? "", /application\/pdf/i);
+  assert.match(p5PdfResponse.headers.get("cache-control") ?? "", /no-store/i);
+  assert.equal(p5PdfResponse.headers.get("content-digest"),
+    "sha-256=:" + Buffer.from(p5InvoiceRegenerated.body.data.fileSha256, "hex").toString("base64") + ":");
+  const p5PdfBytes = Buffer.from(await p5PdfResponse.arrayBuffer());
+  assert.equal(p5PdfBytes.subarray(0, 5).toString("ascii"), "%PDF-");
+  assert.equal(p5PdfBytes.length, Number(p5InvoiceRegenerated.body.data.byteSize));
+
+  const p5ScopeLessAuditor = await seedUser("auditor", "p5-no-scope-" + suffix + "@example.invalid");
+  const p5ScopeLessSession = await login(p5ScopeLessAuditor);
+  const p5OutOfScopeHistory = await call("/api/v1/documents/INVOICE/" + p4NoteSource.id, {}, p5ScopeLessSession.jar);
+  assert.equal(p5OutOfScopeHistory.response.status, 404, "document history must not disclose a document outside assigned legal-entity scope");
+  const p5OutOfScopeDownload = await call("/api/v1/documents/files/" + p5InvoiceRegenerated.body.data.id, {}, p5ScopeLessSession.jar);
+  assert.equal(p5OutOfScopeDownload.response.status, 404, "download must enforce legal-entity scope even for a reader role");
+
+  const p5QuotationPdf = await call("/api/v1/documents/QUOTATION/" + snapshotQuoteId + "/generate", {
+    method: "POST", body: JSON.stringify({}),
+  }, quotationFinanceSession.jar);
+  assert.equal(p5QuotationPdf.response.status, 201, "accepted quotation PDF uses its immutable send-time configuration snapshot");
+  assert.equal(p5QuotationPdf.body.data.status, "READY");
+  assert.match(p5QuotationPdf.body.data.fileSha256, /^[a-f0-9]{64}$/);
+  const p5QuotationHistory = await call("/api/v1/documents/QUOTATION/" + snapshotQuoteId, {}, quotationFinanceSession.jar);
+  assert.equal(p5QuotationHistory.response.status, 200);
+  assert.ok(p5QuotationHistory.body.data.some(item => item.id === p5QuotationPdf.body.data.id));
+
+  const p5ReceiptId = p4TestPayment.body.data.id;
+  const p5ReceiptPdf = await call("/api/v1/documents/RECEIPT/" + p5ReceiptId + "/generate", {
+    method: "POST", body: JSON.stringify({}),
+  }, phase6aSession.jar);
+  assert.equal(p5ReceiptPdf.response.status, 201, "recorded receipt PDF uses immutable party snapshots");
+  assert.equal(p5ReceiptPdf.body.data.status, "READY");
+  assert.match(p5ReceiptPdf.body.data.fileSha256, /^[a-f0-9]{64}$/);
+  const p5ReceiptHistory = await call("/api/v1/documents/RECEIPT/" + p5ReceiptId, {}, phase6aSession.jar);
+  assert.equal(p5ReceiptHistory.response.status, 200);
+  assert.ok(p5ReceiptHistory.body.data.some(item => item.id === p5ReceiptPdf.body.data.id));
+  console.log("PASS: Pack 5 authenticated invoice/quotation/receipt PDF generation, duplicate suppression, explicit immutable regeneration, SHA-256 download integrity, no-store headers, anonymous denial and legal-entity isolation.");
+
   const p4NoQueueUser=await call("/api/v1/correction-requests?status=all",{},p3NoReverseSession.jar);
   assert.equal(p4NoQueueUser.response.status,403,"users without approvals:read or invoice draft-update cannot access correction requests");
   console.log("PASS: Pack 4 keeps credit-note execution blocked, permits an independently reasoned rejection, and enforces correction queue access.");
