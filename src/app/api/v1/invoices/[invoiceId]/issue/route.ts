@@ -11,6 +11,7 @@ import { unresolvedInvoicePolicyDecisions } from "@/lib/configuration/policy-dec
 import { calculateInvoice, defaultDueDate, assertValidDueDate } from "@/lib/finance/invoice-calculation";
 import { calendarDateSchema } from "@/lib/validation/configuration";
 import { z } from "zod";
+import { captureDocumentSourceSnapshot } from "@/lib/documents/service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -264,6 +265,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ in
         JSON.stringify(customerSnapshot), actor.userId, idempotencyKey, invoice.id],
     );
     if (updated.affectedRows !== 1) throw new ConfigurationConflictError("Invoice state changed during issuance; retry after refreshing the invoice.");
+
+    // Capture the issued content inside the same transaction as numbering and source snapshots.
+    await captureDocumentSourceSnapshot(conn, "INVOICE", invoice.id, actor.userId, "ISSUED");
 
     await conn.execute(
       "INSERT INTO audit_events (id,actor_id,action,entity_type,entity_id,outcome,before_json,after_json,correlation_id,change_reason) VALUES (?,?,'invoice.issued','invoice',?,'SUCCESS',?,?,?,?)",
