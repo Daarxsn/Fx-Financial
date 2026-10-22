@@ -33,7 +33,7 @@ function requireValue(key, options = {}) {
 }
 
 function isLoopbackOrLinkLocalDatabaseHost(rawHost) {
-  const host = rawHost.trim().toLowerCase().replace(/^\\[|\\]$/g, "").replace(/\\.$/, "");
+  const host = rawHost.trim().toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
   if (host === "localhost" || host.endsWith(".localhost") || host === "localhost.localdomain") return true;
 
   const ipVersion = isIP(host);
@@ -45,7 +45,7 @@ function isLoopbackOrLinkLocalDatabaseHost(rawHost) {
   if (ipVersion === 6) {
     if (host === "::" || host === "::1") return true;
     // IPv4-mapped loopback/unspecified/link-local forms should not bypass the guard.
-    const mappedIpv4 = host.match(/(?:^|:)ffff:(\\d{1,3}(?:\\.\\d{1,3}){3})$/i)?.[1];
+    const mappedIpv4 = host.match(/(?:^|:)ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i)?.[1];
     if (mappedIpv4 && isLoopbackOrLinkLocalDatabaseHost(mappedIpv4)) return true;
     // IPv6 link-local is fe80::/10.
     if (/^fe[89ab][0-9a-f]:/i.test(host)) return true;
@@ -55,7 +55,7 @@ function isLoopbackOrLinkLocalDatabaseHost(rawHost) {
 
 const databaseHost = requireValue("DATABASE_HOST", { nonPlaceholder: true });
 if (databaseHost) {
-  if (/[\\s/@?#]/.test(databaseHost)) {
+  if (/[\s/@?#]/.test(databaseHost)) {
     errors.push("DATABASE_HOST must be a hostname or IP address, not a URL or path");
   }
   if (isLoopbackOrLinkLocalDatabaseHost(databaseHost)) {
@@ -107,7 +107,7 @@ if (caPath && caPem) {
   } catch {
     errors.push("DATABASE_SSL_CA_PATH is not readable by this process");
   }
-} else if (caPem && !/-----BEGIN CERTIFICATE-----[\\s\\S]+-----END CERTIFICATE-----/.test(caPem)) {
+} else if (caPem && !/-----BEGIN CERTIFICATE-----[\s\S]+-----END CERTIFICATE-----/.test(caPem)) {
   errors.push("DATABASE_SSL_CA must contain a complete PEM certificate block");
 }
 
