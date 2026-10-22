@@ -3,7 +3,7 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import type { PoolConnection, RowDataPacket } from "mysql2/promise";
 import { pool } from "@/lib/db/pool";
-import { captureDocumentContentSnapshot, type ContentCaptureReason, type ContentSourceType } from "@/lib/documents/snapshots";
+import { canonicalDocumentJson, captureDocumentContentSnapshot, type ContentCaptureReason, type ContentSourceType } from "@/lib/documents/snapshots";
 import { renderDocumentPdf, type PdfSnapshot } from "@/lib/documents/pdf";
 import { getPrivateObject, headPrivateObject, putPrivateObject, PrivateStorageError } from "@/lib/documents/storage";
 
@@ -220,7 +220,7 @@ export async function captureDocumentSourceSnapshot(
     documentDate: dateText(row.payment_date), dueDate: null, validUntil: null, currency: row.currency,
     subtotal: receiptAmount, discountTotal: "0.0000", taxTotal: "0.0000", grandTotal: receiptAmount,
     paidAmount: "0.0000", paymentStatus: row.status, notes: row.notes, method: row.method,
-    reference: row.reference, reversedAt: row.reversed_at, reversalReason: row.reversal_reason,
+    reference: row.reference, reversedAt: row.reversed_at instanceof Date ? row.reversed_at.toISOString() : row.reversed_at ? String(row.reversed_at) : null, reversalReason: row.reversal_reason,
     supplier: object(row.legal_entity_snapshot), customer: object(row.customer_snapshot),
     configurationSnapshotId: null, configurationSha256: null, configurationSnapshot: null, lines: [],
   };
@@ -293,6 +293,22 @@ export async function generateDocumentPdf(sourceType: DocumentSourceType, source
       if (!createdRows.length) throw new DocumentWorkflowError("DOCUMENT_SNAPSHOT_UNAVAILABLE", 409, "A document content snapshot could not be created.");
       snapshot = createdRows[0];
     }
+    const snapshotContent = object(snapshot.content_json);
+    if (snapshot.source_document_type !== sourceType || snapshot.source_document_id !== sourceId ||
+        snapshot.legal_entity_id !== source.legal_entity_id || snapshot.document_number !== source.document_number ||
+        snapshotContent.sourceType !== sourceType || snapshotContent.sourceDocumentId !== sourceId ||
+        snapshotContent.documentNumber !== source.document_number) {
+      throw new DocumentWorkflowError("DOCUMENT_SNAPSHOT_INVALID", 409, "The stored content snapshot does not match its source financial document.");
+    }
+    // Native source snapshots use the application's canonical JSON hash. Legacy SQL backfills
+    // are explicitly labelled because MySQL's JSON serialization differs from the canonical form.
+    if (snapshotContent.captureReason !== "LEGACY_BACKFILL") {
+      const canonicalHash = createHash("sha256").update(canonicalDocumentJson(snapshotContent)).digest("hex");
+      if (canonicalHash !== snapshot.content_sha256) {
+        throw new DocumentWorkflowError("DOCUMENT_INTEGRITY_FAILURE", 409, "The stored source snapshot failed its SHA-256 verification.");
+      }
+    }
+
     const [existingRows] = await conn.execute<GeneratedRow[]>(
       "SELECT id,content_snapshot_id,source_document_type,source_document_id,legal_entity_id,document_number,storage_key,mime_type,byte_size,file_sha256,status,generation_attempts,last_error_code,created_by,created_at,ready_at,generation_started_at,generation_token,TIMESTAMPDIFF(SECOND,generation_started_at,NOW(3)) AS lease_age_seconds FROM generated_documents WHERE content_snapshot_id=? ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE",
       [snapshot.id],
