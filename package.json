@@ -22,7 +22,8 @@
     "phase7:ui-test": "node scripts/validate-phase-7-ui.mjs",
     "phase7:browser-test": "node scripts/verify-phase-7-browser.mjs",
     "invoice:access-ui-test": "node scripts/validate-quotation-access-ui.mjs",
-    "email:contract-test": "node scripts/verify-email-contract.mjs"
+    "email:contract-test": "node scripts/verify-email-contract.mjs",
+    "pack7:validate": "node scripts/validate-pack-7.mjs"
   },
   "dependencies": {
     "mysql2": "^3.24.5",

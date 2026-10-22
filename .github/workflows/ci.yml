@@ -202,6 +202,8 @@ jobs:
         run: npm run phase7:ui-test
       - name: Validate invoice/quotation access and onboarding UX
         run: npm run invoice:access-ui-test
+      - name: Validate Pack 7 reporting contracts
+        run: npm run pack7:validate
       - name: Lint
         run: npm run lint
       - name: TypeScript
