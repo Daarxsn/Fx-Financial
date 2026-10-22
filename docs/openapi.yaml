@@ -2179,6 +2179,214 @@ paths:
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationError" }
 
+  /api/v1/reports/summary:
+    get:
+      tags: [Reports]
+      summary: "Get provisional entity-scoped dashboard metrics grouped by legal entity and currency"
+      operationId: getPack7ReportSummary
+      x-implementation-status: implemented
+      parameters:
+        - { in: query, name: from, schema: { type: "string", format: "date" } }
+        - { in: query, name: to, schema: { type: "string", format: "date" } }
+        - { in: query, name: legalEntityId, schema: { $ref: "#/components/schemas/Uuid" } }
+      responses:
+        "200": { description: "Period movements and current balance snapshots; metric sign-off status is included" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/reports/invoices:
+    get:
+      tags: [Reports]
+      summary: "List entity-scoped invoice and correction-document report rows"
+      operationId: getPack7InvoiceReport
+      x-implementation-status: implemented
+      parameters:
+        - { in: query, name: from, schema: { type: "string", format: "date" } }
+        - { in: query, name: to, schema: { type: "string", format: "date" } }
+        - { $ref: "#/components/parameters/Query" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Offset" }
+        - { in: query, name: legalEntityId, schema: { $ref: "#/components/schemas/Uuid" } }
+        - { in: query, name: status, schema: { type: "string", enum: ["ALL", "DRAFT", "ISSUED", "CANCELLED"] } }
+      responses:
+        "200": { description: "Paginated invoice rows with exact decimal totals and current allocated-payment snapshots" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/reports/quotations:
+    get:
+      tags: [Reports]
+      summary: "List entity-scoped quotation outcome rows"
+      operationId: getPack7QuotationReport
+      x-implementation-status: implemented
+      parameters:
+        - { in: query, name: from, schema: { type: "string", format: "date" } }
+        - { in: query, name: to, schema: { type: "string", format: "date" } }
+        - { $ref: "#/components/parameters/Query" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Offset" }
+        - { in: query, name: legalEntityId, schema: { $ref: "#/components/schemas/Uuid" } }
+        - { in: query, name: status, schema: { type: "string", enum: ["ALL", "DRAFT", "SENT", "ACCEPTED", "REJECTED", "EXPIRED", "CANCELLED", "CONVERTED"] } }
+      responses:
+        "200": { description: "Paginated quotation rows and effective expiry status" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/reports/payments:
+    get:
+      tags: [Reports]
+      summary: "List entity-scoped receipts and allocation report rows"
+      operationId: getPack7PaymentReport
+      x-implementation-status: implemented
+      parameters:
+        - { in: query, name: from, schema: { type: "string", format: "date" } }
+        - { in: query, name: to, schema: { type: "string", format: "date" } }
+        - { $ref: "#/components/parameters/Query" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Offset" }
+        - { in: query, name: legalEntityId, schema: { $ref: "#/components/schemas/Uuid" } }
+        - { in: query, name: status, schema: { type: "string", enum: ["ALL", "RECORDED", "REVERSED"] } }
+      responses:
+        "200": { description: "Paginated receipts with allocated and unallocated amounts" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/reports/customers:
+    get:
+      tags: [Reports]
+      summary: "List customers linked to assigned-entity invoice and quotation activity"
+      operationId: getPack7CustomerActivityReport
+      x-implementation-status: implemented
+      parameters:
+        - { in: query, name: from, schema: { type: "string", format: "date" } }
+        - { in: query, name: to, schema: { type: "string", format: "date" } }
+        - { $ref: "#/components/parameters/Query" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Offset" }
+        - { in: query, name: legalEntityId, schema: { $ref: "#/components/schemas/Uuid" } }
+        - { in: query, name: status, schema: { type: "string", enum: ["ALL", "ACTIVE", "ARCHIVED"] } }
+      responses:
+        "200": { description: "Paginated customer activity grouped by entity and currency" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/reports/invoices/export:
+    post:
+      tags: [Reports]
+      summary: "Create a CSRF-protected audited invoice CSV export"
+      operationId: exportPack7InvoiceCsv
+      x-implementation-status: implemented
+      parameters:
+        - { $ref: "#/components/parameters/CsrfToken" }
+        - { in: query, name: from, schema: { type: "string", format: "date" } }
+        - { in: query, name: to, schema: { type: "string", format: "date" } }
+        - { in: query, name: legalEntityId, schema: { $ref: "#/components/schemas/Uuid" } }
+        - { in: query, name: status, schema: { type: "string", enum: ["ALL", "DRAFT", "ISSUED", "CANCELLED"] } }
+        - { in: query, name: rowLimit, schema: { type: "integer", minimum: 1, maximum: 10000, default: 10000 } }
+      responses:
+        "200":
+          description: No-store CSV download; successful export is audited
+          content:
+            text/csv:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { description: "Export exceeds row limit" }
+  /api/v1/reports/quotations/export:
+    post:
+      tags: [Reports]
+      summary: "Create a CSRF-protected audited quotation CSV export"
+      operationId: exportPack7QuotationCsv
+      x-implementation-status: implemented
+      parameters:
+        - { $ref: "#/components/parameters/CsrfToken" }
+        - { in: query, name: from, schema: { type: "string", format: "date" } }
+        - { in: query, name: to, schema: { type: "string", format: "date" } }
+        - { in: query, name: legalEntityId, schema: { $ref: "#/components/schemas/Uuid" } }
+        - { in: query, name: status, schema: { type: "string", enum: ["ALL", "DRAFT", "SENT", "ACCEPTED", "REJECTED", "EXPIRED", "CANCELLED", "CONVERTED"] } }
+        - { in: query, name: rowLimit, schema: { type: "integer", minimum: 1, maximum: 10000, default: 10000 } }
+      responses:
+        "200":
+          description: No-store CSV download; successful export is audited
+          content:
+            text/csv:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { description: "Export exceeds row limit" }
+  /api/v1/reports/payments/export:
+    post:
+      tags: [Reports]
+      summary: "Create a CSRF-protected audited receipt CSV export"
+      operationId: exportPack7PaymentCsv
+      x-implementation-status: implemented
+      parameters:
+        - { $ref: "#/components/parameters/CsrfToken" }
+        - { in: query, name: from, schema: { type: "string", format: "date" } }
+        - { in: query, name: to, schema: { type: "string", format: "date" } }
+        - { in: query, name: legalEntityId, schema: { $ref: "#/components/schemas/Uuid" } }
+        - { in: query, name: status, schema: { type: "string", enum: ["ALL", "RECORDED", "REVERSED"] } }
+        - { in: query, name: rowLimit, schema: { type: "integer", minimum: 1, maximum: 10000, default: 10000 } }
+      responses:
+        "200":
+          description: No-store CSV download; successful export is audited
+          content:
+            text/csv:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { description: "Export exceeds row limit" }
+  /api/v1/reports/customers/export:
+    post:
+      tags: [Reports]
+      summary: "Create a CSRF-protected audited customer activity CSV export"
+      operationId: exportPack7CustomerCsv
+      x-implementation-status: implemented
+      parameters:
+        - { $ref: "#/components/parameters/CsrfToken" }
+        - { in: query, name: from, schema: { type: "string", format: "date" } }
+        - { in: query, name: to, schema: { type: "string", format: "date" } }
+        - { in: query, name: legalEntityId, schema: { $ref: "#/components/schemas/Uuid" } }
+        - { in: query, name: status, schema: { type: "string", enum: ["ALL", "ACTIVE", "ARCHIVED"] } }
+        - { in: query, name: rowLimit, schema: { type: "integer", minimum: 1, maximum: 10000, default: 10000 } }
+      responses:
+        "200":
+          description: No-store CSV download; successful export is audited
+          content:
+            text/csv:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { description: "Export exceeds row limit" }
+  /api/v1/audit:
+    get:
+      tags: [Audit]
+      summary: "Search assigned-entity audit and operational event metadata without raw payloads"
+      operationId: searchPack7AuditTrail
+      x-implementation-status: implemented
+      parameters:
+        - { in: query, name: from, schema: { type: "string", format: "date" } }
+        - { in: query, name: to, schema: { type: "string", format: "date" } }
+        - { $ref: "#/components/parameters/Query" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Offset" }
+        - { in: query, name: legalEntityId, schema: { $ref: "#/components/schemas/Uuid" } }
+        - { in: query, name: resourceType, schema: { type: "string", maxLength: 80 } }
+      responses:
+        "200": { description: "Paginated audit metadata only; before/after and provider payloads are omitted" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
 components:
   securitySchemes:
     cookieAuth:

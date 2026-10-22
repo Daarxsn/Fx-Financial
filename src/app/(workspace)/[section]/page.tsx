@@ -4,6 +4,8 @@ import { MasterDataWorkspace } from "@/components/master-data-workspace";
 import { InvoiceWorkspace } from "@/components/invoice-workspace";
 import { QuotationWorkspace } from "@/components/quotation-workspace";
 import { PaymentWorkspace } from "@/components/payment-workspace";
+import { ReportWorkspace } from "@/components/report-workspace";
+import { AuditWorkspace } from "@/components/audit-workspace";
 import { Breadcrumbs, Card, EmptyState, InlineAlert, PageHeader, StatusBadge } from "@/components/ui";
 
 const sections = {
@@ -67,7 +69,7 @@ const sections = {
     eyebrow: "FINANCIAL INSIGHT",
     description: "A consistent home for verified, entity-scoped summaries and exports.",
     icon: "chart" as const,
-    status: "Planned",
+    status: "Live — finance approval pending",
     emptyTitle: "Reports will be connected to verified data",
     emptyDescription: "Receivables summaries, period filters and export jobs depend on secured reporting APIs and approved financial definitions.",
     note: "A report must disclose its date range, legal-entity scope, currency and calculation basis.",
@@ -78,7 +80,7 @@ const sections = {
     eyebrow: "ACCOUNTABILITY",
     description: "A clear and searchable history of important actions and document decisions.",
     icon: "shield" as const,
-    status: "Planned",
+    status: "Scoped event history",
     emptyTitle: "Audit events are not connected to this view yet",
     emptyDescription: "The database audit foundation exists. A scoped search, useful timeline and permission-aware details view will arrive with the audit API.",
     note: "Audit records must not expose credentials, session tokens or unnecessary sensitive data.",
@@ -122,13 +124,15 @@ export default async function SectionPage({ params }: { params: Promise<{ sectio
           <strong>{data.title} workspace</strong>
           <p>{data.note}</p>
         </div>
-        <StatusBadge tone={data.status.includes("available") ? "info" : data.status === "Planned" ? "warning" : "success"}>{data.status}</StatusBadge>
+        <StatusBadge tone={data.status.includes("available") ? "info" : (data.status === "Planned" || data.status.toLowerCase().includes("pending")) ? "warning" : "success"}>{data.status}</StatusBadge>
       </div>
 
       {section === "invoices" ? <InvoiceWorkspace />
         : section === "quotations" ? <QuotationWorkspace />
         : section === "payments" ? <PaymentWorkspace />
         : section === "customers" || section === "catalog" ? <MasterDataWorkspace resource={section} />
+        : section === "reports" ? <ReportWorkspace />
+        : section === "audit" ? <AuditWorkspace />
         : <div className="section-workspace-grid">
           <Card className="section-data-card">
             <div className="card-heading">

@@ -20,8 +20,8 @@ const navGroups: NavGroup[] = [
   ] },
   { label: "Track", items: [
     { label: "Payments", href: "/payments", icon: "wallet" },
-    { label: "Reports", href: "/reports", icon: "chart" },
-    { label: "Audit trail", href: "/audit", icon: "shield" },
+    { label: "Reports", href: "/reports", icon: "chart", permission: "reports:read" },
+    { label: "Audit trail", href: "/audit", icon: "shield", permission: "audit:read" },
     { label: "Approvals", href: "/approvals", icon: "check", permission: "approvals:read" },
   ] },
   { label: "Configure", items: [{ label: "Settings", href: "/settings", icon: "settings", permission: "settings:manage" }, { label: "Policy decisions", href: "/policy-decisions", icon: "file", permission: "settings:manage" }, { label: "Reminder policies", href: "/reminders", icon: "mail", permission: "reminders:manage" }, { label: "Users & access", href: "/access", icon: "users", permission: "users:manage" }] },

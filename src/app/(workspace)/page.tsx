@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Icon } from "@/components/icon";
 import { Breadcrumbs, Card, PageHeader, StatusBadge } from "@/components/ui";
 import { PaymentSummary } from "@/components/payment-summary";
+import { DashboardReportSummary } from "@/components/dashboard-report-summary";
 
 const modules = [
   { number: "01", title: "Invoices", description: "Create drafts, review server-calculated totals and issue after required finance checks.", href: "/invoices", icon: "invoice" as const, status: "Document workflow" },
@@ -72,6 +73,8 @@ export default function HomePage() {
           </Link>
         ))}
       </section>
+
+      <DashboardReportSummary />
 
       <div className="overview-lower-grid">
         <Card className="activity-card">

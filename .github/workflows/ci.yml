@@ -179,6 +179,11 @@ jobs:
             cat "$RUNNER_TEMP/mock-resend.log"
             exit 1
           fi
+          if ! npm run pack7:api-test; then
+            cat "$RUNNER_TEMP/next-api-contract.log"
+            cat "$RUNNER_TEMP/mock-resend.log"
+            exit 1
+          fi
           kill "$server_pid" "$provider_pid" 2>/dev/null || true
           wait "$server_pid" 2>/dev/null || true
           wait "$provider_pid" 2>/dev/null || true
