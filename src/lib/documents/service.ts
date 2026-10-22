@@ -388,6 +388,12 @@ export async function generateDocumentPdf(sourceType: DocumentSourceType, source
     } finally { finish.release(); }
   } catch (error) {
     const code = safeStorageError(error);
+    // Keep observability useful without logging financial content, object keys or raw provider errors.
+    console.error("Document PDF generation failed", {
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      errorCode: code,
+      sourceType,
+    });
     await markGenerationFailed(pending.id, token, actorId, code).catch(() => undefined);
     if (error instanceof DocumentWorkflowError) throw error;
     throw new DocumentWorkflowError(code, 503, "The PDF could not be generated or stored. Review document history and retry.");
