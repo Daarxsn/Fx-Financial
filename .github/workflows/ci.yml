@@ -217,6 +217,8 @@ jobs:
         run: npm run pack7:validate
       - name: Validate Pack 8 security guardrails
         run: npm run pack8:validate
+      - name: Validate Pack 9 deployment and recovery guardrails
+        run: npm run pack9:validate
       - name: Lint
         run: npm run lint
       - name: TypeScript
@@ -261,7 +263,7 @@ jobs:
             cat "$RUNNER_TEMP/next-production-headers.log"
             exit 1
           fi
-          node -e 'const h=require("node:fs").readFileSync(process.env.RUNNER_TEMP+"/production-headers.txt","utf8").toLowerCase(); for(const x of ["content-security-policy:","x-frame-options: deny","x-content-type-options: nosniff","referrer-policy: no-referrer","permissions-policy: camera=(), microphone=(), geolocation=()","cross-origin-opener-policy: same-origin","strict-transport-security: max-age=31536000"]) if(!h.includes(x)){console.error("Missing production security header: "+x);process.exit(1)} if(h.includes("x-powered-by:"))process.exit(1); console.log("PASS: production HTTP response includes CSP, frame/MIME/referrer/permissions/COOP/HSTS headers and omits X-Powered-By.")'
+          SMOKE_BASE_URL=http://127.0.0.1:3004 SMOKE_MODE=headers npm run pack9:smoke
           kill "$production_pid" 2>/dev/null || true
           wait "$production_pid" 2>/dev/null || true
           trap - EXIT

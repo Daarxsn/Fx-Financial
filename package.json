@@ -27,6 +27,9 @@
     "pack7:api-test": "node scripts/verify-pack-7-api.mjs",
     "pack8:validate": "node scripts/validate-pack-8-security.mjs",
     "security:audit": "node scripts/audit-dependencies.mjs",
+    "pack9:validate": "node scripts/validate-pack-9-infrastructure.mjs",
+    "pack9:preflight": "node --env-file-if-exists=.env.local scripts/pack-9-preflight.mjs",
+    "pack9:smoke": "node scripts/smoke-deployment.mjs",
     "pack8:query-plans": "node scripts/verify-pack-8-query-plans.mjs"
   },
   "dependencies": {
