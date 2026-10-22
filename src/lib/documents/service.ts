@@ -337,8 +337,8 @@ export async function generateDocumentPdf(sourceType: DocumentSourceType, source
       "INSERT INTO generated_documents (id,content_snapshot_id,source_document_type,source_document_id,legal_entity_id,document_number,storage_key,mime_type,status,generation_attempts,created_by,generation_started_at,generation_token) VALUES (?,?,?,?,?,?,?,'application/pdf','PENDING',?,?,NOW(3),?)",
       [documentId, snapshot.id, sourceType, sourceId, source.legal_entity_id, source.document_number, storageKey, attempts, actorId, token],
     );
-    await event(conn, documentId, latest ? "RETRY_STARTED" : "REQUESTED", null, "PENDING", actorId,
-      latest?.status === "READY" && forceNew ? "MANUAL_REGENERATION" : latest ? "RETRY" : "INITIAL_GENERATION",
+    await event(conn, documentId, latest?.status === "FAILED" ? "RETRY_STARTED" : "REQUESTED", null, "PENDING", actorId,
+      latest?.status === "READY" && forceNew ? "MANUAL_REGENERATION" : latest?.status === "FAILED" ? "RETRY" : "INITIAL_GENERATION",
       { contentSha256: snapshot.content_sha256, revisionNumber: Number(snapshot.revision_number) });
     const [newRows] = await conn.execute<GeneratedRow[]>(
       "SELECT id,content_snapshot_id,source_document_type,source_document_id,legal_entity_id,document_number,storage_key,mime_type,byte_size,file_sha256,status,generation_attempts,last_error_code,created_by,created_at,ready_at,generation_started_at,generation_token FROM generated_documents WHERE id=? LIMIT 1",
