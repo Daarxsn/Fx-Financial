@@ -144,6 +144,10 @@ export async function POST(request: NextRequest) {
     }
     requestIdempotencyKey = idempotencyKey;
     const input = quotationCreateSchema.parse(await request.json());
+    // A replay must never disclose a quotation ID or status across legal-entity boundaries.
+    if (!actor.legalEntityIds.includes(input.legalEntityId)) {
+      return jsonNoStore({ error: { code: "NOT_FOUND", message: "Legal entity not found in your assigned scope." } }, 404);
+    }
     const fingerprint = createHash("sha256").update(canonicalJson(input)).digest("hex");
     requestFingerprint = fingerprint;
     conn = await pool.getConnection();
