@@ -31,6 +31,16 @@ Required groups:
 
 The checker validates shape only; it cannot prove DNS, TLS reachability, grants, sender verification, bucket policy, webhook delivery, or a live scheduler invocation.
 
+Before connecting any provider account, run the synthetic checks locally and in CI:
+
+~~~bash
+npm run pack9:validate
+npm run pack9:test
+npm run pack9:smoke-test
+~~~
+
+These tests run against disposable local HTTP endpoints and synthetic environment values; they must not be pointed at production. A pass demonstrates the source-level preflight and smoke behavior only.
+
 ### Database identities
 Create separate credentials at the database provider:
 - runtime — required DML only, no DDL or global administration;
