@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import type { ResultSetHeader, RowDataPacket } from "mysql2";
+import type { RowDataPacket } from "mysql2";
 import { z } from "zod";
 import { pool } from "@/lib/db/pool";
 import { requirePermission } from "@/lib/auth/authorize";
