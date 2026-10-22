@@ -58,7 +58,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [authBusy, setAuthBusy] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [advancedNavOpen, setAdvancedNavOpen] = useState(false);
+  const [advancedNavOpen, setAdvancedNavOpen] = useState<boolean | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const mobileWasOpen = useRef(false);
   const selected = navByPath.get(pathname) ?? navGroups.flatMap((group) => group.items).find((item) => item.href !== "/" && pathname.startsWith(item.href));
@@ -252,11 +252,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             const visibleItems = group.items.filter((item) => !item.permission || currentUser?.permissions.includes(item.permission));
             if (!visibleItems.length) return null;
             const containsCurrentPath = visibleItems.some((item) => pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)));
-            const groupExpanded = !group.advanced || advancedNavOpen || containsCurrentPath;
+            const groupExpanded = !group.advanced || (advancedNavOpen ?? containsCurrentPath);
             return (
               <div className={group.advanced ? "nav-group nav-group--advanced" : "nav-group"} key={group.label}>
                 {group.advanced ? (
-                  <button type="button" className="nav-group__label nav-group__toggle" aria-expanded={groupExpanded} onClick={() => setAdvancedNavOpen((open) => !open)}>
+                  <button type="button" className="nav-group__label nav-group__toggle" aria-expanded={groupExpanded} onClick={() => setAdvancedNavOpen((open) => !(open ?? containsCurrentPath))}>
                     <span>{group.label}</span><span className="nav-group__toggle-hint">{groupExpanded ? "Hide" : "Show"}</span>
                   </button>
                 ) : <p className="nav-group__label">{group.label}</p>}

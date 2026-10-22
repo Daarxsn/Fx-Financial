@@ -157,8 +157,8 @@ export function InvoiceWorkspace(){
     You can view invoices, but your role cannot create drafts. Ask an access administrator to assign <code>invoices:draft:create</code> (typically the Finance Administrator or Invoice Creator role) and an active legal-entity scope.
   </InlineAlert>:null}
   {missingSetup?<div className="invoice-setup-callout">
-    <InlineAlert tone="warning" title="One quick setup step is still missing">
-     {!options.legalEntities.length&&!options.customers.length?"Add your business profile first, then create the customer you want to invoice.":!options.legalEntities.length?"Add your business profile before creating an invoice.":"Add at least one customer before creating an invoice."} No test or placeholder financial data is inserted.
+    <InlineAlert tone="warning" title="Invoice creation is not configured">
+     {!options.legalEntities.length&&!options.customers.length?"An active legal entity and an active customer are required. Add your business profile first, then create the customer you want to invoice.":!options.legalEntities.length?"An active legal entity is required before you can create an invoice. Set up your business first.":"An active customer is required before you can create an invoice. Add your first customer."} No test or placeholder financial data is inserted.
     </InlineAlert>
     <div className="invoice-setup-actions">
      {!options.legalEntities.length?<Link href="/settings" className="button button--secondary button--md">Set up business</Link>:null}
