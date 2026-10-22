@@ -13,10 +13,10 @@ const server=createServer(async(request,response)=>{
   if(request.method==="GET" && request.url==="/health") {
     reply(response,200,{status:"ok"});return;
   }
-  if(request.headers["x-test-token"]!==token) {
-    reply(response,401,{error:"unauthorized"});return;
-  }
   if(request.method==="GET" && request.url==="/__test/messages") {
+    if(request.headers["x-test-token"]!==token) {
+      reply(response,401,{error:"unauthorized"});return;
+    }
     reply(response,200,{count:messages.size,messages:[...messages.values()].map(item=>({id:item.id,idempotencyKey:item.idempotencyKey,subject:item.payload.subject,to:item.payload.to,attachmentCount:Array.isArray(item.payload.attachments)?item.payload.attachments.length:0}))});return;
   }
   if(request.method==="POST" && request.url==="/emails") {
