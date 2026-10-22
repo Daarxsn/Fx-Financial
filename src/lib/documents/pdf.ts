@@ -89,6 +89,8 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       console.error("PDF renderer stream failed",{
         stage:rendererStage,
         errorName:error instanceof Error?error.name:"UnknownError",
+        ...(process.env.GITHUB_ACTIONS === "true" && error instanceof Error
+          ? { errorMessage:error.message.slice(0,180) } : {}),
       });
       rejectBuffer(error);
     });
@@ -254,6 +256,8 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       console.error("PDF renderer failed",{
         stage:rendererStage,
         errorName:error instanceof Error?error.name:"UnknownError",
+        ...(process.env.GITHUB_ACTIONS === "true" && error instanceof Error
+          ? { errorMessage:error.message.slice(0,180) } : {}),
       });
       rejectBuffer(error);
     }
