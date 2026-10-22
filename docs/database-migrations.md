@@ -67,7 +67,7 @@ This seed creates the 24 permission definitions and seven named role definitions
 
 ## Test evidence and scope
 
-CI applies all 18 forward-only migrations against a fresh disposable MySQL 8 instance, repeats the migration and reference-seed commands, validates the 18 migration-ledger records, the 24 permission definitions, seven role definitions and 77 baseline role-permission mappings, asserts the deliberately broken connection path fails without printing connection details, and restores a logical dump into a separate database to compare base-table and migration-ledger counts.
+CI applies all 25 forward-only migrations against a fresh disposable MySQL 8 instance, repeats the migration and reference-seed commands, validates the 25 migration-ledger records, the 24 permission definitions, seven role definitions and 77 baseline role-permission mappings, asserts the deliberately broken connection path fails without printing connection details, and restores a logical dump into a separate database to compare base-table and migration-ledger counts. Migration 024 adds immutable document content snapshots, private generated-PDF metadata and append-only events; migration 025 adds fenced generation leases and permits multiple immutable artifact attempts per content snapshot.
 
 CI's disposable, non-TLS database proves schema compatibility and operational mechanics; it does not prove connectivity to the live Aiven instance, CA/hostname verification, managed-provider backup retention, or real production restoration.
 
