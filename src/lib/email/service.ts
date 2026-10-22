@@ -332,7 +332,7 @@ export async function queueDocumentEmail(input: {
 export async function listEmailOutbox(input: { legalEntityIds: string[]; sourceType?: EmailSourceType; sourceId?: string }) {
   if (!input.legalEntityIds.length) return [];
   const placeholders = input.legalEntityIds.map(() => "?").join(",");
-  const params: unknown[] = [...input.legalEntityIds];
+  const params: string[] = [...input.legalEntityIds];
   let where = "legal_entity_id IN (" + placeholders + ")";
   if (input.sourceType) { where += " AND source_document_type=?"; params.push(input.sourceType); }
   if (input.sourceId) { where += " AND source_document_id=?"; params.push(input.sourceId); }
