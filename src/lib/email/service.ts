@@ -276,9 +276,8 @@ export async function queueDocumentEmail(input: {
   const snapshot = await latestSnapshot(input.sourceType, input.sourceId);
   const content = object(snapshot.content_json);
   const customer = object(content.customer);
-  if (!isEmail(text(customer.email))) {
-    throw new EmailWorkflowError("CUSTOMER_EMAIL_MISSING", 409, "The immutable document snapshot does not contain a valid customer email. Update the contact workflow before sending.");
-  }
+  // The snapshot email is a suggestion only. The caller has already validated and explicitly
+  // confirmed the actual recipientEmail, so a legitimate override must not be blocked here.
   const pdfRecord = await generateDocumentPdf(input.sourceType as DocumentSourceType, input.sourceId, input.actorId, false);
   if (pdfRecord.status !== "READY" || !pdfRecord.id) {
     throw new EmailWorkflowError("DOCUMENT_GENERATION_PENDING", 409, "The verified PDF is still being prepared. Refresh the document history before sending email.");
