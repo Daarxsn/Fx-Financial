@@ -7,6 +7,7 @@ import { requirePermission } from "@/lib/auth/authorize";
 import { assertCsrf } from "@/lib/auth/csrf";
 import { apiError, jsonNoStore } from "@/lib/http/api-response";
 import { invoiceCalendarDateSchema } from "@/lib/validation/invoice";
+import { captureDocumentSourceSnapshot } from "@/lib/documents/service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -252,6 +253,8 @@ export async function POST(request: NextRequest, context: Context) {
     );
     const nextPaid = balances.paid + amountUnits;
     const nextOutstanding = invoiceTotal > nextPaid ? invoiceTotal - nextPaid : 0n;
+    // The receipt snapshot commits atomically with payment allocation and balance audit.
+    await captureDocumentSourceSnapshot(conn, "RECEIPT", paymentId, actor.userId, "RECEIPT_RECORDED");
     await conn.execute(
       `INSERT INTO audit_events
         (id,actor_id,action,entity_type,entity_id,outcome,before_json,after_json)
