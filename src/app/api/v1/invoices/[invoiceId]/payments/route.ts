@@ -255,6 +255,7 @@ export async function POST(request: NextRequest, context: Context) {
     const nextOutstanding = invoiceTotal > nextPaid ? invoiceTotal - nextPaid : 0n;
     // The receipt snapshot commits atomically with payment allocation and balance audit.
     await captureDocumentSourceSnapshot(conn, "RECEIPT", paymentId, actor.userId, "RECEIPT_RECORDED");
+    await captureDocumentSourceSnapshot(conn, "INVOICE", invoiceId, actor.userId, "STATUS_CHANGE");
     await conn.execute(
       `INSERT INTO audit_events
         (id,actor_id,action,entity_type,entity_id,outcome,before_json,after_json)
