@@ -7,6 +7,7 @@ import { requirePermission } from "@/lib/auth/authorize";
 import { assertCsrf } from "@/lib/auth/csrf";
 import { apiError, jsonNoStore } from "@/lib/http/api-response";
 import { invoiceCalendarDateSchema } from "@/lib/validation/invoice";
+import { captureDocumentSourceSnapshot } from "@/lib/documents/service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -247,6 +248,8 @@ export async function POST(request: NextRequest) {
           invoiceEmail:entities[0].invoice_email,invoicePhone:entities[0].invoice_phone}),
         money(units(input.amount)),input.currency,input.paymentDate,input.method,input.reference,input.notes,actor.userId,key],
     );
+    // Receipt evidence is captured in the same transaction as the recorded payment.
+    await captureDocumentSourceSnapshot(conn, "RECEIPT", paymentId, actor.userId, "RECEIPT_RECORDED");
     await conn.execute(
       "INSERT INTO audit_events (id,actor_id,action,entity_type,entity_id,outcome,before_json,after_json) " +
       "VALUES (?,?,'payment.receipt.recorded','payment',?,'SUCCESS',NULL,?)",
