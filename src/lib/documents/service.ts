@@ -353,19 +353,24 @@ export async function generateDocumentPdf(sourceType: DocumentSourceType, source
     throw error;
   } finally { conn.release(); }
 
+  let generationStage = "render";
   try {
     const content = object(snapshot.content_json) as unknown as PdfSnapshot;
     const pdf = await renderDocumentPdf(content, snapshot.captured_at);
     const fileSha256 = createHash("sha256").update(pdf).digest("hex");
+    generationStage = "store";
     const stored = await putPrivateObject(pending.storage_key, pdf, fileSha256);
+    generationStage = "read-back";
     const readBack = await getPrivateObject(pending.storage_key);
     if (readBack.length !== stored.byteSize || createHash("sha256").update(readBack).digest("hex") !== fileSha256) {
       throw new PrivateStorageError("DOCUMENT_INTEGRITY_FAILURE", "The stored PDF did not match the generated PDF.");
     }
+    generationStage = "metadata";
     const verify = await headPrivateObject(pending.storage_key);
     if (verify.byteSize !== pdf.length || verify.sha256 !== fileSha256) {
       throw new PrivateStorageError("DOCUMENT_INTEGRITY_FAILURE", "The stored PDF metadata did not match the generated PDF.");
     }
+    generationStage = "mark-ready";
     const finish = await pool.getConnection();
     try {
       await finish.beginTransaction();
@@ -393,6 +398,7 @@ export async function generateDocumentPdf(sourceType: DocumentSourceType, source
       errorName: error instanceof Error ? error.name : "UnknownError",
       errorCode: code,
       sourceType,
+      stage: generationStage,
     });
     await markGenerationFailed(pending.id, token, actorId, code).catch(() => undefined);
     if (error instanceof DocumentWorkflowError) throw error;
