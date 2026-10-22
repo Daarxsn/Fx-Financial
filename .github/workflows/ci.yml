@@ -221,6 +221,8 @@ jobs:
         run: npm run pack9:validate
       - name: Exercise Pack 9 preflight with synthetic environment values
         run: npm run pack9:test
+      - name: Exercise Pack 9 deployment smoke failure paths with synthetic HTTP endpoints
+        run: npm run pack9:smoke-test
       - name: Lint
         run: npm run lint
       - name: TypeScript
