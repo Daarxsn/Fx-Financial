@@ -81,7 +81,7 @@ expectRejected("missing KMS key", "staging", { DOCUMENTS_STORAGE_SERVER_SIDE_ENC
 expectRejected("invalid sender address", "staging", { RESEND_FROM_EMAIL: "not-an-email" }, /RESEND_FROM_EMAIL must contain a valid sender email address/);
 expectRejected("production mail endpoint override", "production", { RESEND_API_URL: "http://127.0.0.1:3030" }, /RESEND_API_URL overrides are forbidden for production/);
 expectRejected("missing Vercel deployment environment", "production", { VERCEL: "1", VERCEL_ENV: "" }, /VERCEL_ENV is required when preflight runs inside Vercel/);
-expectRejected("production configuration checked as staging", "staging", { VERCEL: "1", VERCEL_ENV: "production" }, /Refusing to validate a production deployment as preview\\/staging/);
+expectRejected("production configuration checked as staging", "staging", { VERCEL: "1", VERCEL_ENV: "production" }, /Refusing to validate a production deployment as preview\/staging/);
 
 const invalidTarget = spawnSync(process.execPath, ["scripts/pack-9-preflight.mjs", "--target=prod"], {
   cwd: process.cwd(), env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "/tmp" }, encoding: "utf8", timeout: 15000,
@@ -90,4 +90,4 @@ assert.equal(invalidTarget.status, 2, "unsupported target must produce a usage e
 assert.match(outputOf(invalidTarget), /Usage: npm run pack9:preflight/);
 console.log("PASS: unsupported preflight target is rejected with a usage error.");
 
-console.log("Pack 9 preflight tests passed: 20 scenarios.");
+console.log("Pack 9 preflight tests passed: 25 scenarios.");
