@@ -36,6 +36,9 @@ const permissions = [
   ["audit:read", "Read audit events"],
   ["users:manage", "Manage user access"],
   ["settings:manage", "Manage company and invoice settings"],
+  ["email:send", "Send approved invoice, quotation and receipt emails"],
+  ["email:read", "Read delivery status and email audit history within assigned legal entities"],
+  ["reminders:manage", "Manage finance-approved overdue invoice reminder policies"],
 ] as const;
 
 const roles = [
@@ -61,16 +64,16 @@ const roleGrantTemplates: Record<string, readonly string[]> = {
     "invoices:read", "invoices:draft:create", "invoices:draft:update", "invoices:issue", "invoices:cancel",
     "payments:read", "payments:record", "payments:reverse",
     "quotations:read", "quotations:write", "approvals:read", "approvals:decide",
-    "reports:read", "audit:read", "settings:manage",
+    "reports:read", "audit:read", "settings:manage", "email:send", "email:read", "reminders:manage",
   ],
   invoice_creator: [
     "customers:read", "customers:create", "customers:update", "catalog:read", "invoices:read",
     "invoices:draft:create", "invoices:draft:update", "quotations:read", "quotations:write",
   ],
-  invoice_issuer: ["customers:read", "catalog:read", "invoices:read", "invoices:issue", "quotations:read"],
+  invoice_issuer: ["customers:read", "catalog:read", "invoices:read", "invoices:issue", "quotations:read", "email:send", "email:read"],
   payment_recorder: ["customers:read", "invoices:read", "payments:read", "payments:record"],
   approver: ["invoices:read", "quotations:read", "approvals:read", "approvals:decide"],
-  auditor: ["customers:read", "catalog:read", "invoices:read", "payments:read", "quotations:read", "approvals:read", "reports:read", "audit:read"],
+  auditor: ["customers:read", "catalog:read", "invoices:read", "payments:read", "quotations:read", "approvals:read", "reports:read", "audit:read", "email:read"],
 };
 
 async function main() {
