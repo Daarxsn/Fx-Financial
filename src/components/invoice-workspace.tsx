@@ -148,7 +148,7 @@ export function InvoiceWorkspace(){
   try{
    if(!form.brandId||!form.legalEntityId)throw new Error("Choose an invoice brand. Its approved issuer is selected automatically.");
    if(issueAndSend&&(!canIssue||!canSendEmail))throw new Error("Your role cannot both issue and email invoices. Save the draft or ask the administrator to update access.");
-   if(issueAndSend&&(!/^[^\\s@<>]+@[^\\s@<>]+\\.[^\\s@<>]+$/.test(recipientEmail.trim())||!recipientConfirmed))throw new Error("Enter the recipient email and confirm it before issuing and sending.");
+   if(issueAndSend&&(!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(recipientEmail.trim())||!recipientConfirmed))throw new Error("Enter the recipient email and confirm it before issuing and sending.");
    if(customerMode==="new"&&!quickCustomer.name.trim())throw new Error("Enter the customer or company name.");
    if(!lines.length||lines.some(l=>!l.description.trim()))throw new Error("Each invoice line requires a description.");
    const invalidTaxLine=lines.find(l=>l.taxCode.trim()&&!rules.some(r=>r.taxCode===l.taxCode.trim()));
@@ -190,7 +190,7 @@ export function InvoiceWorkspace(){
   <div className="invoice-workspace-toolbar">
    <div className="invoice-workspace-search"><label className="form-label" htmlFor="invoice-search">Search invoices</label><input id="invoice-search" className="form-control" value={query} placeholder="Invoice number or customer" onChange={e=>{setQuery(e.target.value);setOffset(0);}}/></div>
    <div><label className="form-label" htmlFor="invoice-status">Status</label><select className="form-control" id="invoice-status" value={status} onChange={e=>{setStatus(e.target.value);setOffset(0);}}><option value="all">All statuses</option><option value="DRAFT">Draft</option><option value="ISSUED">Issued</option><option value="CANCELLED">Cancelled</option></select></div>
-   {canCreate?<Button disabled={optionsLoading||!options.legalEntities.length||!validBrands.length} onClick={startNew}>+ New invoice</Button>:null}
+   {canCreate?<Button disabled={optionsLoading||!options.legalEntities.length||!validBrands.length||(!options.customers.length&&!canAddCustomer)} onClick={startNew}>+ New invoice</Button>:null}
   </div>
   <InlineAlert tone="info" title="Server-authoritative financials">The server calculates exact-decimal amounts using HALF_UP rounding to four places. Approved, effective tax rules determine rates and inclusive/exclusive treatment. Multi-currency conversion is disabled until an approved FX policy exists.</InlineAlert>
   {!canRead?<InlineAlert tone="warning" title="Invoice access is not assigned">
