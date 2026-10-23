@@ -281,7 +281,8 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       });
 
       rendererStage = "totals";
-      const [numWidth, descWidth, mileWidth, rateWidth, amountWidth] = columnWidths;
+      const rateWidth = columnWidths[3];
+      const amountWidth = columnWidths[4];
       const totalsLabelX = columnXs[3];
       const totalsValueX = columnXs[4];
       const drawTotal = (label: string, value: string, grand = false) => {
