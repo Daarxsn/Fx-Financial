@@ -121,11 +121,11 @@ export async function captureDocumentSourceSnapshot(
       throw new DocumentWorkflowError("DOCUMENT_SNAPSHOT_UNAVAILABLE", 409, "The invoice does not have complete issue-time snapshots required for a reliable PDF.");
     }
     const [lineRows] = await conn.execute<(RowDataPacket & {
-      line_number: number; line_kind: string; description: string; unit_code: string; quantity: string;
+      line_number: number; line_kind: string; milestone: string|null; description: string; unit_code: string; quantity: string;
       unit_price: string; discount_type: string; discount_value: string; discount_amount: string;
       tax_rate: string; tax_code: string | null; tax_calculation_mode: string; tax_amount: string; line_total: string;
     })[]>(
-      "SELECT line_number,line_kind,description,unit_code,quantity,unit_price,discount_type,discount_value,discount_amount,tax_rate,tax_code,tax_calculation_mode,tax_amount,line_total FROM invoice_lines WHERE invoice_id=? ORDER BY line_number",
+      "SELECT line_number,line_kind,milestone,description,unit_code,quantity,unit_price,discount_type,discount_value,discount_amount,tax_rate,tax_code,tax_calculation_mode,tax_amount,line_total FROM invoice_lines WHERE invoice_id=? ORDER BY line_number",
       [sourceId],
     );
     const paid = amount(row.paid_total);
@@ -140,7 +140,7 @@ export async function captureDocumentSourceSnapshot(
       configurationSnapshotId: row.configuration_id, configurationSha256: row.configuration_sha256,
       configurationSnapshot: object(row.configuration_snapshot),
       lines: lineRows.map(line => ({
-        lineNumber: Number(line.line_number), lineKind: line.line_kind, description: line.description, unitCode: line.unit_code,
+        lineNumber: Number(line.line_number), lineKind: line.line_kind, milestone: line.milestone??"", description: line.description, unitCode: line.unit_code,
         quantity: String(line.quantity), unitPrice: String(line.unit_price), discountType: line.discount_type,
         discountValue: String(line.discount_value), discountAmount: String(line.discount_amount),
         taxRate: String(line.tax_rate), taxCode: line.tax_code, taxCalculationMode: line.tax_calculation_mode,
