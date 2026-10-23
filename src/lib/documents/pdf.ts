@@ -184,7 +184,7 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
 
       rendererStage = "header";
       const wordmarkFit: [number, number] = isDigitech ? [210, 78] : [138, 108];
-      if (logoBuffer) doc.image(logoBuffer, left + 8, 27, { fit: wordmarkFit, align: "left", valign: "center" });
+      if (logoBuffer) doc.image(logoBuffer, left + 8, 27, { fit: wordmarkFit, valign: "center" });
       else {
         doc.font("Helvetica-Bold").fontSize(25).fillColor("#111111").text(isCoworks ? "FX Coworks" : isDigitech ? "FX DigTech" : "myfx POS", left + 8, 55, { width: 205 });
       }
@@ -235,8 +235,8 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
         clean(customer.taxIdentifier) ? "GSTIN: " + clean(customer.taxIdentifier) : "",
       ].filter(Boolean);
       body(9).text(clientLines.join("\n") || "Customer billing details", customerX, identityY + 23, { width: half, align: "right", lineGap: 2 });
-      const leftBlockHeight = doc.heightOfString(issuerLines.join("\n") || "Supplier details from approved company settings.", { width: half, font: fontName, fontSize: 9 });
-      const rightBlockHeight = doc.heightOfString(clientLines.join("\n") || "Customer billing details", { width: half, font: fontName, fontSize: 9 });
+      const leftBlockHeight = doc.heightOfString(issuerLines.join("\n") || "Supplier details from approved company settings.", { width: half, fontSize: 9 });
+      const rightBlockHeight = doc.heightOfString(clientLines.join("\n") || "Customer billing details", { width: half, fontSize: 9 });
       const identityBottom = Math.max(identityY + 23 + leftBlockHeight, identityY + 23 + rightBlockHeight);
       doc.y = Math.max(identityBottom + 62, 343);
 
@@ -340,9 +340,9 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       const terms = text(templateConfig.terms ?? entityConfig.invoiceTerms ?? templateConfig.footer ?? entityConfig.invoiceFooter, "");
       const closing = "Looking forward to doing business with you.";
       const footerHalf = (width - 28) / 2;
-      const termsHeight = terms ? doc.heightOfString(terms, { width: footerHalf, font: fontName, fontSize: 8 }) : 0;
-      const bankHeight = bankLines.length ? doc.heightOfString(bankLines.join("\n"), { width: footerHalf, font: fontName, fontSize: 8 }) : 0;
-      const closingHeight = doc.heightOfString(closing, { width: footerHalf, font: fontName, fontSize: 12 });
+      const termsHeight = terms ? doc.heightOfString(terms, { width: footerHalf, fontSize: 8 }) : 0;
+      const bankHeight = bankLines.length ? doc.heightOfString(bankLines.join("\n"), { width: footerHalf, fontSize: 8 }) : 0;
+      const closingHeight = doc.heightOfString(closing, { width: footerHalf, fontSize: 12 });
       ensure(Math.max(84, termsHeight, bankHeight) + closingHeight + 30);
       doc.moveDown(1.25);
       const footerTop = doc.y;
