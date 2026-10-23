@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const read = (path) => readFileSync(path, "utf8");
