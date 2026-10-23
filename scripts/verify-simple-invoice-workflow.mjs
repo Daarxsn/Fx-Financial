@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 
 const read = (path) => readFileSync(path, "utf8");
 const options = read("src/app/api/v1/invoices/draft-options/route.ts");
+const legalEntityCreateRoute = read("src/app/api/v1/legal-entities/route.ts");
+const brandAssets = read("src/lib/brand-assets.ts");
 const invoiceCreateRoute = read("src/app/api/v1/invoices/route.ts");
 const invoiceDetailRoute = read("src/app/api/v1/invoices/[invoiceId]/route.ts");
 const recipientMigration = read("database/migrations/031_invoice_draft_recipient_email.sql");
@@ -16,6 +18,16 @@ const documentService = read("src/lib/documents/service.ts");
 const migration = read("database/migrations/030_invoice_line_milestone.sql");
 
 assert.ok(options.includes("brands:brandRows.map"), "draft options must expose available brands");
+assert.ok(legalEntityCreateRoute.includes("const isFirstLegalEntity = existingEntityRows.length === 0;") &&
+  legalEntityCreateRoute.includes("if (isFirstLegalEntity) await provisionInitialProductBrands(conn,id,actor.userId);"),
+  "first company setup must provision the known product brands once without making the user add them manually");
+assert.ok(legalEntityCreateRoute.includes("brand_legal_entities") &&
+  legalEntityCreateRoute.includes("brand_config_versions") &&
+  legalEntityCreateRoute.includes("brand.initial_product_brand_provisioned"),
+  "initial product-brand mappings must be effective-dated, versioned and audited");
+assert.ok(brandAssets.includes('code: "MYFXPOS"') && brandAssets.includes('code: "DIGITECH"') &&
+  brandAssets.includes('code: "COWORKS"'),
+  "first setup must reuse the three established product-brand identities and logo assets");
 assert.ok(options.includes("canAutoMap"), "brand options must only auto-select a safe issuer mapping");
 assert.ok(options.includes("legalEntityId:b.legal_entity_id"), "brand options must return the mapped issuer legal entity");
 assert.ok(composer.includes("Invoice from"), "daily invoice creation must start with the brand, not legal-entity settings");
@@ -43,4 +55,4 @@ assert.ok(renderer.includes('"Beneficiary Name: "') && renderer.includes('"Terms
 assert.ok(renderer.includes('await import("sharp")') && renderer.includes('.jpeg({ quality: 92, progressive: false, chromaSubsampling: "4:4:4" })'), "supplied logos must be normalized to a PDFKit-compatible baseline JPEG before embedding");
 assert.ok(renderer.includes('rect(0, 0, doc.page.width, 8)') && renderer.includes('const brandAccent = isCoworks ? "#931314" : isDigitech ? "#111111" : gold;'), "each brand must use its supplied template accent and top-strip treatment");
 
-console.log("PASS: simple brand-first invoice composer, inline customer creation, confirmed issue-and-send, milestone round-trip and branded invoice PDF contract.");
+console.log("PASS: first-company product-brand provisioning, simple brand-first invoice composer, inline customer creation, confirmed issue-and-send, milestone round-trip and branded invoice PDF contract.");

@@ -90,6 +90,9 @@ node scripts/check-pack-10-release-gate.mjs --evidence=/secure/path/pack-10-rele
 
 ## Everyday invoice flow
 
+During first-time setup, save the real supplier/company profile in **Settings**. The first legal entity automatically provisions and maps the three shipped product brands (MyFX POS, FX Digitech, and FX Coworks) to that supplier. The brand logos are application assets; this bootstrap creates the corresponding database records and audited mappings. It does not fabricate tax registrations, tax rates, bank details, numbering approval, or legal-company data. Additional legal entities require deliberate brand mappings.
+
+
 The invoice composer is brand-first so daily billing does not require opening Settings:
 
 1. Explicitly choose **MyFX POS**, **FX Digitech**, or **FX Coworks**. No brand is preselected; the approved legal issuer and currency follow the selected brand mapping.

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { BRAND_LOGO_ASSETS } from "@/lib/brand-assets";
 import { NextRequest } from "next/server";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { pool } from "@/lib/db/pool";
@@ -7,11 +8,99 @@ import { requireFinanceConfigurationApprover } from "@/lib/configuration/authori
 import { assertCsrf } from "@/lib/auth/csrf";
 import { apiError, jsonNoStore } from "@/lib/http/api-response";
 import { legalEntityCreateSchema } from "@/lib/validation/configuration";
-import { captureLegalEntityConfigVersion, loadEntity, publicLegalEntity, recordAudit } from "@/lib/configuration/service";
+import { canonicalJson, captureLegalEntityConfigVersion, loadEntity, publicLegalEntity, recordAudit } from "@/lib/configuration/service";
 import { seedEntityPolicyDecisions } from "@/lib/configuration/policy-decisions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+type ConfigConnection = Awaited<ReturnType<typeof pool.getConnection>>;
+const INITIAL_BRAND_REASON = "Initial product-brand provisioning for the first legal entity";
+
+function parseTheme(value: unknown): unknown {
+  if (typeof value !== "string") return value ?? {};
+  try { return JSON.parse(value) as unknown; } catch { return {}; }
+}
+
+/**
+ * Product logos are shipped with the application, but brands themselves are database records.
+ * On a truly empty legal-entity configuration, create/map the three established product brands
+ * to the first supplier entity so the normal invoice composer can use them without manual brand
+ * entry. Never invent tax, bank, registration, numbering, or legal-company values.
+ */
+async function provisionInitialProductBrands(
+  conn: ConfigConnection,
+  legalEntityId: string,
+  actorUserId: string,
+): Promise<void> {
+  const productAssets = BRAND_LOGO_ASSETS.filter((asset) => asset.audience === "Product");
+  for (const asset of productAssets) {
+    const proposedId = randomUUID();
+    const defaultTheme = { accentColor: asset.accentColor, presentationStyle: "STANDARD" };
+    await conn.execute<ResultSetHeader>(
+      `INSERT INTO brands
+       (id,name,code,description,logo_reference,theme_json,default_template_key,is_active)
+       VALUES (?,?,?,?,?,?,NULL,TRUE)
+       ON DUPLICATE KEY UPDATE
+         description=COALESCE(NULLIF(description,''),VALUES(description)),
+         logo_reference=COALESCE(NULLIF(logo_reference,''),VALUES(logo_reference)),
+         theme_json=COALESCE(theme_json,VALUES(theme_json)),
+         is_active=TRUE`,
+      [proposedId, asset.name, asset.code, "Falchion Xeniaa product brand", asset.logoReference, JSON.stringify(defaultTheme)],
+    );
+
+    const [brandRows] = await conn.execute<(RowDataPacket & {
+      id: string; name: string; code: string; description: string | null; logo_reference: string | null;
+      theme_json: unknown; default_template_key: string | null; is_active: number;
+    })[]>(
+      `SELECT id,name,code,description,logo_reference,theme_json,default_template_key,is_active
+       FROM brands WHERE code=? LIMIT 1 FOR UPDATE`,
+      [asset.code],
+    );
+    const brand = brandRows[0];
+    if (!brand) throw new Error("Initial product-brand provisioning failed");
+
+    await conn.execute<ResultSetHeader>(
+      `INSERT INTO brand_legal_entities (brand_id,legal_entity_id,is_default,effective_from)
+       VALUES (?,?,TRUE,CURDATE())`,
+      [brand.id, legalEntityId],
+    );
+
+    const [versionRows] = await conn.execute<(RowDataPacket & { version_number: number })[]>(
+      "SELECT version_number FROM brand_config_versions WHERE brand_id=? ORDER BY version_number DESC LIMIT 1 FOR UPDATE",
+      [brand.id],
+    );
+    const versionNumber = Number(versionRows[0]?.version_number ?? 0) + 1;
+    const snapshot = {
+      schemaVersion: 1,
+      brandId: brand.id,
+      name: brand.name,
+      code: brand.code,
+      description: brand.description,
+      logoReference: brand.logo_reference ?? asset.logoReference,
+      theme: parseTheme(brand.theme_json) ?? defaultTheme,
+      defaultTemplateKey: brand.default_template_key,
+      isActive: Boolean(brand.is_active),
+      legalEntityIds: [legalEntityId],
+    };
+    await conn.execute<ResultSetHeader>(
+      `INSERT INTO brand_config_versions
+       (id,brand_id,version_number,effective_from,config_snapshot,change_reason,changed_by)
+       VALUES (?,?,?,NOW(3),?,?,?)`,
+      [randomUUID(), brand.id, versionNumber, canonicalJson(snapshot), INITIAL_BRAND_REASON, actorUserId],
+    );
+    await recordAudit(
+      conn,
+      actorUserId,
+      "brand.initial_product_brand_provisioned",
+      "brand",
+      brand.id,
+      INITIAL_BRAND_REASON,
+      null,
+      { ...snapshot, configVersion: versionNumber },
+    );
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -54,6 +143,12 @@ export async function POST(request: NextRequest) {
     let output;
     try {
       await conn.beginTransaction();
+      // Only the first legal entity triggers one-time provisioning of the known product brands.
+      // Additional entities require deliberate mappings rather than inheriting every brand.
+      const [existingEntityRows] = await conn.query<(RowDataPacket & { id: string })[]>(
+        "SELECT id FROM legal_entities ORDER BY id LIMIT 1 FOR UPDATE",
+      );
+      const isFirstLegalEntity = existingEntityRows.length === 0;
       await conn.execute<ResultSetHeader>(
         `INSERT INTO legal_entities
          (id,legal_name,display_name,registration_number,tax_identifier,address_json,billing_address_json,country_code,invoice_email,invoice_phone,
@@ -70,6 +165,7 @@ export async function POST(request: NextRequest) {
       await conn.execute(
         "INSERT INTO user_legal_entity_access (user_id,legal_entity_id,granted_by) VALUES (?,?,?)",
         [actor.userId,id,actor.userId]);
+      if (isFirstLegalEntity) await provisionInitialProductBrands(conn,id,actor.userId);
       const row=await loadEntity(conn,id);
       if(!row) throw new Error("Configuration creation failed");
       const version=await captureLegalEntityConfigVersion(conn,row,actor.userId,input.changeReason);
