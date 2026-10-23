@@ -168,7 +168,6 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       const supplier = object(snapshot.supplier);
       const customer = object(snapshot.customer);
       const issuer = text(supplier.legalName ?? supplier.displayName ?? supplier.name, "Falchion Xeniaa");
-      const brandName = text(brand.name ?? brand.displayName ?? brand.brandName, issuer);
       const customerName = text(customer.name ?? customer.customerName, "Customer");
       const left = doc.page.margins.left;
       const right = doc.page.width - doc.page.margins.right;
