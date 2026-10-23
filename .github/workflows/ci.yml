@@ -223,6 +223,8 @@ jobs:
         run: npm run pack9:test
       - name: Exercise Pack 9 deployment smoke failure paths with synthetic HTTP endpoints
         run: npm run pack9:smoke-test
+      - name: Validate brand-first invoice composer and PDF contract
+        run: npm run invoice:simple-workflow-test
       - name: Validate Pack 10 UAT scenario and release evidence contracts
         run: npm run pack10:validate
       - name: Exercise Pack 10 release gate acceptance and blocked scenarios
