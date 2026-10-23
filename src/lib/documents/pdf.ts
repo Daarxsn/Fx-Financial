@@ -59,7 +59,7 @@ function fontPath(): string {
 const amt = (value: unknown) => text(value, "0.0000");
 function exactMoneyUnits(value: unknown): bigint {
   const raw = text(value, "0.0000");
-  if (!/^(0|[1-9][0-9]{0,14})(?:\\.([0-9]{1,4}))?$/.test(raw)) {
+  if (!/^(0|[1-9][0-9]{0,14})(?:\.([0-9]{1,4}))?$/.test(raw)) {
     throw new Error("Stored invoice line amount is invalid.");
   }
   const [whole, fraction = ""] = raw.split(".");
