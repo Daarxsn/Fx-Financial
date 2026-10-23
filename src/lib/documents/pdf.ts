@@ -2,6 +2,7 @@ import "server-only";
 
 import PDFDocument from "pdfkit";
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 
 export type PdfSnapshot = {
@@ -92,8 +93,12 @@ async function approvedBrandLogo(config: Record<string, unknown>): Promise<Buffe
   const file = approved.find(candidate => candidate.startsWith(brandRoot + sep) && existsSync(candidate));
   if (!file) return null;
   try {
+    // The approved brand assets in invoice-logos are already JPEGs, which PDFKit
+    // embeds directly. Legacy WebP assets remain a graceful wordmark fallback.
+    const bytes = await readFile(file);
+    if (bytes.subarray(0, 3).toString("hex") === "ffd8ff") return bytes;
     const sharp = await import("sharp");
-    return await sharp.default(file).rotate().png().toBuffer();
+    return await sharp.default(bytes).rotate().png().toBuffer();
   } catch {
     return null;
   }
