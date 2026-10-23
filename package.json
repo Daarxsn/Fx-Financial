@@ -34,7 +34,8 @@
     "pack9:smoke-test": "node scripts/test-pack-9-smoke.mjs",
     "pack10:validate": "node scripts/validate-pack-10.mjs",
     "pack10:gate-test": "node scripts/test-pack-10-release-gate.mjs",
-    "pack8:query-plans": "node scripts/verify-pack-8-query-plans.mjs"
+    "pack8:query-plans": "node scripts/verify-pack-8-query-plans.mjs",
+    "invoice:simple-workflow-test": "node scripts/verify-simple-invoice-workflow.mjs"
   },
   "dependencies": {
     "mysql2": "^3.24.5",
