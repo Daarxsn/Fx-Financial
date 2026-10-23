@@ -26,8 +26,9 @@ assert.ok(invoiceDraftService.includes("input.milestone?.trim()||null"), "milest
 assert.ok(invoiceRoute.includes("milestone:row.milestone??"), "milestone must round-trip through invoice draft APIs");
 assert.ok(documentService.includes("milestone: line.milestone??"), "milestone must be copied into immutable document snapshots");
 assert.ok(migration.includes("ADD COLUMN milestone VARCHAR(160) NULL"), "migration must add the optional milestone field without changing old documents");
-assert.ok(renderer.includes("MILESTONE") && renderer.includes("AMOUNT IN WORDS"), "PDFs must match the sample invoice structure");
-assert.ok(renderer.includes("BENEFICIARY / BANK DETAILS") && renderer.includes("TERMS & CONDITIONS"), "the PDF must have the supplied payment/terms footer area");
-assert.ok(renderer.includes('await import("sharp")'), "the PDF should embed the approved brand logo asset where the image converter is available");
+assert.ok(renderer.includes('"Milestone"') && renderer.includes('"Amount in words:"'), "PDFs must match the supplied sample invoice structure");
+assert.ok(renderer.includes('"Beneficiary Name: "') && renderer.includes('"Terms & Conditions"'), "the PDF must include the supplied payment/terms footer area");
+assert.ok(renderer.includes('await import("sharp")') && renderer.includes('.jpeg({ quality: 92, progressive: false, chromaSubsampling: "4:4:4" })'), "supplied logos must be normalized to a PDFKit-compatible baseline JPEG before embedding");
+assert.ok(renderer.includes('rect(0, 0, doc.page.width, 8)') && renderer.includes('const brandAccent = isCoworks ? "#931314" : isDigitech ? "#111111" : gold;'), "each brand must use its supplied template accent and top-strip treatment");
 
 console.log("PASS: simple brand-first invoice composer, inline customer creation, confirmed issue-and-send, milestone round-trip and branded invoice PDF contract.");
