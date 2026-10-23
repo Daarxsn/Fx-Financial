@@ -93,18 +93,18 @@ export async function POST(request:NextRequest){
   const id=randomUUID();
   await conn.execute(
    `INSERT INTO invoices (id,legal_entity_id,brand_id,customer_id,document_type,lifecycle_status,record_version,payment_terms_days,
-      invoice_date,due_date,currency,subtotal,discount_total,tax_total,grand_total,notes,idempotency_key,idempotency_payload_sha256)
-    VALUES (?,?,?,?,'INVOICE','DRAFT',1,?,?,?,?,?,?,?,?,?,?,?)`,
+      invoice_date,due_date,currency,subtotal,discount_total,tax_total,grand_total,notes,draft_recipient_email,idempotency_key,idempotency_payload_sha256)
+    VALUES (?,?,?,?,'INVOICE','DRAFT',1,?,?,?,?,?,?,?,?,?,?,?,?)`,
    [id,input.legalEntityId,input.brandId??null,input.customerId,ctx.paymentTermsDays,ctx.invoiceDate,ctx.dueDate,input.currency,
     prepared.calculation.subtotal,prepared.calculation.discountTotal,prepared.calculation.taxTotal,prepared.calculation.grandTotal,
-    input.notes??null,idempotencyKey,fingerprint]);
+    input.notes??null,input.recipientEmail??"",idempotencyKey,fingerprint]);
   await persistDraftLines(conn,id,actor.userId,prepared.lines);
-  await auditDraftChange(conn,actor.userId,id,"invoice.draft.created",null,{recordVersion:1,changedFields:["legalEntityId","brandId","customerId","currency","invoiceDate","dueDate","paymentTermsDays","notes","lines","subtotal","discountTotal","taxTotal","grandTotal"]});
+  await auditDraftChange(conn,actor.userId,id,"invoice.draft.created",null,{recordVersion:1,changedFields:["legalEntityId","brandId","customerId","currency","invoiceDate","dueDate","paymentTermsDays","notes","recipientEmail","lines","subtotal","discountTotal","taxTotal","grandTotal"]});
   await conn.commit();
   return jsonNoStore({data:{
    id,legalEntityId:input.legalEntityId,brandId:input.brandId??null,customerId:input.customerId,
    documentType:"INVOICE",lifecycleStatus:"DRAFT",invoiceNumber:null,currency:input.currency,
-   invoiceDate:ctx.invoiceDate,dueDate:ctx.dueDate,paymentTermsDays:ctx.paymentTermsDays,
+   invoiceDate:ctx.invoiceDate,dueDate:ctx.dueDate,paymentTermsDays:ctx.paymentTermsDays,draftRecipientEmail:input.recipientEmail??"",
    recordVersion:1,...prepared.calculation,paidAmount:"0.0000",outstandingBalance:prepared.calculation.grandTotal,
    paymentStatus:prepared.calculation.grandTotal==="0.0000"?"UNPAID":"UNPAID",idempotentReplay:false,
   }},201);
