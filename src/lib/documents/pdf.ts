@@ -130,16 +130,15 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       const code = text(brand.code ?? brand.name, "").toUpperCase();
       const isCoworks = code.includes("COWORK");
       const isDigitech = code.includes("DIGI");
-      const accent = isCoworks ? "#931314" : isDigitech ? "#173E3B" : "#0D665B";
       const gold = "#DCAF51";
-      const pale = isCoworks ? "#FBF2F2" : isDigitech ? "#F0F5F4" : "#EDF6F4";
+      const red = "#F25138";
+      const green = "#67AF7A";
       const sourceLabel = snapshot.sourceType === "INVOICE"
-        ? text(templateConfig.documentTitle, "PROFORMA INVOICE")
+        ? text(templateConfig.documentTitle, "PROFORMA INVOICE:")
         : snapshot.sourceType === "QUOTATION" ? "QUOTATION" : "PAYMENT RECEIPT";
-      const status = text(snapshot.lifecycleStatus, "UNKNOWN").toUpperCase();
       const issuedTime = capturedAt instanceof Date ? capturedAt : new Date(capturedAt);
       const doc = new PDFDocument({
-        size: "A4", margins: { top: 34, bottom: 52, left: 44, right: 44 }, bufferPages: true, compress: true,
+        size: "A4", margins: { top: 34, bottom: 50, left: 34, right: 36 }, bufferPages: true, compress: true,
         info: {
           Title: sourceLabel + " " + snapshot.documentNumber,
           Subject: "Document snapshot " + text(snapshot.configurationSnapshotId, ""),
@@ -172,206 +171,210 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       const left = doc.page.margins.left;
       const right = doc.page.width - doc.page.margins.right;
       const width = right - left;
-      const bottom = () => doc.page.height - doc.page.margins.bottom - 12;
-      const rule = (y: number, color = "#DDE4E5") => doc.save().strokeColor(color).lineWidth(0.6).moveTo(left, y).lineTo(right, y).stroke().restore();
-      const plain = (v: unknown) => { const rendered = text(v, ""); return rendered; };
-      const body = (size = 8) => doc.font(fontName).fontSize(size).fillColor("#253039");
-      const ensure = (height: number) => { if (doc.y + height > bottom()) { doc.addPage(); doc.y = 36; } };
-      const drawWordmark = (x: number, y: number) => {
-        if (logoBuffer) { doc.image(logoBuffer, x, y, { fit: [225, 66], align: "left", valign: "center" }); return; }
-        if (isCoworks) {
-          doc.font(fontName).fontSize(26).fillColor(accent).text("FX", x, y, { continued: true });
-          doc.font(fontName).fontSize(18).fillColor("#111111").text(" Coworks");
-        } else if (isDigitech) {
-          doc.font(fontName).fontSize(24).fillColor(accent).text("FX", x, y, { continued: true });
-          doc.font(fontName).fontSize(20).fillColor("#111111").text(" DigTech");
-        } else {
-          doc.font(fontName).fontSize(27).fillColor(gold).text("myfx", x, y, { continued: true });
-          doc.font(fontName).fontSize(17).fillColor(accent).text(" POS");
-        }
+      const pageBottom = () => doc.page.height - doc.page.margins.bottom - 4;
+      const clean = (value: unknown) => text(value, "");
+      const addRule = (y: number, color = "#222222", weight = 0.6) =>
+        doc.save().strokeColor(color).lineWidth(weight).moveTo(left, y).lineTo(right, y).stroke().restore();
+      const addCell = (x: number, y: number, w: number, h: number, fill = "#FFFFFF") => {
+        doc.save().fillColor(fill).rect(x, y, w, h).fill().restore();
+        doc.save().strokeColor("#222222").lineWidth(0.55).rect(x, y, w, h).stroke().restore();
       };
+      const body = (size = 8) => doc.font(fontName).fontSize(size).fillColor("#151515");
+      const ensure = (height: number) => { if (doc.y + height > pageBottom()) { doc.addPage(); doc.y = 36; } };
 
       rendererStage = "header";
-      doc.save().fillColor(accent).rect(0, 0, doc.page.width, 11).fill().restore();
-      doc.save().fillColor(gold).rect(0, 11, doc.page.width, 3).fill().restore();
-      drawWordmark(left, 26);
-      const titleWidth = 236;
+      const wordmarkFit: [number, number] = isDigitech ? [210, 78] : [138, 108];
+      if (logoBuffer) doc.image(logoBuffer, left + 8, 27, { fit: wordmarkFit, align: "left", valign: "center" });
+      else {
+        doc.font("Helvetica-Bold").fontSize(25).fillColor("#111111").text(isCoworks ? "FX Coworks" : isDigitech ? "FX DigTech" : "myfx POS", left + 8, 55, { width: 205 });
+      }
+      const titleWidth = 245;
       const titleX = right - titleWidth;
-      doc.font(fontName).fontSize(17).fillColor("#14191D").text(sourceLabel, titleX, 39, { width: titleWidth, align: "right" });
-      doc.font(fontName).fontSize(8).fillColor("#59646B").text("Document no. " + text(snapshot.documentNumber), titleX, 65, { width: titleWidth, align: "right" });
-      doc.font(fontName).fontSize(8).fillColor(status === "CANCELLED" || status === "REVERSED" ? "#B42318" : accent).text(status, titleX, 79, { width: titleWidth, align: "right" });
-      doc.y = 109;
-      rule(doc.y, accent);
-      doc.moveDown(0.7);
+      doc.font("Helvetica-Bold").fontSize(14).fillColor("#050505").text(sourceLabel, titleX, 39, { width: titleWidth, align: "right" });
+      doc.font("Helvetica").fontSize(10).fillColor("#111111").text("Invoice no: " + text(snapshot.documentNumber), titleX, 59, { width: titleWidth, align: "right" });
+      doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#111111").text("Date: ", titleX + 12, 83, { width: 58, align: "right", continued: true });
+      doc.font("Helvetica").fontSize(9.5).fillColor("#111111").text(snapshot.documentDate?.slice(0, 10) ?? "—", { width: titleWidth - 72, align: "right" });
+      const expiryLabel = snapshot.sourceType === "QUOTATION" ? "Expires on: " : "Due date: ";
+      const expiry = snapshot.sourceType === "QUOTATION" ? snapshot.validUntil : snapshot.dueDate;
+      doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#111111").text(expiryLabel, titleX + 6, 104, { width: 68, align: "right", continued: true });
+      doc.font("Helvetica").fontSize(9.5).fillColor("#111111").text(expiry?.slice(0, 10) ?? "—", { width: titleWidth - 74, align: "right" });
+      const triWidth = Math.min(286, width * 0.56);
+      const triX = right - triWidth;
+      const triY = 126;
+      const segment = triWidth / 3;
+      doc.save().fillColor(gold).rect(triX, triY, segment, 4).fill().restore();
+      doc.save().fillColor(red).rect(triX + segment, triY, segment, 4).fill().restore();
+      doc.save().fillColor(green).rect(triX + segment * 2, triY, triWidth - segment * 2, 4).fill().restore();
 
       rendererStage = "issuer-customer";
-      const identityY = doc.y;
-      const half = (width - 22) / 2;
-      const customerX = left + half + 22;
-      doc.font(fontName).fontSize(8).fillColor(accent).text("SUPPLIER", left, identityY, { width: half });
-      doc.font(fontName).fontSize(10).fillColor("#171C20").text(issuer, left, identityY + 14, { width: half });
-      const supplierLines = [
-        ...addressLines(supplier.billingAddress ?? supplier.address ?? supplier.registeredAddress),
-        plain(supplier.invoiceEmail ?? supplier.email), plain(supplier.invoicePhone ?? supplier.phone),
-        plain(supplier.taxIdentifier ?? supplier.gstNumber), plain(supplier.website),
+      const identityY = 174;
+      const half = (width - 20) / 2;
+      const customerX = left + half + 20;
+      const leftAddress = addressLines(supplier.billingAddress ?? supplier.address ?? supplier.registeredAddress);
+      const registrations = Array.isArray(config.selectedTaxRegistrations)
+        ? (config.selectedTaxRegistrations as unknown[]).map(value => object(value)) : [];
+      const taxRegLines = registrations.map(reg => {
+        const type = clean(reg.registrationType ?? reg.displayLabel ?? reg.registrationKey);
+        const number = clean(reg.registrationNumber);
+        return type && number ? type + ": " + number : number || type;
+      }).filter(Boolean);
+      const issuerLines = [
+        clean(supplier.invoicePhone ?? supplier.phone),
+        ...leftAddress,
+        ...taxRegLines,
+        ...(!taxRegLines.length && clean(supplier.taxIdentifier ?? supplier.gstNumber) ? ["GSTIN: " + clean(supplier.taxIdentifier ?? supplier.gstNumber)] : []),
       ].filter(Boolean);
-      body(8).text(supplierLines.join("\n") || "Approved issuer details are retained in the issue-time snapshot.", left, identityY + 30, { width: half, lineGap: 2 });
-      doc.font(fontName).fontSize(8).fillColor(accent).text("BILL TO", customerX, identityY, { width: half });
-      doc.font(fontName).fontSize(10).fillColor("#171C20").text(customerName, customerX, identityY + 14, { width: half });
-      const customerLines = [
-        ...addressLines(customer.billingAddress ?? customer.address),
-        plain(customer.email), plain(customer.phone), plain(customer.taxIdentifier),
+      doc.font("Helvetica-Bold").fontSize(12).fillColor("#050505").text(issuer.toUpperCase(), left, identityY, { width: half });
+      body(9).text(issuerLines.join("\n") || "Supplier details from approved company settings.", left, identityY + 23, { width: half, lineGap: 2 });
+      doc.font("Helvetica-Bold").fontSize(12).fillColor("#050505").text("BILL TO:", customerX, identityY, { width: half, align: "right" });
+      const customerAddress = addressLines(customer.billingAddress ?? customer.address);
+      const clientLines = [
+        "Name: " + customerName,
+        clean(customer.phone) ? "Number: " + clean(customer.phone) : "",
+        ...customerAddress.map((part, index) => index === 0 ? "Address: " + part : part),
+        clean(customer.taxIdentifier) ? "GSTIN: " + clean(customer.taxIdentifier) : "",
       ].filter(Boolean);
-      body(8).text(customerLines.join("\n") || "Customer billing details", customerX, identityY + 30, { width: half, lineGap: 2 });
-      doc.y = Math.max(doc.y, identityY + 91);
-      rule(doc.y);
-      doc.moveDown(0.7);
-
-      rendererStage = "document-metadata";
-      const metadata = [
-        ["INVOICE DATE", snapshot.documentDate?.slice(0, 10) ?? "—"],
-        ["DUE DATE", snapshot.sourceType === "INVOICE" ? snapshot.dueDate?.slice(0, 10) ?? "—" : "—"],
-        ["CURRENCY", text(snapshot.currency, "INR")],
-      ];
-      const metaWidth = width / metadata.length;
-      const metaY = doc.y;
-      metadata.forEach((entry, index) => {
-        const x = left + index * metaWidth;
-        doc.font(fontName).fontSize(7).fillColor("#68747A").text(entry[0], x, metaY, { width: metaWidth - 12 });
-        doc.font(fontName).fontSize(9).fillColor("#1E2A30").text(entry[1], x, metaY + 12, { width: metaWidth - 12 });
-      });
-      doc.y = metaY + 34;
-      rule(doc.y);
-      doc.moveDown(0.7);
+      body(9).text(clientLines.join("\n") || "Customer billing details", customerX, identityY + 23, { width: half, align: "right", lineGap: 2 });
+      const leftBlockHeight = doc.heightOfString(issuerLines.join("\n") || "Supplier details from approved company settings.", { width: half, font: fontName, fontSize: 9 });
+      const rightBlockHeight = doc.heightOfString(clientLines.join("\n") || "Customer billing details", { width: half, font: fontName, fontSize: 9 });
+      const identityBottom = Math.max(identityY + 23 + leftBlockHeight, identityY + 23 + rightBlockHeight);
+      doc.y = Math.max(identityBottom + 62, 343);
 
       rendererStage = "line-items";
       const rows = Array.isArray(snapshot.lines) ? snapshot.lines : [];
-      const milestoneX = left + 30;
-      const milestoneWidth = 82;
-      const descriptionX = left + 120;
-      const descriptionWidth = width - 220;
-      const amountX = right - 92;
+      const columnWidths = [width * 0.07, width * 0.337, width * 0.167, width * 0.204, width * 0.222];
+      const columnXs = [left];
+      for (let index = 0; index < columnWidths.length - 1; index++) columnXs.push(columnXs[index] + columnWidths[index]);
+      const headerHeight = 25;
       const drawLineHeader = () => {
         const y = doc.y;
-        doc.save().fillColor(accent).rect(left, y, width, 26).fill().restore();
-        doc.font(fontName).fontSize(7).fillColor("#FFFFFF").text("#", left + 4, y + 8, { width: 22 });
-        doc.text("MILESTONE", milestoneX, y + 8, { width: milestoneWidth });
-        doc.text("DESCRIPTION", descriptionX, y + 8, { width: descriptionWidth });
-        doc.text("AMOUNT", amountX, y + 8, { width: 88, align: "right" });
-        doc.y = y + 30;
+        const labels = ["#", "Description", "Milestone", "Rate", "Amount"];
+        labels.forEach((label, index) => {
+          addCell(columnXs[index], y, columnWidths[index], headerHeight, "#EEEEEE");
+          doc.font("Helvetica-Bold").fontSize(8).fillColor("#111111")
+            .text(label, columnXs[index] + 4, y + 7, { width: columnWidths[index] - 8, align: index === 0 ? "center" : "left" });
+        });
+        doc.y = y + headerHeight;
       };
       drawLineHeader();
       rows.forEach((raw, index) => {
         const item = object(raw);
         const description = text(item.description, "Item / service");
         const milestone = text(item.milestone, "—");
-        const qty = text(item.quantity, "1");
-        const unit = text(item.unitCode, "unit");
-        const rate = text(item.unitPrice, "0.0000");
-        const amount = text(item.lineTotal, "0.0000");
-        doc.font(fontName).fontSize(8);
-        const descriptionHeight = doc.heightOfString(description, { width: descriptionWidth });
-        const rateLine = "Qty " + qty + " " + unit + " · Rate " + text(snapshot.currency, "INR") + " " + rate;
-        const rateHeight = doc.heightOfString(rateLine, { width: descriptionWidth });
-        const rowHeight = Math.max(38, descriptionHeight + rateHeight + 17);
-        if (doc.y + rowHeight > bottom()) { doc.addPage(); doc.y = 36; drawLineHeader(); }
+        const quantityUnit = "Qty: " + text(item.quantity, "1") + " " + text(item.unitCode, "unit");
+        body(8);
+        const descH = doc.heightOfString(description, { width: columnWidths[1] - 10, fontSize: 8 });
+        const qtyH = doc.heightOfString(quantityUnit, { width: columnWidths[1] - 10, fontSize: 6.5 });
+        const milestoneH = doc.heightOfString(milestone, { width: columnWidths[2] - 8, fontSize: 8 });
+        const rowHeight = Math.max(45, descH + qtyH + 15, milestoneH + 14);
+        if (doc.y + rowHeight > pageBottom()) { doc.addPage(); doc.y = 36; drawLineHeader(); }
         const y = doc.y;
-        if (index % 2 === 0) doc.save().fillColor("#FBFCFC").rect(left, y, width, rowHeight).fill().restore();
-        doc.font(fontName).fontSize(8).fillColor("#48545B").text(String(item.lineNumber ?? index + 1), left + 4, y + 9, { width: 22 });
-        doc.font(fontName).fontSize(7.5).fillColor("#36444A").text(milestone, milestoneX, y + 9, { width: milestoneWidth });
-        doc.font(fontName).fontSize(8).fillColor("#222C32").text(description, descriptionX, y + 7, { width: descriptionWidth });
-        doc.font(fontName).fontSize(6.5).fillColor("#7B858B").text(rateLine, descriptionX, y + 10 + descriptionHeight, { width: descriptionWidth });
-        doc.font(fontName).fontSize(8).fillColor("#222C32").text(amount, amountX, y + 9, { width: 88, align: "right" });
+        const values = [String(item.lineNumber ?? index + 1), "", milestone, text(item.unitPrice, "0.0000"), text(item.lineTotal, "0.0000")];
+        columnWidths.forEach((cellWidth, col) => addCell(columnXs[col], y, cellWidth, rowHeight));
+        doc.font("Helvetica").fontSize(8).fillColor("#161616").text(values[0], columnXs[0] + 3, y + 8, { width: columnWidths[0] - 6, align: "center" });
+        doc.font(fontName).fontSize(8).fillColor("#161616").text(description, columnXs[1] + 5, y + 7, { width: columnWidths[1] - 10 });
+        doc.font(fontName).fontSize(6.5).fillColor("#656565").text(quantityUnit, columnXs[1] + 5, y + 10 + descH, { width: columnWidths[1] - 10 });
+        doc.font(fontName).fontSize(8).fillColor("#161616").text(milestone, columnXs[2] + 4, y + 8, { width: columnWidths[2] - 8 });
+        doc.font(fontName).fontSize(8).fillColor("#161616").text(values[3], columnXs[3] + 4, y + 8, { width: columnWidths[3] - 8, align: "right" });
+        doc.font(fontName).fontSize(8).fillColor("#161616").text(values[4], columnXs[4] + 4, y + 8, { width: columnWidths[4] - 8, align: "right" });
         doc.y = y + rowHeight;
-        rule(doc.y, "#E6EAEC");
       });
-      if (!rows.length) { body(8).text("No item lines are present in this source snapshot."); doc.moveDown(0.5); }
 
       rendererStage = "totals";
-      doc.moveDown(0.7);
-      const totalsX = right - 238;
-      const totalRows: Array<[string, string]> = snapshot.sourceType === "RECEIPT"
-        ? [["RECEIPT AMOUNT", amt(snapshot.grandTotal)]]
-        : [["SUBTOTAL", amt(snapshot.subtotal)], ["DISCOUNT", "− " + amt(snapshot.discountTotal)], ["TAX", amt(snapshot.taxTotal)], ["GRAND TOTAL", amt(snapshot.grandTotal)]];
-      totalRows.forEach(([label, value]) => {
-        ensure(26);
+      const [numWidth, descWidth, mileWidth, rateWidth, amountWidth] = columnWidths;
+      const totalsLabelX = columnXs[3];
+      const totalsValueX = columnXs[4];
+      const drawTotal = (label: string, value: string, grand = false) => {
+        ensure(24);
         const y = doc.y;
-        const grand = label === "GRAND TOTAL" || label === "RECEIPT AMOUNT";
-        if (grand) doc.save().fillColor(pale).rect(totalsX, y - 2, 238, 26).fill().restore();
-        doc.font(fontName).fontSize(grand ? 9 : 8).fillColor(grand ? accent : "#68747A").text(label, totalsX + 8, y + 5, { width: 108 });
-        doc.font(fontName).fontSize(grand ? 10 : 8).fillColor("#172127").text(value + (grand ? " " + text(snapshot.currency) : ""), totalsX + 117, y + 5, { width: 112, align: "right" });
+        addCell(totalsLabelX, y, rateWidth, 24, grand ? "#F2F2F2" : "#FFFFFF");
+        addCell(totalsValueX, y, amountWidth, 24, grand ? "#F2F2F2" : "#FFFFFF");
+        doc.font(grand ? "Helvetica-Bold" : "Helvetica").fontSize(8.5).fillColor("#111111")
+          .text(label, totalsLabelX + 4, y + 7, { width: rateWidth - 8, align: "right" });
+        doc.font(grand ? "Helvetica-Bold" : "Helvetica").fontSize(8.5).fillColor("#111111")
+          .text(value, totalsValueX + 4, y + 7, { width: amountWidth - 8, align: "right" });
         doc.y = y + 24;
-      });
-      if (snapshot.sourceType === "INVOICE") {
-        const words = amountInWords(amt(snapshot.grandTotal), text(snapshot.currency, "INR"));
-        ensure(doc.heightOfString(words, { width }) + 32);
-        doc.moveDown(0.4);
-        doc.font(fontName).fontSize(7).fillColor(accent).text("AMOUNT IN WORDS", left, doc.y);
-        doc.moveDown(0.25);
-        body(8).text(words, left, doc.y, { width, lineGap: 2 });
-        doc.moveDown(0.5);
-      }
+      };
+      const totals = [
+        ["Sub Total:", amt(snapshot.subtotal)],
+        ...(Number(snapshot.discountTotal) !== 0 ? [["Discount:", "− " + amt(snapshot.discountTotal)] as [string, string]] : []),
+        ["Tax:", amt(snapshot.taxTotal)],
+        ["Grand Total:", amt(snapshot.grandTotal) + " " + text(snapshot.currency, "INR")],
+      ] as Array<[string, string]>;
+      totals.forEach(([label, value]) => drawTotal(label, value, label === "Grand Total:"));
+
+      rendererStage = "amount-words";
+      const words = amountInWords(amt(snapshot.grandTotal), text(snapshot.currency, "INR"));
+      ensure(doc.heightOfString(words, { width: width * 0.57, fontSize: 9 }) + 32);
+      doc.moveDown(1.2);
+      doc.font("Helvetica-Bold").fontSize(9).fillColor("#090909").text("Amount in words:", left, doc.y, { width: width * 0.57 });
+      doc.moveDown(0.35);
+      body(9).text(words, left, doc.y, { width: width * 0.57, lineGap: 2 });
       if (snapshot.sourceType === "RECEIPT") {
-        ensure(32); doc.moveDown(0.3);
+        doc.moveDown(0.5);
         body(8).text("METHOD: " + text(snapshot.method) + "    REFERENCE: " + text(snapshot.reference), left, doc.y, { width });
       }
       if (snapshot.reversalReason) {
-        ensure(30); doc.moveDown(0.3);
+        ensure(30);
+        doc.moveDown(0.3);
         doc.font(fontName).fontSize(8).fillColor("#B42318").text("REVERSAL REASON: " + text(snapshot.reversalReason), left, doc.y, { width });
       }
       if (snapshot.notes) {
         ensure(doc.heightOfString(text(snapshot.notes), { width }) + 28);
-        doc.moveDown(0.5);
-        doc.font(fontName).fontSize(8).fillColor(accent).text("NOTES", left, doc.y);
+        doc.moveDown(0.4);
+        doc.font("Helvetica-Bold").fontSize(8).fillColor("#111111").text("NOTES", left, doc.y);
         doc.moveDown(0.25);
         body(8).text(text(snapshot.notes), left, doc.y, { width, lineGap: 2 });
       }
 
-      rendererStage = "payment-footer";
+      rendererStage = "bank-and-terms";
       const bank = object(entityConfig.bankDetails ?? supplier.bankDetails ?? supplier.bankDetailsJson);
       const bankLines = [
-        plain(bank.beneficiaryName ?? bank.accountName), plain(bank.bankName),
-        plain(bank.accountNumber ?? bank.accountNo), plain(bank.ifsc ?? bank.ifscCode), plain(bank.swift ?? bank.swiftCode),
+        clean(bank.beneficiaryName ?? bank.accountName) ? "Beneficiary Name: " + clean(bank.beneficiaryName ?? bank.accountName) : "",
+        clean(bank.bankName) ? "Bank: " + clean(bank.bankName) : "",
+        clean(bank.ifsc ?? bank.ifscCode) ? "IFSC: " + clean(bank.ifsc ?? bank.ifscCode) : "",
+        clean(bank.accountNumber ?? bank.accountNo) ? "Account number: " + clean(bank.accountNumber ?? bank.accountNo) : "",
+        clean(bank.swift ?? bank.swiftCode) ? "SWIFT: " + clean(bank.swift ?? bank.swiftCode) : "",
+        clean(supplier.invoiceEmail ?? supplier.email) ? "Email: " + clean(supplier.invoiceEmail ?? supplier.email) : "",
       ].filter(Boolean);
       const terms = text(templateConfig.terms ?? entityConfig.invoiceTerms ?? templateConfig.footer ?? entityConfig.invoiceFooter, "");
-      const halfWidth = (width - 22) / 2;
-      const termsHeight = terms ? doc.heightOfString(terms, { width: halfWidth, font: fontName, fontSize: 7.5 }) : 0;
-      if (bankLines.length || terms) {
-        ensure(Math.max(58, termsHeight + 30));
-        doc.moveDown(0.6);
-        rule(doc.y, accent);
-        doc.moveDown(0.45);
-        const footerY = doc.y;
-        const rightFooterX = left + halfWidth + 22;
-        if (bankLines.length) {
-          doc.font(fontName).fontSize(8).fillColor(accent).text("BENEFICIARY / BANK DETAILS", left, footerY, { width: halfWidth });
-          body(7.5).text(bankLines.join("\n"), left, footerY + 14, { width: halfWidth, lineGap: 2 });
-        }
-        if (terms) {
-          doc.font(fontName).fontSize(8).fillColor(accent).text("TERMS & CONDITIONS", rightFooterX, footerY, { width: halfWidth });
-          body(7.5).text(terms, rightFooterX, footerY + 14, { width: halfWidth, lineGap: 2 });
-        }
-        doc.y = Math.max(doc.y, footerY + Math.max(52, termsHeight + 18));
+      const closing = "Looking forward to doing business with you.";
+      const footerHalf = (width - 28) / 2;
+      const termsHeight = terms ? doc.heightOfString(terms, { width: footerHalf, font: fontName, fontSize: 8 }) : 0;
+      const bankHeight = bankLines.length ? doc.heightOfString(bankLines.join("\n"), { width: footerHalf, font: fontName, fontSize: 8 }) : 0;
+      const closingHeight = doc.heightOfString(closing, { width: footerHalf, font: fontName, fontSize: 12 });
+      ensure(Math.max(84, termsHeight, bankHeight) + closingHeight + 30);
+      doc.moveDown(1.25);
+      const footerTop = doc.y;
+      const rightFooterX = left + footerHalf + 28;
+      doc.font("Helvetica-Bold").fontSize(12).fillColor("#111111").text(closing, left + 4, footerTop, { width: footerHalf });
+      if (bankLines.length) {
+        body(8).text(bankLines.join("\n"), left + 4, footerTop + closingHeight + 10, { width: footerHalf, lineGap: 2 });
       }
+      if (terms) {
+        doc.font("Helvetica-Bold").fontSize(9).fillColor("#111111").text("Terms & Conditions", rightFooterX, footerTop + closingHeight + 10, { width: footerHalf });
+        body(8).text(terms, rightFooterX, footerTop + closingHeight + 26, { width: footerHalf, lineGap: 2 });
+      }
+      const footerContentHeight = Math.max(closingHeight + 10 + bankHeight, closingHeight + 26 + termsHeight);
+      doc.y = Math.max(doc.y, footerTop + footerContentHeight + 12);
+
       if (snapshot.sourceType === "INVOICE") {
-        ensure(64);
-        doc.moveDown(0.45);
-        const signY = doc.y;
-        doc.font(fontName).fontSize(9).fillColor("#1C252A").text("For " + issuer, left, signY, { width: width * 0.6 });
-        doc.save().strokeColor("#AAB2B7").lineWidth(0.7).moveTo(right - 164, signY + 34).lineTo(right, signY + 34).stroke().restore();
-        doc.font(fontName).fontSize(7.5).fillColor("#68747A").text("Authorized signatory", right - 164, signY + 39, { width: 164, align: "center" });
+        const signatureY = Math.max(doc.y + 12, doc.page.height - 86);
+        if (signatureY + 24 > pageBottom()) { doc.addPage(); doc.y = doc.page.height - 90; }
+        else doc.y = signatureY;
+        doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#111111").text("Signature: ______________________________", left + 7, doc.y, { width: width * 0.72 });
       }
       if (snapshot.configurationSha256) {
-        ensure(16); doc.moveDown(0.3);
-        doc.font(fontName).fontSize(5.5).fillColor("#8B9499").text("Configuration snapshot SHA-256: " + snapshot.configurationSha256, left, doc.y, { width });
+        ensure(14);
+        doc.moveDown(0.3);
+        doc.font(fontName).fontSize(5.5).fillColor("#888888").text("Configuration snapshot SHA-256: " + snapshot.configurationSha256, left, doc.y, { width });
       }
+
       const pages = doc.bufferedPageRange();
       for (let p = pages.start; p < pages.start + pages.count; p++) {
         doc.switchToPage(p);
-        const y = doc.page.height - 34;
-        doc.save().strokeColor("#D8DEE2").lineWidth(0.5).moveTo(left, y - 6).lineTo(right, y - 6).stroke().restore();
-        doc.font(fontName).fontSize(6.5).fillColor("#7B858A").text("Falchion Xeniaa · Generated from an immutable document snapshot", left, y, { width: width * 0.78 });
-        doc.font(fontName).fontSize(6.5).fillColor("#7B858A").text("Page " + (p + 1) + " of " + pages.count, right - width * 0.2, y, { width: width * 0.2, align: "right" });
+        const y = doc.page.height - 28;
+        doc.font("Helvetica-Bold").fontSize(8).fillColor("#111111").text(String(p + 1), left, y, { width, align: "center" });
       }
       rendererStage = "finalize";
       doc.end();
