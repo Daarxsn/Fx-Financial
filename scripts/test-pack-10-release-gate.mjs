@@ -138,13 +138,7 @@ function expectBlocked(label, mutate, expected) {
   labelPasses.push(label);
 }
 
-try {
-  expectPass("complete synthetic evidence packet", makePacket());
-  expectBlocked("CLI candidate SHA mismatch", (p) => {}, /does not match the requested --sha/, "b".repeat(40));
-} catch (error) {
-  // Candidate SHA mismatch is invoked separately below to keep the expected exit contract clear.
-  if (!String(error).includes("expectBlocked")) throw error;
-}
+expectPass("complete synthetic evidence packet", makePacket());
 
 const mismatch = run(makePacket(), "b".repeat(40));
 assert.equal(mismatch.status, 1);
