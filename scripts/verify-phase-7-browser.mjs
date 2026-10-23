@@ -244,6 +244,47 @@ try {
     "INSERT INTO user_legal_entity_access (user_id, legal_entity_id, granted_by) VALUES (?, ?, NULL)",
     [userId, invoiceTestEntity.id],
   );
+
+  // Seed a fully synthetic, single-issuer brand mapping for the redesigned brand-first invoice flow.
+  // These rows exist only in the disposable falchion_ci database.
+  const invoiceBrandId = randomUUID();
+  const invoiceBrandCode = "MYFXPOS-PW-" + suffix;
+  const invoiceBrandName = "MyFX POS Browser " + suffix;
+  const invoiceBrandTemplateKey = "MYFXPOS-PW-" + suffix;
+  const invoiceBrandSnapshot = {
+    name: invoiceBrandName,
+    code: invoiceBrandCode,
+    logoReference: "/brand/myfx-pos.webp",
+    primaryColor: "#DCAF51",
+    theme: { primaryColor: "#DCAF51", accentColor: "#DCAF51" },
+  };
+  await db.execute(
+    "INSERT INTO brands (id,name,code,description,logo_reference,theme_json,default_template_key,is_active) VALUES (?,?,?,?,?,?,?,TRUE)",
+    [invoiceBrandId,invoiceBrandName,invoiceBrandCode,"Synthetic browser-only brand mapping","/brand/myfx-pos.webp",
+      JSON.stringify(invoiceBrandSnapshot.theme),invoiceBrandTemplateKey],
+  );
+  await db.execute(
+    "INSERT INTO brand_legal_entities (brand_id,legal_entity_id,is_default,effective_from,effective_until) VALUES (?,?,TRUE,NOW(3),NULL)",
+    [invoiceBrandId,invoiceTestEntity.id],
+  );
+  await db.execute(
+    "INSERT INTO brand_config_versions (id,brand_id,version_number,effective_from,config_snapshot,change_reason,changed_by) VALUES (?,?,1,NOW(3),?,?,?)",
+    [randomUUID(),invoiceBrandId,JSON.stringify(invoiceBrandSnapshot),"Synthetic browser acceptance configuration",userId],
+  );
+  for (const documentType of ["INVOICE","QUOTATION"]) {
+    await db.execute(
+      "INSERT INTO invoice_document_templates (id,legal_entity_id,brand_id,document_type,template_key,display_name,version_number,template_config,effective_from,effective_until,is_active,created_by) VALUES (?,?,?,?,?,?,1,?,CURRENT_DATE,NULL,TRUE,?)",
+      [randomUUID(),invoiceTestEntity.id,invoiceBrandId,documentType,invoiceBrandTemplateKey,
+        invoiceBrandName + " " + documentType,JSON.stringify({
+          primaryColor: "#DCAF51",
+          accentColor: "#DCAF51",
+          title: "PROFORMA INVOICE:",
+          terms: "Synthetic CI terms only; not legal wording.",
+          footer: "Synthetic browser acceptance document.",
+        }),userId],
+    );
+  }
+
   const [invoiceCustomerRows] = await db.execute(
     "SELECT id,name FROM customers WHERE customer_code=? AND is_active=TRUE LIMIT 1",
     [importedCustomerCode],
@@ -252,52 +293,72 @@ try {
   const invoiceTestCustomer = invoiceCustomerRows[0];
   const invoiceUiDate = new Date().toISOString().slice(0, 10);
   const invoiceLineDescription = "Pack 2 browser invoice " + suffix;
+  const inlineCustomerName = "Inline Invoice Customer " + suffix;
+  const inlineCustomerEmail = "invoice-" + suffix.toLowerCase() + "@example.invalid";
   await page.goto(baseUrl + "/invoices");
   await page.getByRole("heading", { name: "Invoices", exact: true }).waitFor();
   await waitForList(page);
   await page.getByRole("button", { name: /New invoice/i }).first().click();
   const invoiceEditor = page.locator(".invoice-editor").last();
-  await invoiceEditor.getByRole("heading", { name: "Create invoice draft", exact: true }).waitFor();
-  await invoiceEditor.getByLabel("Legal entity").selectOption(String(invoiceTestEntity.id));
-  await invoiceEditor.getByLabel("Customer").selectOption(String(invoiceTestCustomer.id));
+  await invoiceEditor.getByRole("heading", { name: "Create invoice", exact: true }).waitFor();
+  await invoiceEditor.getByLabel("Invoice from").selectOption(invoiceBrandId);
+  await invoiceEditor.getByLabel("Customer").selectOption("__new__");
+  await invoiceEditor.getByLabel("Customer / company name").fill(inlineCustomerName);
+  await invoiceEditor.getByLabel("Email to send the invoice to").fill(inlineCustomerEmail);
   await invoiceEditor.getByLabel("Invoice date").fill(invoiceUiDate);
+  await invoiceEditor.getByLabel("Milestone (optional)").fill("Implementation milestone");
   await invoiceEditor.getByLabel("Description").fill(invoiceLineDescription);
-  await invoiceEditor.getByLabel("Unit", { exact: true }).fill("hour");
   await invoiceEditor.getByLabel("Quantity").fill("2.0000");
-  await invoiceEditor.getByLabel("Unit rate").fill("100.0000");
+  await invoiceEditor.getByLabel(/^Rate/).fill("100.0000");
+  await invoiceEditor.locator("details.invoice-line-advanced summary").click();
+  await invoiceEditor.getByLabel("Unit", { exact: true }).fill("hour");
   await invoiceEditor.getByLabel("Discount type").selectOption("PERCENT");
   await invoiceEditor.getByLabel("Discount (%)").fill("10.0000");
   await invoiceEditor.getByLabel("Approved tax code").selectOption(String(invoiceTestEntity.default_tax_code));
-  await invoiceEditor.getByRole("button", { name: "Create draft", exact: true }).click();
-  await page.getByText("Draft saved. Authoritative totals were recalculated by the server.", { exact: true }).waitFor();
+  await invoiceEditor.getByRole("button", { name: "Save draft", exact: true }).click();
+  await page.getByText("Draft saved. The server recalculated the totals.", { exact: true }).waitFor();
   await page.getByText("INR 212.4000", { exact: true }).first().waitFor();
-  pass("Invoice workspace creates a real draft and displays server-calculated exact-decimal totals.");
+  pass("Brand-first invoice draft accepts inline customer/company details, recipient email and milestone, then calculates exact-decimal totals.");
+
+  const [inlineCustomerRows] = await db.execute(
+    "SELECT id,name,email FROM customers WHERE name=? AND email=? AND is_active=TRUE LIMIT 1",
+    [inlineCustomerName,inlineCustomerEmail],
+  );
+  assert.equal(inlineCustomerRows.length, 1, "inline invoice composer persists the customer and billing recipient.");
+  const invoiceBrowserCustomer = inlineCustomerRows[0];
 
   const editableInvoice = page.locator(".invoice-editor").last();
-  await editableInvoice.getByLabel("Unit rate").fill("120.0000");
+  await editableInvoice.getByLabel(/^Rate/).fill("120.0000");
   await editableInvoice.getByRole("button", { name: "Save draft", exact: true }).click();
-  await page.getByText("Draft saved. Authoritative totals were recalculated by the server.", { exact: true }).waitFor();
+  await page.getByText("Draft saved. The server recalculated the totals.", { exact: true }).waitFor();
   await page.getByText("INR 254.8800", { exact: true }).first().waitFor();
-  await page.locator(".invoice-editor").last().getByRole("button", { name: "Close", exact: true }).click();
-  await page.getByText("INVOICE DETAILS", { exact: true }).waitFor();
-  await page.getByRole("button", { name: "Issue invoice", exact: true }).click();
-  await page.getByText("Invoice issued successfully. Its number and issue-time configuration snapshot are preserved.", { exact: true }).waitFor();
+  await page.locator(".invoice-editor").last().getByRole("button", { name: "Issue & send invoice", exact: true }).click();
+  await page.getByText("Invoice issued and email queued. Check its delivery status in the invoice details.", { exact: true }).waitFor();
+  await page.getByRole("heading", { name: "Email delivery and evidence" }).waitFor();
+
   const [invoiceByLineRows] = await db.execute(
-    "SELECT i.id,i.lifecycle_status,i.invoice_number,i.grand_total FROM invoices i JOIN invoice_lines l ON l.invoice_id=i.id " +
+    "SELECT i.id,i.customer_id,i.lifecycle_status,i.invoice_number,i.grand_total FROM invoices i JOIN invoice_lines l ON l.invoice_id=i.id " +
       "WHERE i.legal_entity_id=? AND i.customer_id=? AND l.description=? ORDER BY i.created_at DESC LIMIT 1",
-    [invoiceTestEntity.id, invoiceTestCustomer.id, invoiceLineDescription],
+    [invoiceTestEntity.id,invoiceBrowserCustomer.id,invoiceLineDescription],
   );
   assert.equal(invoiceByLineRows.length, 1, "invoice created and issued by the workspace persists exactly one matching document");
   assert.equal(invoiceByLineRows[0].lifecycle_status, "ISSUED");
   assert.ok(invoiceByLineRows[0].invoice_number, "issue action allocates the official invoice number");
   assert.equal(String(invoiceByLineRows[0].grand_total), "254.8800");
+  const [queuedEmailRows] = await db.execute(
+    "SELECT recipient_email,status FROM email_outbox WHERE source_document_type='INVOICE' AND source_document_id=? ORDER BY created_at DESC LIMIT 1",
+    [invoiceByLineRows[0].id],
+  );
+  assert.equal(queuedEmailRows.length, 1, "Issue & send queues one durable email with the issued invoice PDF.");
+  assert.equal(queuedEmailRows[0].recipient_email, inlineCustomerEmail);
+  assert.equal(queuedEmailRows[0].status, "QUEUED");
   const [issuedBrowserSnapshots] = await db.execute(
     "SELECT configuration_sha256 FROM document_configuration_snapshots WHERE resource_type='INVOICE' AND resource_id=?",
     [invoiceByLineRows[0].id],
   );
   assert.equal(issuedBrowserSnapshots.length, 1, "UI issuance persists one immutable configuration snapshot");
   assert.match(String(issuedBrowserSnapshots[0].configuration_sha256), /^[0-9a-f]{64}$/);
-  pass("Invoice workspace edits the draft, issues it, allocates a number, and persists one integrity-hashed snapshot.");
+  pass("Invoice workspace edits the draft, issues it with one primary action, queues the PDF email, allocates a number and persists an integrity-hashed snapshot.");
 
   // Pack 9 browser acceptance: the onboarding/settings surface reports readiness for the real test entity.
   await page.goto(baseUrl + "/settings");
