@@ -79,17 +79,19 @@ async function approvedBrandLogo(config: Record<string, unknown>): Promise<Buffe
   const reference = text(brand.logoReference, "");
   const brandRoot = resolve(process.cwd(), "public", "brand");
   const preferred: string[] = [];
-  if (code.includes("COWORK")) preferred.push(join(brandRoot, "invoice-logos", "fx-coworks.jpg"));
-  else if (code.includes("DIGI")) preferred.push(join(brandRoot, "invoice-logos", "fx-digitech.jpg"));
-  else if (code.includes("MYFX") || code.includes("POS")) preferred.push(join(brandRoot, "invoice-logos", "myfx-pos.jpg"));
+  // Prefer the exact supplied WebP exports; the generated JPEG derivatives in
+  // invoice-logos were malformed and must never be used as the source image.
+  if (code.includes("COWORK")) preferred.push(join(brandRoot, "fx-coworks.webp"));
+  else if (code.includes("DIGI")) preferred.push(join(brandRoot, "fx-digitech.webp"));
+  else if (code.includes("MYFX") || code.includes("POS")) preferred.push(join(brandRoot, "myfx-pos.webp"));
   const approved: string[] = [...preferred];
   if (reference.startsWith("/brand/") && !reference.includes("..")) {
     const candidate = resolve(process.cwd(), "public", reference.slice(1));
     if (candidate.startsWith(brandRoot + sep)) approved.push(candidate);
   }
-  if (code.includes("COWORK")) approved.push(join(brandRoot, "fx-coworks.webp"));
-  else if (code.includes("DIGI")) approved.push(join(brandRoot, "fx-digitech.webp"));
-  else if (code.includes("MYFX") || code.includes("POS")) approved.push(join(brandRoot, "myfx-pos.webp"));
+  if (code.includes("COWORK")) approved.push(join(brandRoot, "invoice-logos", "fx-coworks.jpg"));
+  else if (code.includes("DIGI")) approved.push(join(brandRoot, "invoice-logos", "fx-digitech.jpg"));
+  else if (code.includes("MYFX") || code.includes("POS")) approved.push(join(brandRoot, "invoice-logos", "myfx-pos.jpg"));
   const file = approved.find(candidate => candidate.startsWith(brandRoot + sep) && existsSync(candidate));
   if (!file) {
     if (process.env.GITHUB_ACTIONS === "true") {
