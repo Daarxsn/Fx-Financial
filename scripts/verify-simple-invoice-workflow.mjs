@@ -18,6 +18,10 @@ const documentService = read("src/lib/documents/service.ts");
 const migration = read("database/migrations/030_invoice_line_milestone.sql");
 
 assert.ok(options.includes("brands:brandRows.map"), "draft options must expose available brands");
+
+assert.ok(legalEntityCreateRoute.includes('const actor = await requirePermission("settings:manage")'),
+  "legal entity creation must await the settings permission check before reading actor roles or identity");
+
 assert.ok(legalEntityCreateRoute.includes("const isFirstLegalEntity = existingEntityRows.length === 0;") &&
   legalEntityCreateRoute.includes("if (isFirstLegalEntity) await provisionInitialProductBrands(conn,id,actor.userId);"),
   "first company setup must provision the known product brands once without making the user add them manually");

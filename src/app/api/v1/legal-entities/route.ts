@@ -137,9 +137,10 @@ export async function POST(request: NextRequest) {
   try {
     await assertCsrf(request);
     stage = "permission check";
-    const actor=requirePermission("settings:manage");
+    const actor = await requirePermission("settings:manage");
     stage = "validate company fields";
     const input=legalEntityCreateSchema.parse(await request.json());
+    stage = "check finance approval";
     if (input.taxSetupStatus !== "UNCONFIGURED" || input.bankDetails) requireFinanceConfigurationApprover(actor);
     const id=randomUUID();
     stage = "open database connection";
