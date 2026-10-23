@@ -93,12 +93,17 @@ async function approvedBrandLogo(config: Record<string, unknown>): Promise<Buffe
   const file = approved.find(candidate => candidate.startsWith(brandRoot + sep) && existsSync(candidate));
   if (!file) return null;
   try {
-    // The approved brand assets in invoice-logos are already JPEGs, which PDFKit
-    // embeds directly. Legacy WebP assets remain a graceful wordmark fallback.
+    // Normalize supplied logo exports to a baseline, sRGB JPEG before PDFKit sees them.
+    // Some design-export JPEG variants are not accepted by PDFKit's built-in parser.
+    // Invoice artwork sits on white paper, so flatten transparency to white explicitly.
     const bytes = await readFile(file);
-    if (bytes.subarray(0, 3).toString("hex") === "ffd8ff") return bytes;
     const sharp = await import("sharp");
-    return await sharp.default(bytes).rotate().png().toBuffer();
+    return await sharp.default(bytes)
+      .rotate()
+      .flatten({ background: "#FFFFFF" })
+      .toColourspace("srgb")
+      .jpeg({ quality: 92, progressive: false, chromaSubsampling: "4:4:4" })
+      .toBuffer();
   } catch {
     return null;
   }
