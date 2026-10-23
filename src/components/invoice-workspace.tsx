@@ -200,12 +200,12 @@ export function InvoiceWorkspace(){
     You can view invoices, but your role cannot create drafts. Ask an access administrator to assign <code>invoices:draft:create</code> (typically the Finance Administrator or Invoice Creator role) and an active legal-entity scope.
   </InlineAlert>:null}
   {missingSetup?<div className="invoice-setup-callout">
-    <InlineAlert tone="warning" title="Invoice creation is not configured">
-     {!options.legalEntities.length&&!options.customers.length?"An active legal entity and an approved brand-to-issuer mapping are required once. Customer details can be added directly in the invoice form.":!options.legalEntities.length?"An active legal entity is required before you can create an invoice. Set up your business first.":"Customer details can be entered directly in the invoice form."} No test or placeholder financial data is inserted.
+    <InlineAlert tone="warning" title="One-time invoice setup is incomplete">
+     {!options.legalEntities.length?"An approved company profile is needed before invoices can be issued. Complete this once in Settings.":"At least one active brand needs a default issuer mapping. After that one-time setup, choose the brand and enter customer details directly here."} No sample or placeholder business data is inserted.
     </InlineAlert>
     <div className="invoice-setup-actions">
-     {!options.legalEntities.length?<Link href="/settings" className="button button--secondary button--md">Set up business</Link>:null}
-     {!options.customers.length?<Link href="/settings" className="button button--primary button--md">Review brand setup</Link>:null}
+     {!options.legalEntities.length?<Link href="/settings" className="button button--secondary button--md">Complete company setup</Link>:null}
+     {options.legalEntities.length&&validBrands.length===0?<Link href="/settings" className="button button--primary button--md">Review brand mapping</Link>:null}
     </div>
    </div>:null}
   {error?<InlineAlert tone="danger" title="Invoice action needs attention">{error}</InlineAlert>:null}
