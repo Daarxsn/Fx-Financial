@@ -396,16 +396,36 @@ A chunk is accepted only when all applicable statements below are true:
 
 **Goal:** prove the actual business workflows before the launch decision.
 
-| Chunk | Work | Acceptance evidence |
-|---|---|---|
-| 10.1 | Prepare a non-production UAT tenant using only approved representative test data; do not copy live customer financial data unnecessarily. | Test data is documented, isolated and safely disposable. |
-| 10.2 | Run role-specific workflows for Super Administrator, finance/operator and read-only/limited users. | Allowed tasks succeed; prohibited tasks are denied. |
-| 10.3 | Test each brand configuration against its **approved** legal entity, document layout, logo, numbering, currency, tax and payment settings. | All required readiness checks pass; unapproved brand/entity combinations cannot issue. |
-| 10.4 | Execute full journeys: customer/catalog → quotation → conversion → invoice draft → review/issue → PDF → email → partial payment → full payment → receipt → reversal/correction as policy permits → reporting/export. | Every transition reconciles to database/audit/document history. |
-| 10.5 | Test representative failures: duplicate submit, network timeout, PDF failure, email failure, stale edit, invalid tax config, access denial, payment overrun and DB outage. | Clear recovery paths; no false success or corrupted financial state. |
-| 10.6 | Business, finance/accounting, tax/legal (where required), security and operations owners sign their own acceptance areas. | Written sign-offs with owner, date, scope and evidence. |
-| 10.7 | Run final release audit, confirm no secrets or temporary fixtures, verify all CI runs for release SHA, and produce release notes/known limitations. | Green evidence packet on exact release SHA. |
-| 10.8 | Obtain an explicit go/no-go decision and execute a controlled rollout with operator coverage, smoke tests and rollback trigger. | Named decision-maker and reversible launch procedure. |
+#### Part A — UAT environment, role and workflow acceptance
+
+- [x] Canonical scenario manifest defines the minimum UAT evidence set for tenant isolation, Super Administrator/finance/read-only access, all three brands, core quote/invoice/PDF/email/payment/receipt journeys, failure handling, reporting/export, accessibility, recovery and operational drills.
+- [x] Business UAT plan describes synthetic-only isolated data, role permission/scope checks, issuer-versus-brand rules, approved brand-setting review, full lifecycle reconciliation and manual test expectations.
+- [x] Evidence packet structure requires a per-scenario result, operator, timestamp, HTTPS evidence reference and exact release SHA.
+- [ ] Execute UAT against the actual isolated non-production tenant and attach reviewed evidence; source-level tests are not business acceptance.
+
+#### Part B — Release evidence, sign-offs and controlled rollout
+
+- [x] Add a fail-closed release evidence checker which validates Pack 9 acceptance, exact-SHA CI and Preview identity, complete scenario set, three approved brand configurations, owner-specific sign-offs, RPO/RTO results, alerts, recovery/operator drills, dependency disposition, approved change window, explicit GO decision and an empty blocker list.
+- [x] Add synthetic pass/fail regression tests and register Pack 10 checks in main-branch CI.
+- [ ] Obtain green full CI for the exact release candidate and confirm the actual CI run URL.
+- [ ] Close Pack 9 external/provider/recovery/monitoring gates and approve the Pack 9 ledger for the exact candidate.
+- [ ] Obtain and review real UAT evidence, business/finance/tax/legal/security/operations sign-offs, dependency disposition, rollback/recovery proof and formal GO/NO-GO.
+- [ ] Perform an approved controlled rollout, post-deploy smoke checks, rollback-trigger monitoring and release-record completion.
+
+| Chunk | Acceptance evidence |
+|---|---|
+| 10.1 | Dedicated non-production tenant, isolated DB/storage, synthetic fixtures, documented cleanup. |
+| 10.2 | Allowed and denied actions proved for Super Administrator, finance/operator and read-only/limited roles, including entity scope. |
+| 10.3 | Approved issuer, legal-entity mapping, layout/logo, numbering, currency, tax, payment and statutory settings for MyFX POS, FX Digitech and FX Coworks. |
+| 10.4 | Quote-to-invoice issuance and PDF/email/payment/receipt paths reconcile against database, audit and immutable document history. |
+| 10.5 | Failure-injection results demonstrate safe retries, clear recovery and no false success or duplicate financial side effects. |
+| 10.6 | Dated owner-specific sign-offs against the exact candidate SHA. |
+| 10.7 | Secret/dependency/release audit, complete exact-SHA CI and known-limitations/release notes. |
+| 10.8 | Named GO decision, approved change window, operator coverage, post-release smoke and a reversible rollback procedure. |
+
+**Implementation references:** [Pack 10 business UAT plan](pack-10-business-uat-plan.md), [canonical UAT scenarios](pack-10-uat-scenarios.json), [release evidence schema](pack-10-release-evidence.schema.json), and [Pack 10 evidence ledger](pack-10-uat-evidence-ledger.md). Run `npm run pack10:validate` and `npm run pack10:gate-test` for source-level checks.
+
+**Current disposition:** Pack 10 code and evidence scaffolding are implemented; business UAT and production lock remain **BLOCKED** because actual UAT results, exact-SHA complete CI proof, provider recovery/alert evidence, approvals and a GO decision are not established by the repository changes.
 
 **Gate 10:** Release is approved only after the complete critical path, policy approvals, security checks, recovery proof and operator/business acceptance are recorded.
 
