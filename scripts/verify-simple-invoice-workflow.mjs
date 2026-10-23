@@ -4,6 +4,9 @@ import { readFileSync } from "node:fs";
 
 const read = (path) => readFileSync(path, "utf8");
 const options = read("src/app/api/v1/invoices/draft-options/route.ts");
+const invoiceCreateRoute = read("src/app/api/v1/invoices/route.ts");
+const invoiceDetailRoute = read("src/app/api/v1/invoices/[invoiceId]/route.ts");
+const recipientMigration = read("database/migrations/031_invoice_draft_recipient_email.sql");
 const composer = read("src/components/invoice-workspace.tsx");
 const renderer = read("src/lib/documents/pdf.ts");
 const invoiceSchema = read("src/lib/validation/invoice.ts");
@@ -16,11 +19,18 @@ assert.ok(options.includes("brands:brandRows.map"), "draft options must expose a
 assert.ok(options.includes("canAutoMap"), "brand options must only auto-select a safe issuer mapping");
 assert.ok(options.includes("legalEntityId:b.legal_entity_id"), "brand options must return the mapped issuer legal entity");
 assert.ok(composer.includes("Invoice from"), "daily invoice creation must start with the brand, not legal-entity settings");
+assert.ok(composer.includes('brandId:"",customerId:customer?.id??""'), "new invoices must require an explicit brand selection rather than silently defaulting to MyFX POS");
 assert.ok(composer.includes("Issue & send invoice"), "the composer must offer the combined issue-and-send action");
 assert.ok(composer.includes('<Field label="Email to send the invoice to" wide hint='), "recipient email must use the shared labelled field so assistive technology can associate the input and hint");
 assert.ok(composer.includes('"/api/v1/customers"'), "customer creation must be available directly in the invoice workflow");
 assert.ok(composer.includes('"/api/v1/email/outbox"'), "the combined action must queue email through the existing durable outbox");
 assert.ok(composer.includes("recipientConfirmed:true"), "email queueing must require explicit recipient confirmation");
+assert.ok(composer.includes("recipientEmail:recipientEmail.trim()"), "the selected recipient must persist when a draft is saved");
+assert.ok(composer.includes("v.draftRecipientEmail??options.customers.find"), "opening a draft must restore its saved recipient before customer defaults");
+assert.ok(invoiceSchema.includes('recipientEmail:recipientEmailInput.optional().default("")'), "draft recipient must validate an address or intentional blank");
+assert.ok(invoiceCreateRoute.includes("draft_recipient_email") && invoiceCreateRoute.includes("input.recipientEmail"), "new drafts must store the selected recipient");
+assert.ok(invoiceDetailRoute.includes("draftRecipientEmail:row.draft_recipient_email"), "invoice detail API must return the saved recipient");
+assert.ok(recipientMigration.includes("ADD COLUMN draft_recipient_email VARCHAR(320) NOT NULL DEFAULT"), "the schema must persist the draft recipient");
 assert.ok(composer.includes("Milestone (optional)"), "milestone is optional in the composer");
 assert.ok(invoiceSchema.includes("milestone: z.string().trim().max(160).nullable().optional()"), "milestone must be validated by the API schema");
 assert.ok(invoiceDraftService.includes("input.milestone?.trim()||null"), "milestone must be persisted with a draft line");
