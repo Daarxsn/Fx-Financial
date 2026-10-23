@@ -54,7 +54,7 @@ const highNames = high.map(([name]) => name).sort();
 const expectedNames = Object.keys(EXPECTED_HIGH_CHAIN).sort();
 if (JSON.stringify(highNames) !== JSON.stringify(expectedNames)) {
   console.error("High/critical findings: " + highNames.join(", "));
-  fail("full dependency audit contains a high/critical finding outside the exact reviewed braces toolchain advisory chain");
+  fail("full dependency audit contains a high/critical finding outside the exact reviewed braces toolchain advisory chain with patched Next.js");
 }
 for (const [name, expectedParent] of Object.entries(EXPECTED_HIGH_CHAIN)) {
   const item = vulns[name];
@@ -84,11 +84,11 @@ for (const name of Object.keys(EXPECTED_HIGH_CHAIN)) {
   const entry = lock.packages?.["node_modules/" + name];
   if (!entry || entry.dev !== true) fail("vulnerable toolchain package is no longer proven development-only: " + name);
 }
-if (manifest.dependencies?.next !== "16.4.0" ||
-    lock.packages["node_modules/next"].version !== "16.4.0" ||
+if (manifest.dependencies?.next !== "16.4.2" ||
+    lock.packages["node_modules/next"].version !== "16.4.2" ||
     lock.packages["node_modules/braces"].version !== "3.0.3" ||
-    lock.packages["node_modules/eslint-config-next"].version !== "16.4.0" ||
-    lock.packages["node_modules/@next/eslint-plugin-next"].version !== "16.4.0") {
+    lock.packages["node_modules/eslint-config-next"].version !== "16.4.2" ||
+    lock.packages["node_modules/@next/eslint-plugin-next"].version !== "16.4.2") {
   fail("reviewed dependency versions changed; the existing exception no longer applies");
 }
 if (Date.now() > Date.parse(EXPIRES_AT)) fail("temporary braces exception expired; a fresh review is required");
