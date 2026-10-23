@@ -56,6 +56,21 @@ function fontPath(): string {
   return candidates.find(existsSync) ?? "";
 }
 const amt = (value: unknown) => text(value, "0.0000");
+function exactMoneyUnits(value: unknown): bigint {
+  const raw = text(value, "0.0000");
+  if (!/^(0|[1-9][0-9]{0,14})(?:\\.([0-9]{1,4}))?$/.test(raw)) {
+    throw new Error("Stored invoice line amount is invalid.");
+  }
+  const [whole, fraction = ""] = raw.split(".");
+  return BigInt(whole) * 10_000n + BigInt((fraction + "0000").slice(0, 4));
+}
+function lineAmountBeforeTaxAndDiscount(item: Record<string, unknown>): string {
+  // lineTotal = taxable value + tax; adding the exact net discount reconstructs
+  // the pre-discount, tax-exclusive line amount displayed in the supplied templates.
+  const base = exactMoneyUnits(item.lineTotal) - exactMoneyUnits(item.taxAmount) + exactMoneyUnits(item.discountAmount);
+  if (base < 0n) throw new Error("Stored invoice line base amount is invalid.");
+  return (base / 10_000n).toString() + "." + (base % 10_000n).toString().padStart(4, "0");
+}
 
 async function approvedBrandLogo(config: Record<string, unknown>): Promise<Buffer | null> {
   const brand = object(config.brand);
@@ -270,7 +285,7 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
         const rowHeight = Math.max(45, descH + qtyH + 15, milestoneH + 14);
         if (doc.y + rowHeight > pageBottom()) { doc.addPage(); doc.y = 36; drawLineHeader(); }
         const y = doc.y;
-        const values = [String(item.lineNumber ?? index + 1), "", milestone, text(item.unitPrice, "0.0000"), text(item.lineTotal, "0.0000")];
+        const values = [String(item.lineNumber ?? index + 1), "", milestone, text(item.unitPrice, "0.0000"), lineAmountBeforeTaxAndDiscount(item)];
         columnWidths.forEach((cellWidth, col) => addCell(columnXs[col], y, cellWidth, rowHeight));
         doc.font("Helvetica").fontSize(8).fillColor("#161616").text(values[0], columnXs[0] + 3, y + 8, { width: columnWidths[0] - 6, align: "center" });
         doc.font(fontName).fontSize(8).fillColor("#161616").text(description, columnXs[1] + 5, y + 7, { width: columnWidths[1] - 10 });
