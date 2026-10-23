@@ -7,6 +7,14 @@
 - `fx-digitech.webp` — exact supplied transparent WebP export from the FX Digitech logo pack; used in Settings as the line-of-business logo.
 - `fx-coworks.webp` — exact supplied transparent WebP export from the Coworks logo pack; used in Settings as the line-of-business logo.
 
+## Supplied invoice-template logo variants
+
+- `invoice-logos/myfx-pos.jpg` — compact rendering of the supplied **vertical** MyFX POS logo used by the invoice sample.
+- `invoice-logos/fx-digitech.jpg` — compact rendering of the supplied horizontal FX Digitech logo used by its invoice sample.
+- `invoice-logos/fx-coworks.jpg` — compact rendering of the supplied stacked FX Coworks logo used by its invoice sample.
+
+The PDF renderer and brand-first invoice composer prefer these sample-matched variants, then fall back to the configured brand logo and legacy logo assets. These files are logo artwork only; no customer invoice/sample with example financial details is published.
+
 ## Reconstructed-only assets
 
 - `falchion-xeniaa-logo.svg`, `myfx-pos.svg`, `fx-digitech.svg` and `fx-coworks.svg` — editable vector reconstructions retained as design references, not used in place of the exact supplied WebPs in the live logo gallery.

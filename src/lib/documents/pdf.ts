@@ -62,7 +62,11 @@ async function approvedBrandLogo(config: Record<string, unknown>): Promise<Buffe
   const code = text(brand.code ?? brand.name, "").toUpperCase();
   const reference = text(brand.logoReference, "");
   const brandRoot = resolve(process.cwd(), "public", "brand");
-  const approved: string[] = [];
+  const preferred: string[] = [];
+  if (code.includes("COWORK")) preferred.push(join(brandRoot, "invoice-logos", "fx-coworks.jpg"));
+  else if (code.includes("DIGI")) preferred.push(join(brandRoot, "invoice-logos", "fx-digitech.jpg"));
+  else if (code.includes("MYFX") || code.includes("POS")) preferred.push(join(brandRoot, "invoice-logos", "myfx-pos.jpg"));
+  const approved: string[] = [...preferred];
   if (reference.startsWith("/brand/") && !reference.includes("..")) {
     const candidate = resolve(process.cwd(), "public", reference.slice(1));
     if (candidate.startsWith(brandRoot + sep)) approved.push(candidate);
@@ -76,7 +80,6 @@ async function approvedBrandLogo(config: Record<string, unknown>): Promise<Buffe
     const sharp = await import("sharp");
     return await sharp.default(file).rotate().png().toBuffer();
   } catch {
-    // Keep document generation functional with the typographic wordmark fallback.
     return null;
   }
 }
