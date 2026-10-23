@@ -23,7 +23,8 @@ assert.ok(legalEntityCreateRoute.includes('const actor = await requirePermission
   "legal entity creation must await the settings permission check before reading actor roles or identity");
 
 assert.ok(legalEntityCreateRoute.includes("const isFirstLegalEntity = existingEntityRows.length === 0;") &&
-  legalEntityCreateRoute.includes("if (isFirstLegalEntity) await provisionInitialProductBrands(conn,id,actor.userId);"),
+  legalEntityCreateRoute.includes("if (isFirstLegalEntity) {") &&
+  legalEntityCreateRoute.includes("await provisionInitialProductBrands(conn,id,actor.userId);"),
   "first company setup must provision the known product brands once without making the user add them manually");
 assert.ok(legalEntityCreateRoute.includes("brand_legal_entities") &&
   legalEntityCreateRoute.includes("brand_config_versions") &&
