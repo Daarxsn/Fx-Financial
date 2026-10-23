@@ -57,7 +57,7 @@ Against the intended non-production DB, run:
 npm run db:verify
 ~~~
 
-A pass means SELECT 1 and an active TLS cipher with rejectUnauthorized enabled for that target. CI MySQL does not prove the Aiven host/CA/allow-list/grants. Record ordered migration filenames/checksums and schema_migrations before changes; the current chain has 29 migrations.
+A pass means SELECT 1 and an active TLS cipher with rejectUnauthorized enabled for that target. CI MySQL does not prove the Aiven host/CA/allow-list/grants. Record ordered migration filenames/checksums and schema_migrations before changes; the current chain has 31 migrations.
 
 ### Preview smoke
 After a Git-linked Preview deploy finishes, verify the exact commit deployed and run:
