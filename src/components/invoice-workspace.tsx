@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { cloneElement, isValidElement, useCallback, useEffect, useId, useMemo, useState, type FormEvent, type ReactElement, type ReactNode } from "react";
 import { Button, EmptyState, InlineAlert, LoadingState, StatusBadge } from "@/components/ui";
 import { InvoiceCorrectionPanel } from "@/components/invoice-correction-panel";
@@ -8,21 +9,23 @@ import { DocumentHistoryPanel } from "@/components/document-history-panel";
 import { EmailDeliveryPanel } from "@/components/email-delivery-panel";
 
 type LineKind="ITEM"|"CHARGE"; type DiscountType="AMOUNT"|"PERCENT";
-type LineDraft={key:string;catalogItemId:string;lineKind:LineKind;description:string;unitCode:string;quantity:string;unitPrice:string;discountType:DiscountType;discountValue:string;taxCode:string};
+type LineDraft={key:string;catalogItemId:string;lineKind:LineKind;milestone:string;description:string;unitCode:string;quantity:string;unitPrice:string;discountType:DiscountType;discountValue:string;taxCode:string};
 type Entity={id:string;name:string;currency:string;taxSetupStatus:string};
 type Customer={id:string;name:string;customerCode:string|null;email:string|null;paymentTermsDays:number|null};
+type BrandChoice={id:string;name:string;code:string;logoReference:string|null;defaultTemplateKey:string|null;theme?:Record<string,unknown>;legalEntityId:string;legalEntityName:string;currency:string;taxSetupStatus:string;defaultTaxCode:string|null;canAutoMap:boolean};
+type QuickCustomer={name:string;phone:string;line1:string;city:string;state:string;postalCode:string;countryCode:string};
 type Item={id:string;itemCode:string|null;itemType:string;name:string;description:string;unitCode:string;defaultUnitPrice:string;currency:string;defaultTaxCode:string|null};
 type TaxRule={id:string;legalEntityId:string;taxCode:string;displayName:string;ratePercent:string;calculationMode:"EXCLUSIVE"|"INCLUSIVE";effectiveFrom:string;effectiveUntil:string|null};
-type Options={legalEntities:Entity[];customers:Customer[];catalogItems:Item[];taxRules:TaxRule[]};
+type Options={legalEntities:Entity[];brands:BrandChoice[];customers:Customer[];catalogItems:Item[];taxRules:TaxRule[]};
 type Invoice= {id:string;legalEntityId:string;brandId:string|null;customerId:string;customerName:string;documentType:string;invoiceNumber:string|null;lifecycleStatus:string;paymentStatus:string;currency:string;subtotal:string;discountTotal:string;taxableValue:string;taxTotal:string;grandTotal:string;paidAmount:string;outstandingBalance:string;invoiceDate:string|null;dueDate:string|null;paymentTermsDays:number;recordVersion:number;createdAt:string;updatedAt:string;lines?:Array<Record<string,unknown>>;notes?:string|null};
 type InvoicePayment = { id:string; invoiceId:string; receiptReference:string; customerId:string; amount:string; allocatedAmount:string; allocationCount:number; currency:string; paymentDate:string|null; method:string; reference:string|null; status:"RECORDED"|"REVERSED"; notes:string|null; createdAt:string; reversedAt:string|null; reversalReason:string|null };
 type Api={data?:unknown;meta?:{pagination?:{total:number;limit:number;offset:number;hasMore:boolean}};error?:{message?:string;code?:string;fields?:Record<string,string>}};
-const freshLine=():LineDraft=>({key:crypto.randomUUID(),catalogItemId:"",lineKind:"ITEM",description:"",unitCode:"unit",quantity:"1.0000",unitPrice:"0.0000",discountType:"AMOUNT",discountValue:"0.0000",taxCode:""});
+const freshLine=(taxCode=""):LineDraft=>({key:crypto.randomUUID(),catalogItemId:"",lineKind:"ITEM",milestone:"",description:"",unitCode:"unit",quantity:"1.0000",unitPrice:"0.0000",discountType:"AMOUNT",discountValue:"0.0000",taxCode});
 const today=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");};
 const record=(v:unknown):Record<string,unknown>=>v&&typeof v==="object"&&!Array.isArray(v)?v as Record<string,unknown>:{};
 const str=(v:unknown)=>typeof v==="string"||typeof v==="number"?String(v):"";
 const linesFrom=(v:unknown):LineDraft[]=>Array.isArray(v)&&v.length?v.map(x=>{const r=record(x);return {
- key:crypto.randomUUID(),catalogItemId:str(r.catalogItemId),lineKind:r.lineKind==="CHARGE"?"CHARGE":"ITEM",
+ key:crypto.randomUUID(),catalogItemId:str(r.catalogItemId),lineKind:r.lineKind==="CHARGE"?"CHARGE":"ITEM",milestone:str(r.milestone),
  description:str(r.description),unitCode:str(r.unitCode)||"unit",quantity:str(r.quantity)||"1.0000",unitPrice:str(r.unitPrice)||"0.0000",
  discountType:r.discountType==="PERCENT"?"PERCENT":"AMOUNT",discountValue:str(r.discountValue)||"0.0000",taxCode:str(r.taxCode),
 };}):[freshLine()];
@@ -30,7 +33,7 @@ function Field({label,children,wide=false,hint}:{label:string;children:ReactNode
 
 export function InvoiceWorkspace(){
  const [permissions,setPermissions]=useState<string[]>([]);
- const [options,setOptions]=useState<Options>({legalEntities:[],customers:[],catalogItems:[],taxRules:[]});
+ const [options,setOptions]=useState<Options>({legalEntities:[],brands:[],customers:[],catalogItems:[],taxRules:[]});
  const [rows,setRows]=useState<Invoice[]>([]);const [total,setTotal]=useState(0);const [offset,setOffset]=useState(0);
  const [status,setStatus]=useState("all");const [query,setQuery]=useState("");
  const [loading,setLoading]=useState(true);const [optionsLoading,setOptionsLoading]=useState(false);
@@ -38,6 +41,9 @@ export function InvoiceWorkspace(){
  const [error,setError]=useState("");const [success,setSuccess]=useState("");
  const [editor,setEditor]=useState(false);const [selected,setSelected]=useState<Invoice|null>(null);
  const [form,setForm]=useState({legalEntityId:"",brandId:"",customerId:"",currency:"",invoiceDate:today(),dueDate:"",paymentTermsDays:"0",notes:""});
+ const [customerMode,setCustomerMode]=useState<"existing"|"new">("existing");
+ const [quickCustomer,setQuickCustomer]=useState<QuickCustomer>({name:"",phone:"",line1:"",city:"",state:"",postalCode:"",countryCode:"IN"});
+ const [recipientEmail,setRecipientEmail]=useState("");const [recipientConfirmed,setRecipientConfirmed]=useState(false);const [emailKey,setEmailKey]=useState(()=>crypto.randomUUID());
  const [lines,setLines]=useState<LineDraft[]>([freshLine()]);const [dirty,setDirty]=useState(false);
  const [createKey,setCreateKey]=useState(()=>crypto.randomUUID()+crypto.randomUUID());const [issueKeys,setIssueKeys]=useState<Record<string,string>>({});
  const [paymentHistory,setPaymentHistory]=useState<InvoicePayment[]>([]);const [paymentHistoryLoading,setPaymentHistoryLoading]=useState(false);
@@ -45,9 +51,11 @@ export function InvoiceWorkspace(){
  const [paymentKey,setPaymentKey]=useState(()=>crypto.randomUUID()+crypto.randomUUID());
  const [reversingPaymentId,setReversingPaymentId]=useState("");const [reversalReason,setReversalReason]=useState("");const [reversalKey,setReversalKey]=useState(()=>crypto.randomUUID()+crypto.randomUUID());
  const limit=25;const canCreate=permissions.includes("invoices:draft:create");const canUpdate=permissions.includes("invoices:draft:update");const canIssue=permissions.includes("invoices:issue");
- const canRead=permissions.includes("invoices:read");
+ const canRead=permissions.includes("invoices:read");const canAddCustomer=permissions.includes("customers:create");const canSendEmail=permissions.includes("email:send");
  const canReadPayments=permissions.includes("payments:read");const canRecordPayment=permissions.includes("payments:record");const canReversePayment=permissions.includes("payments:reverse");
- const missingSetup=!optionsLoading&&canCreate&&(!options.legalEntities.length||!options.customers.length);
+ const validBrands=options.brands.filter(b=>b.canAutoMap);
+ const missingSetup=!optionsLoading&&canCreate&&(!options.legalEntities.length||!validBrands.length);
+ const selectedBrand=options.brands.find(b=>b.id===form.brandId);
  const selectedEntity=options.legalEntities.find(e=>e.id===form.legalEntityId);
  const rules=useMemo(()=>options.taxRules.filter(r=>r.legalEntityId===form.legalEntityId&&(!form.invoiceDate||r.effectiveFrom<=form.invoiceDate)&&(!r.effectiveUntil||r.effectiveUntil>=form.invoiceDate)),[options.taxRules,form.legalEntityId,form.invoiceDate]);
  const getRequest=useCallback(async(url:string,init:RequestInit={})=>{
@@ -58,7 +66,7 @@ export function InvoiceWorkspace(){
  const refreshProfile=useCallback(async()=>{try{const r=await fetch("/api/v1/auth/me",{cache:"no-store"});const b=await r.json() as {data?:{user?:{permissions?:string[]}}};if(r.ok)setPermissions(b.data?.user?.permissions??[]);}catch{/* server still enforces all access */}},[]);
  const refreshOptions=useCallback(async()=>{
   if(!canCreate&&!canUpdate)return;setOptionsLoading(true);
-  try{const r=await getRequest("/api/v1/invoices/draft-options");if(!r.response.ok)throw new Error(r.body.error?.message??"Invoice form options could not be loaded.");setOptions((r.body.data??{legalEntities:[],customers:[],catalogItems:[],taxRules:[]}) as Options);}
+  try{const r=await getRequest("/api/v1/invoices/draft-options");if(!r.response.ok)throw new Error(r.body.error?.message??"Invoice form options could not be loaded.");setOptions((r.body.data??{legalEntities:[],brands:[],customers:[],catalogItems:[],taxRules:[]}) as Options);}
   catch(e){setError(e instanceof Error?e.message:"Invoice form options could not be loaded.");}
   finally{setOptionsLoading(false);}
  },[canCreate,canUpdate,getRequest]);
