@@ -291,8 +291,8 @@ export default function SettingsPage(){
      <p className="quick-setup-lead">These are the only details we need to create your supplier profile. We do not fill in tax IDs, tax rates, or bank details for you.</p>
      <form className="config-form" onSubmit={e=>void mutate(e,saveQuickSetup,"Business profile saved. Next, add your first customer.")}>
       <Grid>
-       <Input id="quick-legal-name" label="Registered business name" required value={String(company.legalName)} onChange={s=>setValue(setCompany,"legalName",s)}/>
-       <Input id="quick-display-name" label="Name shown on invoices" required value={String(company.displayName)} onChange={s=>setValue(setCompany,"displayName",s)}/>
+       <Input id="quick-legal-name" label="Registered legal business name" required value={String(company.legalName)} onChange={s=>setValue(setCompany,"legalName",s)} hint="Use the exact legal name shown on your company registration documents."/>
+       <Input id="quick-display-name" label="Supplier name shown on invoices" required value={String(company.displayName)} onChange={s=>setValue(setCompany,"displayName",s)} hint="Use the supplier’s legal or trading name, not a product brand. Choose MyFX POS, FX Digitech or FX Coworks separately when creating each invoice."/>
        <Input id="quick-country-code" label="Country code" required value={String(company.countryCode)} onChange={s=>setValue(setCompany,"countryCode",s.toUpperCase())} hint="Two letters, such as IN for India."/>
        <Select id="quick-currency" label="Invoice currency" value={String(company.currency)} onChange={s=>setValue(setCompany,"currency",s)} options={[{value:"INR",label:"INR · Indian rupee"},{value:"AED",label:"AED · UAE dirham"},{value:"USD",label:"USD · US dollar"},{value:"GBP",label:"GBP · Pound sterling"},{value:"EUR",label:"EUR · Euro"}]} required/>
        <Input id="quick-address-line1" label="Business address" required value={String(company.line1)} onChange={s=>setValue(setCompany,"line1",s)}/>

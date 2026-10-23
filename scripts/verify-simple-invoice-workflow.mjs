@@ -10,6 +10,7 @@ const invoiceCreateRoute = read("src/app/api/v1/invoices/route.ts");
 const invoiceDetailRoute = read("src/app/api/v1/invoices/[invoiceId]/route.ts");
 const recipientMigration = read("database/migrations/031_invoice_draft_recipient_email.sql");
 const composer = read("src/components/invoice-workspace.tsx");
+const settings = read("src/app/(workspace)/settings/page.tsx");
 const renderer = read("src/lib/documents/pdf.ts");
 const invoiceSchema = read("src/lib/validation/invoice.ts");
 const invoiceDraftService = read("src/lib/finance/invoice-draft-service.ts");
@@ -38,6 +39,9 @@ assert.ok(options.includes("legalEntityId:b.legal_entity_id"), "brand options mu
 assert.ok(composer.includes("Invoice from"), "daily invoice creation must start with the brand, not legal-entity settings");
 assert.ok(composer.includes('brandId:"",customerId:"",currency:""'), "new invoices must require explicit brand, customer and currency choices rather than silently choosing the first records");
 assert.ok(composer.includes('setCustomerMode(canAddCustomer?"new":"existing")'), "new invoices start with inline customer entry only when the caller is authorized to create customers");
+assert.ok(settings.includes('label="Supplier name shown on invoices"') &&
+  settings.includes("not a product brand. Choose MyFX POS, FX Digitech or FX Coworks separately"),
+  "first-time setup must distinguish the legal supplier identity from the three invoice brands");
 assert.ok(composer.includes("Issue & send invoice"), "the composer must offer the combined issue-and-send action");
 assert.ok(composer.includes('<Field label="Email to send the invoice to" wide hint='), "recipient email must use the shared labelled field so assistive technology can associate the input and hint");
 assert.ok(composer.includes('"/api/v1/customers"'), "customer creation must be available directly in the invoice workflow");
