@@ -76,7 +76,7 @@ check("main-branch CI invokes Pack 10 structural validation and synthetic tests"
   workflow.includes("npm run pack10:validate") &&
   workflow.includes("npm run pack10:gate-test"));
 check("business UAT plan and evidence ledger preserve external release gates",
-  plan.includes("Release boundary") && plan.includes("not be marked release-locked") &&
+  plan.includes("Release boundary") && plan.includes("cannot be marked release-locked") &&
   ledger.includes("LOCK STATUS: BLOCKED") && ledger.includes("managed backup restore"));
 
 if (failures.length) {
