@@ -437,7 +437,7 @@ try {
    await page.goto(baseUrl + "/payments");
    await page.getByRole("heading", { name: "Payment ledger", exact: true }).waitFor();
    await page.getByLabel("Legal entity", { exact: true }).selectOption(String(invoiceTestEntity.id));
-   await page.getByLabel("Customer", { exact: true }).selectOption(String(invoiceTestCustomer.id));
+   await page.getByLabel("Customer", { exact: true }).selectOption(String(invoiceBrowserCustomer.id));
    await page.getByLabel("Amount", { exact: true }).fill("50.0000");
    await page.getByLabel("Payment date", { exact: true }).fill(invoiceUiDate);
    await page.getByLabel("Payment method", { exact: true }).selectOption("CASH");
@@ -447,7 +447,7 @@ try {
    await page.getByRole("heading", { name: /^RCPT-[0-9A-F]{32}$/ }).waitFor();
    const [p3BrowserReceiptRows] = await db.execute(
      "SELECT id,receipt_reference,status FROM payments WHERE legal_entity_id=? AND customer_id=? AND reference=? ORDER BY created_at DESC LIMIT 1",
-     [invoiceTestEntity.id, invoiceTestCustomer.id, p3ExternalReference],
+     [invoiceTestEntity.id, invoiceBrowserCustomer.id, p3ExternalReference],
    );
    assert.equal(p3BrowserReceiptRows.length, 1, "Payments workspace persists one standalone receipt");
    assert.equal(p3BrowserReceiptRows[0].status, "RECORDED");
