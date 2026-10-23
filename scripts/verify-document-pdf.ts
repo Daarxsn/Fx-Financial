@@ -94,6 +94,7 @@ try {
   for (const fixture of fixtures) {
     const bytes = await renderDocumentPdf(fixture, "2026-10-22T10:00:00.000Z");
     assert.ok(bytes.length > 1000, fixture.sourceType + " PDF must have meaningful output");
+    assert.ok(bytes.toString("latin1").includes("/Subtype /Image"), fixture.sourceType + " PDF must embed the supplied brand logo asset");
     assert.equal(bytes.subarray(0, 5).toString("ascii"), "%PDF-", fixture.sourceType + " output must be a PDF");
     assert.ok(bytes.length <= 25 * 1024 * 1024, "PDF stays within the storage limit");
     rendered.push(bytes);
