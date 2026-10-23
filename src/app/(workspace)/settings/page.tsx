@@ -46,7 +46,13 @@ async function api<T>(path:string,method="GET",body?:unknown):Promise<T>{
   if(!csrf){const boot=await fetch("/api/v1/auth/csrf",{cache:"no-store",credentials:"same-origin"});const v=await boot.json();if(!boot.ok)throw new Error("Request verification failed. Refresh and try again.");csrf=String(v?.data?.csrfToken??"")}
  }
  const response=await fetch(path,{method,cache:"no-store",credentials:"same-origin",headers:{"Accept":"application/json",...(body?{"Content-Type":"application/json"}:{}),...(csrf?{"X-CSRF-Token":csrf}:{})},...(body?{body:JSON.stringify(body)}:{})});
- const payload=await response.json().catch(()=>null);if(!response.ok)throw new Error(payload?.error?.message??"The configuration request failed.");return payload?.data as T;
+ const payload=await response.json().catch(()=>null);
+ if(!response.ok){
+  const apiError=payload?.error as {message?:string;code?:string;requestId?:string}|undefined;
+  const detail=[method+" "+path,"HTTP "+response.status,apiError?.code,apiError?.requestId?"request ID "+apiError.requestId:""].filter(Boolean).join(" · ");
+  throw new Error((apiError?.message??"The configuration request failed.")+" ("+detail+")");
+ }
+ return payload?.data as T;
 }
 function Input({id,label,value,onChange,type="text",required=false,disabled=false,hint}:{id:string;label:string;value:string;onChange:(s:string)=>void;type?:string;required?:boolean;disabled?:boolean;hint?:string}){
  return <TextField id={id} label={label} value={value} onChange={e=>onChange(e.target.value)} type={type} required={required} disabled={disabled} hint={hint}/>;

@@ -133,22 +133,29 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  let stage = "CSRF validation";
   try {
     await assertCsrf(request);
-    const actor=await requirePermission("settings:manage");
+    stage = "permission check";
+    const actor=requirePermission("settings:manage");
+    stage = "validate company fields";
     const input=legalEntityCreateSchema.parse(await request.json());
     if (input.taxSetupStatus !== "UNCONFIGURED" || input.bankDetails) requireFinanceConfigurationApprover(actor);
     const id=randomUUID();
+    stage = "open database connection";
     const conn=await pool.getConnection();
     let output;
     try {
+      stage = "begin company transaction";
       await conn.beginTransaction();
+      stage = "check whether this is the first legal entity";
       // Only the first legal entity triggers one-time provisioning of the known product brands.
       // Additional entities require deliberate mappings rather than inheriting every brand.
       const [existingEntityRows] = await conn.query<(RowDataPacket & { id: string })[]>(
         "SELECT id FROM legal_entities ORDER BY id LIMIT 1 FOR UPDATE",
       );
       const isFirstLegalEntity = existingEntityRows.length === 0;
+      stage = "insert legal entity";
       await conn.execute<ResultSetHeader>(
         `INSERT INTO legal_entities
          (id,legal_name,display_name,registration_number,tax_identifier,address_json,billing_address_json,country_code,invoice_email,invoice_phone,
@@ -161,21 +168,43 @@ export async function POST(request: NextRequest) {
           input.invoiceTerms??null,input.invoiceFooter??null,input.defaultTaxCode||null,input.taxSetupStatus,
           input.taxSetupStatus==="UNCONFIGURED"?null:input.taxSetupApprovalReference||null,
           input.taxSetupStatus==="UNCONFIGURED"?null:actor.userId,input.taxSetupStatus==="UNCONFIGURED"?null:new Date()]);
-      // The creator receives explicit scope only to the entity they just created.
+      stage = "grant creator access to legal entity";
       await conn.execute(
         "INSERT INTO user_legal_entity_access (user_id,legal_entity_id,granted_by) VALUES (?,?,?)",
         [actor.userId,id,actor.userId]);
-      if (isFirstLegalEntity) await provisionInitialProductBrands(conn,id,actor.userId);
+      if (isFirstLegalEntity) {
+        stage = "provision MyFX POS, FX Digitech and FX Coworks";
+        await provisionInitialProductBrands(conn,id,actor.userId);
+      }
+      stage = "load company profile";
       const row=await loadEntity(conn,id);
       if(!row) throw new Error("Configuration creation failed");
+      stage = "capture company configuration version";
       const version=await captureLegalEntityConfigVersion(conn,row,actor.userId,input.changeReason);
+      stage = "seed required invoice policy decisions";
       await seedEntityPolicyDecisions(conn,id);
+      stage = "record company audit event";
       await recordAudit(conn,actor.userId,"legal_entity.created","legal_entity",id,input.changeReason,null,
         { ...publicLegalEntity(row), configVersion: version.versionNumber });
       output=publicLegalEntity(row);
+      stage = "commit company transaction";
       await conn.commit();
-    } catch(error) { await conn.rollback(); throw error; }
-    finally { conn.release(); }
+    } catch(error) {
+      await conn.rollback();
+      throw error;
+    } finally { conn.release(); }
     return jsonNoStore({data:output},201);
-  } catch(error) { return apiError(error); }
+  } catch(error) {
+    const failure = error && typeof error === "object" ? error as {code?:unknown;errno?:unknown;sqlState?:unknown} : {};
+    if (!(error instanceof Error && error.name === "ZodError")) {
+      console.error("Legal entity setup failed", {
+        stage,
+        errorName: error instanceof Error ? error.name : typeof error,
+        databaseCode: typeof failure.code === "string" ? failure.code : undefined,
+        databaseErrno: typeof failure.errno === "number" ? failure.errno : undefined,
+        databaseSqlState: typeof failure.sqlState === "string" ? failure.sqlState : undefined,
+      });
+    }
+    return apiError(error);
+  }
 }
