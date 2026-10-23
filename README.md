@@ -70,3 +70,20 @@ The core Phase 01–06 code, tests, audit work and exact supplied logo exports h
 Settings shows sanitized SVG invoice-layout reconstructions guided by the supplied samples as reference-only designs. They are not pixel copies of the source invoice sheets, active template records, or issued PDFs. The raw invoice samples are deliberately not served from `public/` because they contain example business/customer/financial details.
 
 Phase 07 customer/catalog work is in progress directly on `main`. See [the Phase 07 scope and implementation status](docs/phase-07-customer-and-catalog.md), [the Phase 01–06 tracker](docs/phase-00-06-implementation-tracker.md), [the repository audit](docs/repository-audit-phase-00-06.md), and [the closure gates](docs/phase-00-06-closure-gates.md). Formal business/finance/tax approval, a provider-level Aiven restore drill, approved production values and runtime configuration, and manual visual QA remain open until independently completed.
+
+## Pack 10 — business UAT and controlled release
+
+Pack 10's UAT scenarios, business test plan, evidence schema, fail-closed release checker and lock ledger are documented in [the UAT plan](docs/pack-10-business-uat-plan.md), [the canonical scenario manifest](docs/pack-10-uat-scenarios.json), [the release evidence schema](docs/pack-10-release-evidence.schema.json), and [the evidence ledger](docs/pack-10-uat-evidence-ledger.md). Pack 10 is not a production release approval: the current ledger keeps the gate blocked until actual tenant testing, exact-SHA CI and Preview proof, Pack 9 provider/recovery evidence, owner sign-offs and a formal GO decision exist.
+
+Run source-level checks and synthetic evidence-gate tests:
+
+```bash
+npm run pack10:validate
+npm run pack10:gate-test
+```
+
+The release checker inspects an evidence packet without deploying or mutating production. Supply a completed, independently reviewed packet only after UAT:
+
+```bash
+node scripts/check-pack-10-release-gate.mjs --evidence=/secure/path/pack-10-release-evidence.json --sha=<40-character-release-commit-sha>
+```
