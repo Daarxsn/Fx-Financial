@@ -173,8 +173,6 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       const width = right - left;
       const pageBottom = () => doc.page.height - doc.page.margins.bottom - 4;
       const clean = (value: unknown) => text(value, "");
-      const addRule = (y: number, color = "#222222", weight = 0.6) =>
-        doc.save().strokeColor(color).lineWidth(weight).moveTo(left, y).lineTo(right, y).stroke().restore();
       const addCell = (x: number, y: number, w: number, h: number, fill = "#FFFFFF") => {
         doc.save().fillColor(fill).rect(x, y, w, h).fill().restore();
         doc.save().strokeColor("#222222").lineWidth(0.55).rect(x, y, w, h).stroke().restore();
@@ -235,8 +233,8 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
         clean(customer.taxIdentifier) ? "GSTIN: " + clean(customer.taxIdentifier) : "",
       ].filter(Boolean);
       body(9).text(clientLines.join("\n") || "Customer billing details", customerX, identityY + 23, { width: half, align: "right", lineGap: 2 });
-      const leftBlockHeight = doc.heightOfString(issuerLines.join("\n") || "Supplier details from approved company settings.", { width: half, fontSize: 9 });
-      const rightBlockHeight = doc.heightOfString(clientLines.join("\n") || "Customer billing details", { width: half, fontSize: 9 });
+      const leftBlockHeight = doc.heightOfString(issuerLines.join("\n") || "Supplier details from approved company settings.", { width: half });
+      const rightBlockHeight = doc.heightOfString(clientLines.join("\n") || "Customer billing details", { width: half });
       const identityBottom = Math.max(identityY + 23 + leftBlockHeight, identityY + 23 + rightBlockHeight);
       doc.y = Math.max(identityBottom + 62, 343);
 
@@ -263,9 +261,9 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
         const milestone = text(item.milestone, "—");
         const quantityUnit = "Qty: " + text(item.quantity, "1") + " " + text(item.unitCode, "unit");
         body(8);
-        const descH = doc.heightOfString(description, { width: columnWidths[1] - 10, fontSize: 8 });
-        const qtyH = doc.heightOfString(quantityUnit, { width: columnWidths[1] - 10, fontSize: 6.5 });
-        const milestoneH = doc.heightOfString(milestone, { width: columnWidths[2] - 8, fontSize: 8 });
+        const descH = doc.heightOfString(description, { width: columnWidths[1] - 10 });
+        const qtyH = doc.heightOfString(quantityUnit, { width: columnWidths[1] - 10 });
+        const milestoneH = doc.heightOfString(milestone, { width: columnWidths[2] - 8 });
         const rowHeight = Math.max(45, descH + qtyH + 15, milestoneH + 14);
         if (doc.y + rowHeight > pageBottom()) { doc.addPage(); doc.y = 36; drawLineHeader(); }
         const y = doc.y;
@@ -306,7 +304,7 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
 
       rendererStage = "amount-words";
       const words = amountInWords(amt(snapshot.grandTotal), text(snapshot.currency, "INR"));
-      ensure(doc.heightOfString(words, { width: width * 0.57, fontSize: 9 }) + 32);
+      ensure(doc.heightOfString(words, { width: width * 0.57 }) + 32);
       doc.moveDown(1.2);
       doc.font("Helvetica-Bold").fontSize(9).fillColor("#090909").text("Amount in words:", left, doc.y, { width: width * 0.57 });
       doc.moveDown(0.35);
@@ -341,9 +339,9 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       const terms = text(templateConfig.terms ?? entityConfig.invoiceTerms ?? templateConfig.footer ?? entityConfig.invoiceFooter, "");
       const closing = "Looking forward to doing business with you.";
       const footerHalf = (width - 28) / 2;
-      const termsHeight = terms ? doc.heightOfString(terms, { width: footerHalf, fontSize: 8 }) : 0;
-      const bankHeight = bankLines.length ? doc.heightOfString(bankLines.join("\n"), { width: footerHalf, fontSize: 8 }) : 0;
-      const closingHeight = doc.heightOfString(closing, { width: footerHalf, fontSize: 12 });
+      const termsHeight = terms ? doc.heightOfString(terms, { width: footerHalf }) : 0;
+      const bankHeight = bankLines.length ? doc.heightOfString(bankLines.join("\n"), { width: footerHalf }) : 0;
+      const closingHeight = doc.heightOfString(closing, { width: footerHalf });
       ensure(Math.max(84, termsHeight, bankHeight) + closingHeight + 30);
       doc.moveDown(1.25);
       const footerTop = doc.y;
