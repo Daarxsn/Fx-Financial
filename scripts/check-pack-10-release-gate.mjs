@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -9,9 +8,6 @@ const SHA_PATTERN = /^[a-f0-9]{40}$/;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}T/;
 const failures = [];
 
-function fail(message) {
-  failures.push(message);
-}
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
