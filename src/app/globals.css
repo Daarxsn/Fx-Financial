@@ -1524,3 +1524,24 @@ a, button, input, select, textarea { transition-duration: 160ms; }
 .nav-group__toggle:focus-visible { outline:2px solid var(--focus, #b58a42); outline-offset:3px; border-radius:5px; }
 .nav-group__toggle-hint { color:var(--muted); font-size:10px; font-weight:650; text-transform:none; letter-spacing:0; }
 .nav-group--advanced { margin-top:2px; padding-top:1px; }
+
+
+/* Brand-first invoice composer: daily invoicing stays simple; regulated configuration stays in one-time setup. */
+.invoice-composer-brand{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(210px,.7fr);gap:22px;padding:18px;border:1px solid var(--border,#d9e1e5);border-radius:16px;background:var(--surface-subtle,#f8fafb);margin:8px 0 20px}
+.invoice-composer-brand__picker,.invoice-composer-brand__meta{display:flex;flex-direction:column;gap:9px;min-width:0}
+.invoice-composer-brand__issuer{display:flex;align-items:center;gap:14px;padding:12px;background:var(--surface,#fff);border:1px solid var(--border,#d9e1e5);border-radius:12px;min-height:82px}
+.invoice-composer-brand__issuer img{object-fit:contain;max-width:144px;height:48px}
+.invoice-composer-brand__issuer div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.invoice-composer-brand__issuer span{font-size:12px;color:var(--text-muted,#64737b)}
+.invoice-composer-brand__meta>span{font-size:10px;letter-spacing:.1em;color:var(--text-muted,#64737b);font-weight:700}
+.invoice-line-list-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:24px 0 12px}
+.invoice-line-list-heading h3{margin:0 0 4px}
+.invoice-line-card--simple{padding:16px 18px;border-radius:14px;background:var(--surface,#fff);border:1px solid var(--border,#d9e1e5);margin:12px 0}
+.invoice-line-grid--simple{display:grid;grid-template-columns:minmax(120px,.8fr) minmax(220px,2fr) minmax(90px,.5fr) minmax(120px,.8fr);gap:12px}
+.invoice-line-advanced{margin-top:12px;border-top:1px solid var(--border,#e1e6e8);padding-top:10px}
+.invoice-line-advanced summary{cursor:pointer;font-size:12px;color:var(--text-muted,#64737b);font-weight:600}
+.invoice-recipient-confirm{padding:12px 14px;border-radius:10px;background:var(--surface-subtle,#f8fafb);margin-top:16px}
+.invoice-recipient-confirm label{display:flex;align-items:flex-start;gap:9px;font-size:13px;line-height:1.5}
+.invoice-recipient-confirm input{margin-top:3px}
+.invoice-inline-link{border:0;background:transparent;color:var(--accent,#0d665b);text-decoration:underline;cursor:pointer;padding:4px 0;font:inherit}
+@media(max-width:760px){.invoice-composer-brand{grid-template-columns:1fr;padding:14px}.invoice-line-grid--simple{grid-template-columns:1fr 1fr}.invoice-line-grid--simple .invoice-form-field--wide{grid-column:1/-1}.invoice-composer-brand__issuer{align-items:flex-start;flex-direction:column}.invoice-line-list-heading{align-items:flex-start}}
