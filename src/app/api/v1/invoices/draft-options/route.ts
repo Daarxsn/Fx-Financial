@@ -8,13 +8,13 @@ export async function GET(){
   let actor;try{actor=await requirePermission("invoices:draft:create");}catch(error){if(!(error instanceof AuthorizationError)||error.code!=="FORBIDDEN")throw error;actor=await requirePermission("invoices:draft:update");}const scope=[...new Set(actor.legalEntityIds)];
   if(!scope.length)return jsonNoStore({data:{legalEntities:[],brands:[],customers:[],catalogItems:[],taxRules:[]}});
   const placeholders=scope.map(()=>"?").join(",");
-  const [entities]=await pool.query<(RowDataPacket & {id:string;display_name:string;currency:string;tax_setup_status:string})[]>(
-    `SELECT id,display_name,currency,tax_setup_status FROM legal_entities WHERE id IN (${placeholders}) AND is_active=TRUE ORDER BY display_name,id`,scope);
-  const [brandRows]=await pool.query<(RowDataPacket & {id:string;name:string;code:string;logo_reference:string|null;default_template_key:string|null;theme_json:unknown;legal_entity_id:string;entity_name:string;currency:string;tax_setup_status:string;is_default:number;mapping_count:number})[]>(
+  const [entities]=await pool.query<(RowDataPacket & {id:string;display_name:string;currency:string;tax_setup_status:string;default_tax_code:string|null})[]>(
+    `SELECT id,display_name,currency,tax_setup_status,default_tax_code FROM legal_entities WHERE id IN (${placeholders}) AND is_active=TRUE ORDER BY display_name,id`,scope);
+  const [brandRows]=await pool.query<(RowDataPacket & {id:string;name:string;code:string;logo_reference:string|null;default_template_key:string|null;theme_json:unknown;legal_entity_id:string;entity_name:string;currency:string;tax_setup_status:string;default_tax_code:string|null;is_default:number;mapping_count:number})[]>(
     `SELECT id,name,code,logo_reference,default_template_key,theme_json,legal_entity_id,entity_name,currency,tax_setup_status,is_default,mapping_count
      FROM (
        SELECT b.id,b.name,b.code,b.logo_reference,b.default_template_key,b.theme_json,
-              e.id AS legal_entity_id,e.display_name AS entity_name,e.currency,e.tax_setup_status,ble.is_default,
+              e.id AS legal_entity_id,e.display_name AS entity_name,e.currency,e.tax_setup_status,e.default_tax_code,ble.is_default,
               COUNT(*) OVER (PARTITION BY b.id) AS mapping_count,
               ROW_NUMBER() OVER (PARTITION BY b.id ORDER BY ble.is_default DESC,ble.legal_entity_id ASC) AS mapping_rank
        FROM brands b
@@ -34,10 +34,10 @@ export async function GET(){
              DATE_FORMAT(effective_until, '%Y-%m-%d') AS effective_until FROM tax_rules
       WHERE legal_entity_id IN (${placeholders}) AND is_active=TRUE AND approved_at IS NOT NULL ORDER BY legal_entity_id,tax_code,effective_from DESC`,scope);
   return jsonNoStore({data:{
-   legalEntities:entities.map(e=>({id:e.id,name:e.display_name,currency:e.currency,taxSetupStatus:e.tax_setup_status})),
+   legalEntities:entities.map(e=>({id:e.id,name:e.display_name,currency:e.currency,taxSetupStatus:e.tax_setup_status,defaultTaxCode:e.default_tax_code})),
    brands:brandRows.map(b=>({id:b.id,name:b.name,code:b.code,logoReference:b.logo_reference,defaultTemplateKey:b.default_template_key,
      theme:typeof b.theme_json==="string"?(()=>{try{return JSON.parse(b.theme_json) as Record<string,unknown>}catch{return {}}})():b.theme_json??{},
-     legalEntityId:b.legal_entity_id,legalEntityName:b.entity_name,currency:b.currency,taxSetupStatus:b.tax_setup_status,
+     legalEntityId:b.legal_entity_id,legalEntityName:b.entity_name,currency:b.currency,taxSetupStatus:b.tax_setup_status,defaultTaxCode:b.default_tax_code,
      canAutoMap:Boolean(b.is_default)||Number(b.mapping_count)===1,
    })),
    customers:customers.map(c=>({id:c.id,name:c.name,customerCode:c.customer_code,email:c.email,paymentTermsDays:c.payment_terms_days===null?null:Number(c.payment_terms_days)})),
