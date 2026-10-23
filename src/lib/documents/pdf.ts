@@ -159,8 +159,8 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       const isCoworks = code.includes("COWORK");
       const isDigitech = code.includes("DIGI");
       const gold = "#DCAF51";
-      const red = "#F25138";
-      const green = "#67AF7A";
+      const brandAccent = isCoworks ? "#931314" : isDigitech ? "#111111" : gold;
+      const brandSecondary = isCoworks ? gold : "#931314";
       const sourceLabel = snapshot.sourceType === "INVOICE"
         ? text(templateConfig.documentTitle, "PROFORMA INVOICE:")
         : snapshot.sourceType === "QUOTATION" ? "QUOTATION" : "PAYMENT RECEIPT";
@@ -209,6 +209,9 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       const ensure = (height: number) => { if (doc.y + height > pageBottom()) { doc.addPage(); doc.y = 36; } };
 
       rendererStage = "header";
+      // Brand-specific top stripes follow the supplied A4 invoice samples.
+      doc.save().fillColor(brandAccent).rect(0, 0, doc.page.width, 8).fill().restore();
+      doc.save().fillColor(brandSecondary).rect(0, 8, doc.page.width, 3).fill().restore();
       const wordmarkFit: [number, number] = isDigitech ? [210, 78] : [138, 108];
       if (logoBuffer) doc.image(logoBuffer, left + 8, 27, { fit: wordmarkFit, valign: "center" });
       else {
@@ -224,16 +227,11 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       const expiry = snapshot.sourceType === "QUOTATION" ? snapshot.validUntil : snapshot.dueDate;
       doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#111111").text(expiryLabel, titleX + 6, 104, { width: 68, align: "right", continued: true });
       doc.font("Helvetica").fontSize(9.5).fillColor("#111111").text(expiry?.slice(0, 10) ?? "—", { width: titleWidth - 74, align: "right" });
-      const triWidth = Math.min(286, width * 0.56);
-      const triX = right - triWidth;
-      const triY = 126;
-      const segment = triWidth / 3;
-      doc.save().fillColor(gold).rect(triX, triY, segment, 4).fill().restore();
-      doc.save().fillColor(red).rect(triX + segment, triY, segment, 4).fill().restore();
-      doc.save().fillColor(green).rect(triX + segment * 2, triY, triWidth - segment * 2, 4).fill().restore();
+      const separatorY = 164;
+      doc.save().strokeColor("#D7D7D7").lineWidth(1).moveTo(left, separatorY).lineTo(right, separatorY).stroke().restore();
 
       rendererStage = "issuer-customer";
-      const identityY = 174;
+      const identityY = 194;
       const half = (width - 20) / 2;
       const customerX = left + half + 20;
       const leftAddress = addressLines(supplier.billingAddress ?? supplier.address ?? supplier.registeredAddress);
@@ -252,7 +250,7 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       ].filter(Boolean);
       doc.font("Helvetica-Bold").fontSize(12).fillColor("#050505").text(issuer.toUpperCase(), left, identityY, { width: half });
       body(9).text(issuerLines.join("\n") || "Supplier details from approved company settings.", left, identityY + 23, { width: half, lineGap: 2 });
-      doc.font("Helvetica-Bold").fontSize(12).fillColor("#050505").text("BILL TO:", customerX, identityY, { width: half, align: "right" });
+      doc.font("Helvetica-Bold").fontSize(12).fillColor("#050505").text("BILL TO:", customerX, identityY, { width: half });
       const customerAddress = addressLines(customer.billingAddress ?? customer.address);
       const clientLines = [
         "Name: " + customerName,
@@ -260,24 +258,24 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
         ...customerAddress.map((part, index) => index === 0 ? "Address: " + part : part),
         clean(customer.taxIdentifier) ? "GSTIN: " + clean(customer.taxIdentifier) : "",
       ].filter(Boolean);
-      body(9).text(clientLines.join("\n") || "Customer billing details", customerX, identityY + 23, { width: half, align: "right", lineGap: 2 });
+      body(9).text(clientLines.join("\n") || "Customer billing details", customerX, identityY + 23, { width: half, lineGap: 2 });
       const leftBlockHeight = doc.heightOfString(issuerLines.join("\n") || "Supplier details from approved company settings.", { width: half });
       const rightBlockHeight = doc.heightOfString(clientLines.join("\n") || "Customer billing details", { width: half });
       const identityBottom = Math.max(identityY + 23 + leftBlockHeight, identityY + 23 + rightBlockHeight);
-      doc.y = Math.max(identityBottom + 62, 343);
+      doc.y = Math.max(identityBottom + 34, 288);
 
       rendererStage = "line-items";
       const rows = Array.isArray(snapshot.lines) ? snapshot.lines : [];
-      const columnWidths = [width * 0.07, width * 0.337, width * 0.167, width * 0.204, width * 0.222];
+      const columnWidths = [width * 0.07, width * 0.45, width * 0.16, width * 0.15, width * 0.17];
       const columnXs = [left];
       for (let index = 0; index < columnWidths.length - 1; index++) columnXs.push(columnXs[index] + columnWidths[index]);
-      const headerHeight = 25;
+      const headerHeight = 34;
       const drawLineHeader = () => {
         const y = doc.y;
         const labels = ["#", "Description", "Milestone", "Rate", "Amount"];
         labels.forEach((label, index) => {
-          addCell(columnXs[index], y, columnWidths[index], headerHeight, "#EEEEEE");
-          doc.font("Helvetica-Bold").fontSize(8).fillColor("#111111")
+          addCell(columnXs[index], y, columnWidths[index], headerHeight, brandAccent);
+          doc.font("Helvetica-Bold").fontSize(8).fillColor("#FFFFFF")
             .text(label, columnXs[index] + 4, y + 7, { width: columnWidths[index] - 8, align: index === 0 ? "center" : "left" });
         });
         doc.y = y + headerHeight;
@@ -292,7 +290,7 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
         const descH = doc.heightOfString(description, { width: columnWidths[1] - 10 });
         const qtyH = doc.heightOfString(quantityUnit, { width: columnWidths[1] - 10 });
         const milestoneH = doc.heightOfString(milestone, { width: columnWidths[2] - 8 });
-        const rowHeight = Math.max(45, descH + qtyH + 15, milestoneH + 14);
+        const rowHeight = Math.max(34, descH + qtyH + 15, milestoneH + 14);
         if (doc.y + rowHeight > pageBottom()) { doc.addPage(); doc.y = 36; drawLineHeader(); }
         const y = doc.y;
         const values = [String(item.lineNumber ?? index + 1), "", milestone, text(item.unitPrice, "0.0000"), lineAmountBeforeTaxAndDiscount(item)];
