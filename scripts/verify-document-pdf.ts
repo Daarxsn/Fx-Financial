@@ -22,6 +22,7 @@ function snapshot(sourceType: PdfSnapshot["sourceType"], brandName: string): Pdf
   const lines = Array.from({ length: sourceType === "INVOICE" ? 80 : sourceType === "QUOTATION" ? 3 : 1 }, (_, i) => ({
     lineNumber: i + 1,
     lineKind: "ITEM",
+    milestone: i === 0 ? "Milestone 1" : "",
     description: sourceType === "INVOICE" && i === 0
       ? "A long description with multilingual content हिन्दी English — " + "Detailed service ".repeat(8)
       : "Professional service " + (i + 1),
@@ -70,7 +71,7 @@ function snapshot(sourceType: PdfSnapshot["sourceType"], brandName: string): Pdf
     configurationSha256: "a".repeat(64),
     configurationSnapshot: {
       legalEntity: { legalName: "Falchion Example Issuer" },
-      brand: { name: brandName, primaryColor: "#DCAF51" },
+      brand: { name: brandName, code: brandName === "MyFX POS" ? "MYFXPOS" : brandName === "FX Digitech" ? "DIGITECH" : "COWORKS", logoReference: brandName === "MyFX POS" ? "/brand/myfx-pos.webp" : brandName === "FX Digitech" ? "/brand/fx-digitech.webp" : "/brand/fx-coworks.webp", primaryColor: "#DCAF51" },
       template: { config: { primaryColor: "#DCAF51", footer: "Test configuration; not statutory or customer-approved wording." } },
     },
     lines,
