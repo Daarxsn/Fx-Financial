@@ -292,6 +292,9 @@ jobs:
           DATABASE_PASSWORD: ci_root_password
           DATABASE_SSL: "false"
           SESSION_SECRET: "ci-only-session-secret-value-not-for-production-000000"
+          RESEND_API_URL: https://api.resend.com
+          RESEND_API_KEY: ci-resend-test-key
+          RESEND_FROM_EMAIL: "Falchion CI <billing@example.invalid>"
           PHASE7_BROWSER_BASE_URL: http://127.0.0.1:3003
         run: |
           set -euo pipefail
