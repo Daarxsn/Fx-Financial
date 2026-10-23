@@ -170,7 +170,7 @@ export function InvoiceWorkspace(){
     const emailToken=await csrf();
     const sent=await getRequest("/api/v1/email/outbox",{method:"POST",headers:{"X-CSRF-Token":emailToken,"Idempotency-Key":emailKey},body:JSON.stringify({sourceType:"INVOICE",sourceId:id,recipientEmail:recipientEmail.trim(),recipientConfirmed:true})});
     if(!sent.response.ok)throw new Error(sent.body.error?.message??"Email could not be queued.");
-    setEmailKey(crypto.randomUUID());setRecipientConfirmed(false);
+    setEmailKey(crypto.randomUUID());
    }catch(mailCause){emailError=mailCause instanceof Error?mailCause.message:"Email could not be queued.";}
    setSuccess(emailError?"Invoice issued successfully. Email needs attention.":"Invoice issued and email queued. Check its delivery status in the invoice details.");
    if(emailError)setError("The invoice was issued, but email was not queued: "+emailError);
