@@ -17,6 +17,7 @@ assert.ok(options.includes("canAutoMap"), "brand options must only auto-select a
 assert.ok(options.includes("legalEntityId:b.legal_entity_id"), "brand options must return the mapped issuer legal entity");
 assert.ok(composer.includes("Invoice from"), "daily invoice creation must start with the brand, not legal-entity settings");
 assert.ok(composer.includes("Issue & send invoice"), "the composer must offer the combined issue-and-send action");
+assert.ok(composer.includes('<Field label="Email to send the invoice to" wide hint='), "recipient email must use the shared labelled field so assistive technology can associate the input and hint");
 assert.ok(composer.includes('"/api/v1/customers"'), "customer creation must be available directly in the invoice workflow");
 assert.ok(composer.includes('"/api/v1/email/outbox"'), "the combined action must queue email through the existing durable outbox");
 assert.ok(composer.includes("recipientConfirmed:true"), "email queueing must require explicit recipient confirmation");
