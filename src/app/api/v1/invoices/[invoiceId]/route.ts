@@ -34,7 +34,7 @@ export async function GET(_request:NextRequest,context:Context){
     FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.id=? LIMIT 1`,[invoiceId]);
   if(!rows.length||!actor.legalEntityIds.includes(rows[0].legal_entity_id))return jsonNoStore({error:{code:"NOT_FOUND",message:"Invoice not found in your assigned scope."}},404);
   const row=rows[0];
-  const [lineRows]=await pool.execute<(RowDataPacket & {id:string;catalog_item_id:string|null;line_kind:string;description:string;unit_code:string;quantity:string;unit_price:string;discount_type:string;discount_value:string;discount_amount:string;tax_rate:string;tax_code:string|null;tax_calculation_mode:string;tax_amount:string;line_total:string;tax_rule_id:string|null;tax_registration_id:string|null})[]>(
+  const [lineRows]=await pool.execute<(RowDataPacket & {id:string;catalog_item_id:string|null;line_kind:string;milestone:string|null;description:string;unit_code:string;quantity:string;unit_price:string;discount_type:string;discount_value:string;discount_amount:string;tax_rate:string;tax_code:string|null;tax_calculation_mode:string;tax_amount:string;line_total:string;tax_rule_id:string|null;tax_registration_id:string|null})[]>(
    "SELECT id,catalog_item_id,line_kind,milestone,description,unit_code,quantity,unit_price,discount_type,discount_value,discount_amount,tax_rate,tax_code,tax_calculation_mode,tax_amount,line_total,tax_rule_id,tax_registration_id FROM invoice_lines WHERE invoice_id=? ORDER BY line_number",[invoiceId]);
   const total=money(row.grand_total),paid=money(row.paid_total);
   const customerName=customerNameFromSnapshot(row.customer_snapshot)??row.customer_name;
