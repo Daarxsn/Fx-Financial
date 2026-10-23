@@ -97,6 +97,11 @@ check("safe environment template documents the deployment variable contract", [
 check("Next config contains CSP, HSTS, and safe security headers",
   nextConfig.includes("Content-Security-Policy") && nextConfig.includes("Strict-Transport-Security") &&
   nextConfig.includes("poweredByHeader: false"));
+check("CSP permits eval only for the development React/Turbopack runtime",
+  nextConfig.includes('const isProduction = process.env.NODE_ENV === "production"') &&
+  nextConfig.includes('(isProduction ? "" : " \'unsafe-eval\'")') &&
+  nextConfig.includes('"script-src \'self\' \'unsafe-inline\'"') &&
+  !nextConfig.includes('"script-src \'self\' \'unsafe-inline\' \'unsafe-eval\'"'));
 check("preflight rejects unsafe origin/TLS/storage and missing mail configuration",
   preflight.includes("DATABASE_SSL must be true") &&
   preflight.includes("APP_ORIGIN must be the exact HTTPS origin") &&
