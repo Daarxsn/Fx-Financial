@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pack 10 Business UAT and controlled-release evidence",
+  "description": "Evidence structure for release eligibility. Evidence links must be independently reviewed; schema conformity is not proof of approval.",
+  "type": "object",
+  "required": ["schemaVersion", "repository", "releaseSha", "pack9", "ci", "preview", "uatTenant", "scenarioResults", "brandApprovals", "signoffs", "operations", "security", "productionChange", "decision", "openBlockers"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "repository": { "const": "Daarxsn/Fx-Financial" },
+    "releaseSha": { "$ref": "#/$defs/sha" },
+    "pack9": {
+      "type": "object",
+      "required": ["status", "releaseSha", "evidenceUrl"],
+      "properties": {
+        "status": { "const": "accepted" },
+        "releaseSha": { "$ref": "#/$defs/sha" },
+        "evidenceUrl": { "$ref": "#/$defs/httpsUrl" }
+      }
+    },
+    "ci": {
+      "type": "object",
+      "required": ["status", "commitSha", "runUrl"],
+      "properties": {
+        "status": { "const": "success" },
+        "commitSha": { "$ref": "#/$defs/sha" },
+        "runUrl": { "type": "string", "pattern": "^https://github[.]com/Daarxsn/Fx-Financial/actions/runs/[0-9]+" }
+      }
+    },
+    "preview": {
+      "type": "object",
+      "required": ["status", "deployedSha", "url", "smokeStatus", "evidenceUrl"],
+      "properties": {
+        "status": { "const": "passed" },
+        "deployedSha": { "$ref": "#/$defs/sha" },
+        "url": { "$ref": "#/$defs/httpsUrl" },
+        "smokeStatus": { "const": "passed" },
+        "evidenceUrl": { "$ref": "#/$defs/httpsUrl" }
+      }
+    },
+    "uatTenant": {
+      "type": "object",
+      "required": ["status", "isolated", "syntheticDataOnly", "disposable", "evidenceUrl"],
+      "properties": {
+        "status": { "const": "passed" },
+        "isolated": { "const": true },
+        "syntheticDataOnly": { "const": true },
+        "disposable": { "const": true },
+        "evidenceUrl": { "$ref": "#/$defs/httpsUrl" }
+      }
+    },
+    "scenarioResults": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "evidenceUrl", "operator", "completedAt", "releaseSha"],
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "const": "passed" },
+          "evidenceUrl": { "$ref": "#/$defs/httpsUrl" },
+          "operator": { "type": "string", "minLength": 2 },
+          "completedAt": { "type": "string", "format": "date-time" },
+          "releaseSha": { "$ref": "#/$defs/sha" }
+        }
+      }
+    },
+    "brandApprovals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["brand", "status", "reviewer", "reviewedAt", "releaseSha", "evidenceUrl", "settings"],
+        "properties": {
+          "brand": { "enum": ["MyFX POS", "FX Digitech", "FX Coworks"] },
+          "status": { "const": "approved" },
+          "reviewer": { "type": "string", "minLength": 2 },
+          "reviewedAt": { "type": "string", "format": "date-time" },
+          "releaseSha": { "$ref": "#/$defs/sha" },
+          "evidenceUrl": { "$ref": "#/$defs/httpsUrl" },
+          "settings": {
+            "type": "object",
+            "required": ["issuerIdentity", "legalEntityMapping", "templateAndLogo", "numbering", "currency", "taxRules", "paymentSettings", "statutoryDisclosure"],
+            "properties": {
+              "issuerIdentity": { "const": "approved" },
+              "legalEntityMapping": { "const": "approved" },
+              "templateAndLogo": { "const": "approved" },
+              "numbering": { "const": "approved" },
+              "currency": { "const": "approved" },
+              "taxRules": { "const": "approved" },
+              "paymentSettings": { "const": "approved" },
+              "statutoryDisclosure": { "const": "approved" }
+            }
+          }
+        }
+      }
+    },
+    "signoffs": {
+      "type": "object",
+      "required": ["business", "financeAccounting", "taxLegal", "security", "operations"],
+      "properties": {
+        "business": { "$ref": "#/$defs/signoff" },
+        "financeAccounting": { "$ref": "#/$defs/signoff" },
+        "taxLegal": { "$ref": "#/$defs/signoff" },
+        "security": { "$ref": "#/$defs/signoff" },
+        "operations": { "$ref": "#/$defs/signoff" }
+      }
+    },
+    "operations": {
+      "type": "object",
+      "required": ["backupRestore", "alertDelivery", "operatorDrill", "migrationPlan", "rollbackPlan"],
+      "properties": {
+        "backupRestore": {
+          "type": "object",
+          "required": ["status", "evidenceUrl", "measuredRpoHours", "measuredRtoHours", "approvedRpoHours", "approvedRtoHours", "targetsApprovedBy", "targetsApprovedAt", "targetsEvidenceUrl"],
+          "properties": {
+            "status": { "const": "passed" },
+            "evidenceUrl": { "$ref": "#/$defs/httpsUrl" },
+            "measuredRpoHours": { "type": "number", "minimum": 0 },
+            "measuredRtoHours": { "type": "number", "minimum": 0 },
+            "approvedRpoHours": { "type": "number", "exclusiveMinimum": 0 },
+            "approvedRtoHours": { "type": "number", "exclusiveMinimum": 0 },
+            "targetsApprovedBy": { "type": "string", "minLength": 2 },
+            "targetsApprovedAt": { "type": "string", "format": "date-time" },
+            "targetsEvidenceUrl": { "$ref": "#/$defs/httpsUrl" }
+          }
+        },
+        "alertDelivery": { "$ref": "#/$defs/operationalEvidence" },
+        "operatorDrill": { "$ref": "#/$defs/operationalEvidence" },
+        "migrationPlan": { "$ref": "#/$defs/operationalEvidence" },
+        "rollbackPlan": { "$ref": "#/$defs/operationalEvidence" }
+      }
+    },
+    "security": {
+      "type": "object",
+      "required": ["secretScanStatus", "secretScanEvidenceUrl", "dependencyReviewStatus", "dependencyReviewEvidenceUrl", "dependencyRiskOwner"],
+      "properties": {
+        "secretScanStatus": { "const": "passed" },
+        "secretScanEvidenceUrl": { "$ref": "#/$defs/httpsUrl" },
+        "dependencyReviewStatus": { "enum": ["passed", "accepted-exception"] },
+        "dependencyReviewEvidenceUrl": { "$ref": "#/$defs/httpsUrl" },
+        "dependencyRiskOwner": { "type": "string", "minLength": 2 }
+      }
+    },
+    "productionChange": {
+      "type": "object",
+      "required": ["status", "owner", "windowStart", "windowEnd", "evidenceUrl"],
+      "properties": {
+        "status": { "const": "approved" },
+        "owner": { "type": "string", "minLength": 2 },
+        "windowStart": { "type": "string", "format": "date-time" },
+        "windowEnd": { "type": "string", "format": "date-time" },
+        "evidenceUrl": { "$ref": "#/$defs/httpsUrl" }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "required": ["status", "owner", "decidedAt", "releaseSha", "evidenceUrl"],
+      "properties": {
+        "status": { "const": "go" },
+        "owner": { "type": "string", "minLength": 2 },
+        "decidedAt": { "type": "string", "format": "date-time" },
+        "releaseSha": { "$ref": "#/$defs/sha" },
+        "evidenceUrl": { "$ref": "#/$defs/httpsUrl" }
+      }
+    },
+    "openBlockers": { "type": "array", "maxItems": 0 },
+    "acceptedRisks": { "type": "array" }
+  },
+  "$defs": {
+    "sha": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "httpsUrl": { "type": "string", "format": "uri", "pattern": "^https://" },
+    "signoff": {
+      "type": "object",
+      "required": ["status", "approverName", "approverRole", "approvedAt", "releaseSha", "scope", "evidenceUrl"],
+      "properties": {
+        "status": { "enum": ["approved", "not-applicable"] },
+        "approverName": { "type": "string", "minLength": 2 },
+        "approverRole": { "type": "string", "minLength": 2 },
+        "approvedAt": { "type": "string", "format": "date-time" },
+        "releaseSha": { "$ref": "#/$defs/sha" },
+        "scope": { "type": "string", "minLength": 8 },
+        "evidenceUrl": { "$ref": "#/$defs/httpsUrl" },
+        "rationale": { "type": "string" }
+      }
+    },
+    "operationalEvidence": {
+      "type": "object",
+      "required": ["status", "evidenceUrl", "performedBy", "performedAt"],
+      "properties": {
+        "status": { "const": "passed" },
+        "evidenceUrl": { "$ref": "#/$defs/httpsUrl" },
+        "performedBy": { "type": "string", "minLength": 2 },
+        "performedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}
