@@ -8,6 +8,7 @@ const quantityInput = z.string().regex(/^(?=.*[1-9])(?:0|[1-9]\d{0,14})(\.\d{1,4
 export const invoiceLineInputSchema = z.object({
   catalogItemId: z.string().uuid().nullable().optional(),
   lineKind: z.enum(["ITEM", "CHARGE"]).optional().default("ITEM"),
+  milestone: z.string().trim().max(160).nullable().optional(),
   description: z.string().trim().min(1).max(1000),
   unitCode: z.string().trim().min(1).max(40),
   quantity: quantityInput, unitPrice: moneyInput,
