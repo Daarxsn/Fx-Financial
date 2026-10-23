@@ -69,7 +69,7 @@ check("browser acceptance verifies settings readiness and protected PDF generati
   browser.includes("Advanced settings") &&
   browser.includes("PDF documents and history") &&
   browser.includes("content-digest") &&
-  browser.includes("download.saveAs"));
+  browser.includes("pdfDownload.saveAs"));
 check("production database connections require TLS and validated certificates",
   pool.includes('sslSetting !== "true"') &&
   pool.includes('process.env.NODE_ENV === "production" && sslSetting !== "true"') &&
