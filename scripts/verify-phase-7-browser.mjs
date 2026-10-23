@@ -295,12 +295,15 @@ try {
   const invoiceLineDescription = "Pack 2 browser invoice " + suffix;
   const inlineCustomerName = "Inline Invoice Customer " + suffix;
   const inlineCustomerEmail = "invoice-" + suffix.toLowerCase() + "@example.invalid";
+  const overrideRecipientEmail = "billing-contact-" + suffix.toLowerCase() + "@example.invalid";
   await page.goto(baseUrl + "/invoices");
   await page.getByRole("heading", { name: "Invoices", exact: true }).waitFor();
   await waitForList(page);
   await page.getByRole("button", { name: /New invoice/i }).first().click();
   const invoiceEditor = page.locator(".invoice-editor").last();
   await invoiceEditor.getByRole("heading", { name: "Create invoice", exact: true }).waitFor();
+  assert.equal(await invoiceEditor.getByLabel("Invoice from").inputValue(), "",
+    "new invoice must not silently preselect a brand or legal issuer");
   await invoiceEditor.getByLabel("Invoice from").selectOption(invoiceBrandId);
   await invoiceEditor.getByLabel("Customer").selectOption("__new__");
   await invoiceEditor.getByLabel("Customer / company name").fill(inlineCustomerName);
@@ -328,16 +331,19 @@ try {
   const invoiceBrowserCustomer = inlineCustomerRows[0];
 
   const editableInvoice = page.locator(".invoice-editor").last();
+  await editableInvoice.getByLabel("Email to send the invoice to").fill(overrideRecipientEmail);
   await editableInvoice.getByLabel(/^Rate/).fill("120.0000");
   await editableInvoice.getByRole("button", { name: "Save draft", exact: true }).click();
   await page.getByText("Draft saved. The server recalculated the totals.", { exact: true }).waitFor();
   await page.getByText("INR 254.8800", { exact: true }).first().waitFor();
+  assert.equal(await page.locator(".invoice-editor").last().getByLabel("Email to send the invoice to").inputValue(), overrideRecipientEmail,
+    "saving and reopening a draft must preserve its invoice-specific recipient");
   await page.locator(".invoice-editor").last().getByRole("button", { name: "Issue & send invoice", exact: true }).click();
   await page.getByText("Invoice issued and email queued. Check its delivery status in the invoice details.", { exact: true }).waitFor();
   await page.getByRole("heading", { name: "Email delivery and evidence" }).waitFor();
 
   const [invoiceByLineRows] = await db.execute(
-    "SELECT i.id,i.customer_id,i.lifecycle_status,i.invoice_number,i.grand_total FROM invoices i JOIN invoice_lines l ON l.invoice_id=i.id " +
+    "SELECT i.id,i.customer_id,i.lifecycle_status,i.invoice_number,i.grand_total,i.draft_recipient_email FROM invoices i JOIN invoice_lines l ON l.invoice_id=i.id " +
       "WHERE i.legal_entity_id=? AND i.customer_id=? AND l.description=? ORDER BY i.created_at DESC LIMIT 1",
     [invoiceTestEntity.id,invoiceBrowserCustomer.id,invoiceLineDescription],
   );
@@ -345,12 +351,14 @@ try {
   assert.equal(invoiceByLineRows[0].lifecycle_status, "ISSUED");
   assert.ok(invoiceByLineRows[0].invoice_number, "issue action allocates the official invoice number");
   assert.equal(String(invoiceByLineRows[0].grand_total), "254.8800");
+  assert.equal(invoiceByLineRows[0].draft_recipient_email, overrideRecipientEmail,
+    "invoice row stores the explicit one-off recipient");
   const [queuedEmailRows] = await db.execute(
     "SELECT recipient_email,status FROM email_outbox WHERE source_document_type='INVOICE' AND source_document_id=? ORDER BY created_at DESC LIMIT 1",
     [invoiceByLineRows[0].id],
   );
   assert.equal(queuedEmailRows.length, 1, "Issue & send queues one durable email with the issued invoice PDF.");
-  assert.equal(queuedEmailRows[0].recipient_email, inlineCustomerEmail);
+  assert.equal(queuedEmailRows[0].recipient_email, overrideRecipientEmail);
   assert.equal(queuedEmailRows[0].status, "QUEUED");
   const [issuedBrowserSnapshots] = await db.execute(
     "SELECT configuration_sha256 FROM document_configuration_snapshots WHERE resource_type='INVOICE' AND resource_id=?",
