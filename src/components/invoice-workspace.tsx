@@ -268,7 +268,7 @@ export function InvoiceWorkspace(){
     <div className="invoice-composer-brand">
      <div className="invoice-composer-brand__picker">
       <label className="form-label" htmlFor="invoice-brand">Invoice from</label>
-      <select id="invoice-brand" required className="form-control" disabled={Boolean(selected&&selected.lifecycleStatus!=="DRAFT")} value={form.brandId} onChange={e=>chooseBrand(e.target.value)}>
+      <select id="invoice-brand" required className="form-control" disabled={Boolean(selected)} value={form.brandId} onChange={e=>chooseBrand(e.target.value)}>
        <option value="">Choose brand</option>{validBrands.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
       </select>
       {selectedBrand?<div className="invoice-composer-brand__issuer"><Image src={logoForBrand(selectedBrand)} alt={selectedBrand.name+" logo"} width={144} height={48} unoptimized/><div><strong>{selectedBrand.name}</strong><span>Issued by {selectedBrand.legalEntityName} · {selectedBrand.currency}</span></div></div>:<p className="form-hint">Choose MyFX POS, FX Digitech or FX Coworks. The approved issuer and template are selected automatically.</p>}
