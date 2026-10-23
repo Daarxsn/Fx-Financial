@@ -1,6 +1,6 @@
 # Pack 8 — Temporary dependency advisory exception
 
-**Record date:** 22 October 2026  
+**Record date:** 23 October 2026  
 **Advisory:** [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) / CVE-2026-93687  
 **Severity:** High (availability / stack exhaustion)  
 **Status:** Time-boxed engineering exception; review required before expiry  
@@ -9,11 +9,13 @@
 
 ## Finding and scope
 
+**23 October 2026 security follow-up:** the main-branch production dependency audit failed on a critical Next.js advisory while `next@16.4.0` was pinned. The manifest has now been upgraded to `next@16.4.2` and `eslint-config-next@16.4.2` based on the current audit's remediation suggestion. Upstream advisories identify 16.4.1 as patched for the October critical issues, while the CI audit recommended 16.4.2. The package lock and full CI still need to validate the new resolved graph; this edit alone does not clear the production gate. References: [GHSA-2464-fhr4-w9xw](https://github.com/vercel/next.js/security/advisories/GHSA-2464-fhr4-w9xw), [current Next.js changelog](https://nextjs-changelog.vercel.app/).
+
 The current lockfile resolves `braces@3.0.3` through this development-toolchain path:
 
-`eslint-config-next@16.4.0 → @next/eslint-plugin-next@16.4.0 → fast-glob@3.3.1 → micromatch@4.0.8 → braces@3.0.3`.
+`eslint-config-next@16.4.2 → @next/eslint-plugin-next@16.4.2 → fast-glob → micromatch → braces@3.0.3` (the exact resolved transitive versions and development-only markers are re-checked in CI after the lockfile refresh)..
 
-The lockfile marks these nodes as development dependencies. The reviewed GitHub advisory lists versions through 3.0.3 as affected and does not list a patched release as of this record. The npm suggested forced remediation downgrades `eslint-config-next` to 14.2.35, which is an incompatible major downgrade for this Next.js 16.4.0 application; it is not accepted.
+The lockfile marks these nodes as development dependencies. The reviewed GitHub advisory lists versions through 3.0.3 as affected and does not list a patched release as of this record. The npm suggested forced remediation downgrades `eslint-config-next` to 14.2.35, which is an incompatible major downgrade for this Next.js 16.4.x application; it is not accepted.
 
 This is a real high-severity dependency advisory, not marked “false positive.” The current evidence puts the affected package in developer/CI tooling, not the production dependency set. No claim is made that all indirect uses are universally unreachable; the exception is deliberately narrow and expires.
 
