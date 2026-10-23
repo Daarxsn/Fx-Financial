@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 
 const MANIFEST_PATH = "docs/pack-10-uat-scenarios.json";
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
-const ISO_DATE_PATTERN = /^\\d{4}-\\d{2}-\\d{2}T/;
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}T/;
 const failures = [];
 
 function fail(message) {
