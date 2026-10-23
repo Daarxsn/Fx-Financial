@@ -91,7 +91,12 @@ async function approvedBrandLogo(config: Record<string, unknown>): Promise<Buffe
   else if (code.includes("DIGI")) approved.push(join(brandRoot, "fx-digitech.webp"));
   else if (code.includes("MYFX") || code.includes("POS")) approved.push(join(brandRoot, "myfx-pos.webp"));
   const file = approved.find(candidate => candidate.startsWith(brandRoot + sep) && existsSync(candidate));
-  if (!file) return null;
+  if (!file) {
+    if (process.env.GITHUB_ACTIONS === "true") {
+      console.error("Approved brand logo asset was not found", { brandCode: code });
+    }
+    return null;
+  }
   try {
     // Normalize supplied logo exports to a baseline, sRGB JPEG before PDFKit sees them.
     // Some design-export JPEG variants are not accepted by PDFKit's built-in parser.
@@ -104,7 +109,14 @@ async function approvedBrandLogo(config: Record<string, unknown>): Promise<Buffe
       .toColourspace("srgb")
       .jpeg({ quality: 92, progressive: false, chromaSubsampling: "4:4:4" })
       .toBuffer();
-  } catch {
+  } catch (error) {
+    if (process.env.GITHUB_ACTIONS === "true") {
+      console.error("Approved brand logo normalization failed", {
+        brandCode: code,
+        errorName: error instanceof Error ? error.name : typeof error,
+        errorMessage: error instanceof Error ? error.message.slice(0, 180) : String(error).slice(0, 180),
+      });
+    }
     return null;
   }
 }
