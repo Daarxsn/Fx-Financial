@@ -305,7 +305,10 @@ try {
   assert.equal(await invoiceEditor.getByLabel("Invoice from").inputValue(), "",
     "new invoice must not silently preselect a brand or legal issuer");
   await invoiceEditor.getByLabel("Invoice from").selectOption(invoiceBrandId);
-  await invoiceEditor.getByLabel("Customer").selectOption("__new__");
+  assert.equal(await invoiceEditor.getByLabel("Customer / company name").inputValue(), "",
+    "new invoice must not silently preselect the first existing customer");
+  assert.equal(await invoiceEditor.getByLabel("Email to send the invoice to").inputValue(), "",
+    "new invoice must not silently inherit the first customer's email");
   await invoiceEditor.getByLabel("Customer / company name").fill(inlineCustomerName);
   await invoiceEditor.getByLabel("Email to send the invoice to").fill(inlineCustomerEmail);
   await invoiceEditor.getByLabel("Invoice date").fill(invoiceUiDate);

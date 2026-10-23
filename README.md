@@ -93,7 +93,7 @@ node scripts/check-pack-10-release-gate.mjs --evidence=/secure/path/pack-10-rele
 The invoice composer is brand-first so daily billing does not require opening Settings:
 
 1. Explicitly choose **MyFX POS**, **FX Digitech**, or **FX Coworks**. No brand is preselected; the approved legal issuer and currency follow the selected brand mapping.
-2. Select an existing customer or add a new customer inline, enter the recipient email, invoice date and item/service lines. Invoice-specific recipients are saved with the draft, so an alternate billing address survives save and reopen.
+2. New invoices start with blank customer details when your role can create customers, or an unselected existing-customer chooser otherwise; the first saved customer is never silently chosen. Enter/select the recipient, invoice date and item/service lines. Invoice-specific recipients are saved with the draft, so an alternate billing address survives save and reopen.
 3. Optionally add milestones and expand **Discount, tax and catalog** only when needed.
 4. Choose **Issue & send invoice**. The app saves the draft, validates and issues it through the existing finance workflow, then queues the branded PDF through the durable email outbox. If issuance is blocked, the draft is kept and the reason is shown; if email queuing fails after issuance, the UI distinguishes that from a successful send.
 5. Use invoice details to review the private PDF history and email delivery timeline.

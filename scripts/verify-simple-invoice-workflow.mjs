@@ -19,7 +19,8 @@ assert.ok(options.includes("brands:brandRows.map"), "draft options must expose a
 assert.ok(options.includes("canAutoMap"), "brand options must only auto-select a safe issuer mapping");
 assert.ok(options.includes("legalEntityId:b.legal_entity_id"), "brand options must return the mapped issuer legal entity");
 assert.ok(composer.includes("Invoice from"), "daily invoice creation must start with the brand, not legal-entity settings");
-assert.ok(composer.includes('brandId:"",customerId:customer?.id??""'), "new invoices must require an explicit brand selection rather than silently defaulting to MyFX POS");
+assert.ok(composer.includes('brandId:"",customerId:"",currency:""'), "new invoices must require explicit brand, customer and currency choices rather than silently choosing the first records");
+assert.ok(composer.includes('setCustomerMode(canAddCustomer?"new":"existing")'), "new invoices start with inline customer entry only when the caller is authorized to create customers");
 assert.ok(composer.includes("Issue & send invoice"), "the composer must offer the combined issue-and-send action");
 assert.ok(composer.includes('<Field label="Email to send the invoice to" wide hint='), "recipient email must use the shared labelled field so assistive technology can associate the input and hint");
 assert.ok(composer.includes('"/api/v1/customers"'), "customer creation must be available directly in the invoice workflow");
