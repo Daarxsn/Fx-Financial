@@ -42,7 +42,7 @@ check("all canonical scenarios require operator, timestamp, result and exact SHA
   JSON.stringify(schema.properties.scenarioResults).includes("operator") &&
   JSON.stringify(schema.properties.scenarioResults).includes("completedAt") &&
   JSON.stringify(schema.properties.scenarioResults).includes("releaseSha") &&
-  JSON.stringify(schema.properties.scenarioResults).includes('"const": "passed"'));
+  JSON.stringify(schema.properties.scenarioResults).includes('"const":"passed"'));
 check("gate checker validates release SHA, Pack 9, exact-CI SHA and Preview deployment SHA",
   checker.includes("releaseSha does not match the requested --sha") &&
   checker.includes("Pack 9 must be accepted") &&
