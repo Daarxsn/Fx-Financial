@@ -264,7 +264,7 @@ try {
       JSON.stringify(invoiceBrandSnapshot.theme),invoiceBrandTemplateKey],
   );
   await db.execute(
-    "INSERT INTO brand_legal_entities (brand_id,legal_entity_id,is_default,effective_from,effective_until) VALUES (?,?,TRUE,NOW(3),NULL)",
+    "INSERT INTO brand_legal_entities (brand_id,legal_entity_id,is_default,effective_from,effective_until) VALUES (?,?,TRUE,'2000-01-01 00:00:00',NULL)",
     [invoiceBrandId,invoiceTestEntity.id],
   );
   await db.execute(
