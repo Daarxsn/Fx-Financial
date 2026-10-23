@@ -118,28 +118,63 @@ export function InvoiceWorkspace(){
   };
   const updateForm=(key:keyof typeof form,value:string)=>{setForm(old=>({...old,[key]:value}));setDirty(true);setCreateKey(crypto.randomUUID()+crypto.randomUUID());};
  const updateLine=(key:string,patch:Partial<LineDraft>)=>{setLines(old=>old.map(line=>line.key===key?{...line,...patch}:line));setDirty(true);setCreateKey(crypto.randomUUID()+crypto.randomUUID());};
- const startNew=()=>{const entity=options.legalEntities[0];const customer=options.customers[0];setSelected(null);setPaymentHistory([]);setReversingPaymentId("");setForm({legalEntityId:entity?.id??"",brandId:"",customerId:customer?.id??"",currency:entity?.currency??"",invoiceDate:today(),dueDate:"",paymentTermsDays:String(customer?.paymentTermsDays??0),notes:""});setLines([freshLine()]);setDirty(true);setEditor(true);setError("");setSuccess("");setCreateKey(crypto.randomUUID()+crypto.randomUUID());};
+ const updateQuickCustomer=(key:keyof QuickCustomer,value:string)=>setQuickCustomer(old=>({...old,[key]:value}));
+ const chooseBrand=(brandId:string)=>{const brand=validBrands.find(b=>b.id===brandId);setForm(old=>({...old,brandId,legalEntityId:brand?.legalEntityId??"",currency:brand?.currency??"INR"}));setLines(old=>old.map(line=>({...line,taxCode:brand?.defaultTaxCode??""})));setDirty(true);setCreateKey(crypto.randomUUID()+crypto.randomUUID());};
+ const logoForBrand=(brand:BrandChoice)=>{const code=(brand.code+" "+brand.name).toUpperCase();if(code.includes("COWORK"))return "/brand/fx-coworks.webp";if(code.includes("DIGI"))return "/brand/fx-digitech.webp";if(code.includes("MYFX")||code.includes("POS"))return "/brand/myfx-pos.webp";return brand.logoReference?.startsWith("/brand/")?brand.logoReference:"/brand/falchion-xeniaa-logo.webp";};
+ const startNew=()=>{const brand=validBrands.find(b=>/MYFX|POS/i.test(b.code+" "+b.name))??validBrands[0];const entity=brand?options.legalEntities.find(e=>e.id===brand.legalEntityId):options.legalEntities[0];const customer=options.customers[0];setSelected(null);setPaymentHistory([]);setReversingPaymentId("");setCustomerMode(customer?"existing":"new");setQuickCustomer({name:"",phone:"",line1:"",city:"",state:"",postalCode:"",countryCode:"IN"});setRecipientEmail(customer?.email??"");setRecipientConfirmed(false);setEmailKey(crypto.randomUUID());setForm({legalEntityId:brand?.legalEntityId??entity?.id??"",brandId:brand?.id??"",customerId:customer?.id??"",currency:brand?.currency??entity?.currency??"INR",invoiceDate:today(),dueDate:"",paymentTermsDays:String(customer?.paymentTermsDays??0),notes:""});setLines([freshLine(brand?.defaultTaxCode??"")]);setDirty(true);setEditor(true);setError("");setSuccess("");setCreateKey(crypto.randomUUID()+crypto.randomUUID());};
  const openInvoice=async(id:string,preserveMessages=false)=>{
   if(!preserveMessages){setError("");setSuccess("");}setSaving(true);
   try{const r=await getRequest("/api/v1/invoices/"+id);if(!r.response.ok)throw new Error(r.body.error?.message??"Invoice could not be opened.");
-   const v=record(r.body.data) as unknown as Invoice;setSelected(v);setForm({legalEntityId:v.legalEntityId,brandId:v.brandId??"",customerId:v.customerId,currency:v.currency,invoiceDate:v.invoiceDate??today(),dueDate:v.dueDate??"",paymentTermsDays:String(v.paymentTermsDays??0),notes:v.notes??""});
+   const v=record(r.body.data) as unknown as Invoice;setSelected(v);setCustomerMode("existing");setRecipientEmail(options.customers.find(c=>c.id===v.customerId)?.email??"");setRecipientConfirmed(false);setEmailKey(crypto.randomUUID());setForm({legalEntityId:v.legalEntityId,brandId:v.brandId??"",customerId:v.customerId,currency:v.currency,invoiceDate:v.invoiceDate??today(),dueDate:v.dueDate??"",paymentTermsDays:String(v.paymentTermsDays??0),notes:v.notes??""});
    setLines(linesFrom(v.lines));setDirty(false);setEditor(v.lifecycleStatus==="DRAFT"&&canUpdate);await refreshPaymentHistory(id);
   }catch(e){setError(e instanceof Error?e.message:"Invoice could not be opened.");}finally{setSaving(false);}
  };
- const makePayload=()=>({legalEntityId:form.legalEntityId,brandId:form.brandId||null,customerId:form.customerId,currency:form.currency,invoiceDate:form.invoiceDate||null,dueDate:form.dueDate||null,paymentTermsDays:Number(form.paymentTermsDays),notes:form.notes||null,
-  lines:lines.map(l=>({...l.catalogItemId?{catalogItemId:l.catalogItemId}:{},lineKind:l.lineKind,description:l.description.trim(),unitCode:l.unitCode.trim(),quantity:l.quantity,unitPrice:l.unitPrice,discountType:l.discountType,discountValue:l.discountValue,taxCode:l.taxCode.trim()||null}))});
- const save=async(e:FormEvent<HTMLFormElement>)=>{e.preventDefault();setSaving(true);setError("");setSuccess("");
+ const makePayload=(customerId:string)=>({legalEntityId:form.legalEntityId,brandId:form.brandId||null,customerId,currency:form.currency,invoiceDate:form.invoiceDate||null,dueDate:form.dueDate||null,paymentTermsDays:Number(form.paymentTermsDays),notes:form.notes||null,
+  lines:lines.map(l=>({...l.catalogItemId?{catalogItemId:l.catalogItemId}:{},lineKind:l.lineKind,milestone:l.milestone.trim()||null,description:l.description.trim(),unitCode:l.unitCode.trim(),quantity:l.quantity,unitPrice:l.unitPrice,discountType:l.discountType,discountValue:l.discountValue,taxCode:l.taxCode.trim()||null}))});
+ const resolveCustomerId=async()=>{
+  if(customerMode==="existing"){if(!form.customerId)throw new Error("Choose a customer or add the customer details here.");return form.customerId;}
+  if(!canAddCustomer)throw new Error("This account cannot create customers. Ask an administrator to grant customer creation access.");
+  if(!quickCustomer.name.trim())throw new Error("Enter the customer or company name.");
+  const hasAddress=Boolean(quickCustomer.line1.trim()||quickCustomer.city.trim()||quickCustomer.state.trim()||quickCustomer.postalCode.trim());
+  const token=await csrf();
+  const address=hasAddress?{line1:quickCustomer.line1.trim(),city:quickCustomer.city.trim(),state:quickCustomer.state.trim(),postalCode:quickCustomer.postalCode.trim(),countryCode:quickCustomer.countryCode.trim().toUpperCase()||"IN"}:undefined;
+  const r=await getRequest("/api/v1/customers",{method:"POST",headers:{"X-CSRF-Token":token},body:JSON.stringify({name:quickCustomer.name.trim(),...(recipientEmail.trim()?{email:recipientEmail.trim()}:{}),...(quickCustomer.phone.trim()?{phone:quickCustomer.phone.trim()}:{}),...(address?{billingAddress:address}:{})})});
+  if(!r.response.ok)throw new Error(r.body.error?.message??"Customer details could not be saved.");
+  const id=str(record(r.body.data).id);if(!id)throw new Error("The customer was saved but no customer ID was returned. Refresh customer options before continuing.");
+  setCustomerMode("existing");setForm(old=>({...old,customerId:id,paymentTermsDays:"0"}));setQuickCustomer({name:"",phone:"",line1:"",city:"",state:"",postalCode:"",countryCode:"IN"});
+  await refreshOptions();return id;
+ };
+ const save=async(e?:FormEvent<HTMLFormElement>,issueAndSend=false)=>{e?.preventDefault();setSaving(true);setError("");setSuccess("");
   try{
-   if(!form.legalEntityId||!form.customerId)throw new Error("Select a legal entity and customer first.");
+   if(!form.brandId||!form.legalEntityId)throw new Error("Choose an invoice brand. Its approved issuer is selected automatically.");
+   if(issueAndSend&&(!canIssue||!canSendEmail))throw new Error("Your role cannot both issue and email invoices. Save the draft or ask the administrator to update access.");
+   if(issueAndSend&&(!/^[^\\s@<>]+@[^\\s@<>]+\\.[^\\s@<>]+$/.test(recipientEmail.trim())||!recipientConfirmed))throw new Error("Enter the recipient email and confirm it before issuing and sending.");
+   if(customerMode==="new"&&!quickCustomer.name.trim())throw new Error("Enter the customer or company name.");
    if(!lines.length||lines.some(l=>!l.description.trim()))throw new Error("Each invoice line requires a description.");
    const invalidTaxLine=lines.find(l=>l.taxCode.trim()&&!rules.some(r=>r.taxCode===l.taxCode.trim()));
-   if(invalidTaxLine)throw new Error("Line "+(lines.indexOf(invalidTaxLine)+1)+" tax code is not approved and effective for this invoice date. Choose an effective tax code or correct the date.");
-   const token=await csrf();const body=makePayload();const url=selected?"/api/v1/invoices/"+selected.id:"/api/v1/invoices";
+   if(invalidTaxLine)throw new Error("Line "+(lines.indexOf(invalidTaxLine)+1)+" tax code is not approved and effective for this invoice date. Choose an effective tax code under “Discount & tax (optional)”.");
+   const customerId=await resolveCustomerId();
+   const token=await csrf();const body=makePayload(customerId);const url=selected?"/api/v1/invoices/"+selected.id:"/api/v1/invoices";
    const r=await getRequest(url,{method:selected?"PATCH":"POST",headers:{"X-CSRF-Token":token,...(!selected?{"Idempotency-Key":createKey}:{})},body:JSON.stringify(selected?{...body,expectedVersion:selected.recordVersion}:body)});
    if(!r.response.ok)throw new Error(r.body.error?.message??"Invoice draft could not be saved.");
    const id=str(record(r.body.data).id)||selected?.id||"";
-   setDirty(false);setEditor(false);await refresh();
-   if(id)await openInvoice(id);setSuccess("Draft saved. Authoritative totals were recalculated by the server.");
+   if(!id)throw new Error("Invoice draft was saved but the response did not include its document ID.");
+   setDirty(false);
+   if(!issueAndSend){setSuccess("Draft saved. The server recalculated the totals.");setEditor(false);await refresh();await openInvoice(id,true);return;}
+   const key=issueKeys[id]??("fx-issue-"+crypto.randomUUID()+"-"+crypto.randomUUID());setIssueKeys(old=>({...old,[id]:key}));
+   const issueToken=await csrf();
+   const issued=await getRequest("/api/v1/invoices/"+id+"/issue",{method:"POST",headers:{"X-CSRF-Token":issueToken,"Idempotency-Key":key},body:JSON.stringify({documentDate:form.invoiceDate||today()})});
+   if(!issued.response.ok){setSuccess("Draft saved, but it was not issued.");setError(issued.body.error?.message??"Issuance is blocked by a required approval or configuration.");setEditor(false);await refresh();await openInvoice(id,true);return;}
+   let emailError="";
+   try{
+    const emailToken=await csrf();
+    const sent=await getRequest("/api/v1/email/outbox",{method:"POST",headers:{"X-CSRF-Token":emailToken,"Idempotency-Key":emailKey},body:JSON.stringify({sourceType:"INVOICE",sourceId:id,recipientEmail:recipientEmail.trim(),recipientConfirmed:true})});
+    if(!sent.response.ok)throw new Error(sent.body.error?.message??"Email could not be queued.");
+    setEmailKey(crypto.randomUUID());setRecipientConfirmed(false);
+   }catch(mailCause){emailError=mailCause instanceof Error?mailCause.message:"Email could not be queued.";}
+   setSuccess(emailError?"Invoice issued successfully. Email needs attention.":"Invoice issued and email queued. Check its delivery status in the invoice details.");
+   if(emailError)setError("The invoice was issued, but email was not queued: "+emailError);
+   setEditor(false);await refresh();await openInvoice(id,true);
   }catch(e){setError(e instanceof Error?e.message:"Invoice draft could not be saved.");}finally{setSaving(false);}
  };
  const issue=async(row:Invoice)=>{setIssuing(row.id);setError("");setSuccess("");
