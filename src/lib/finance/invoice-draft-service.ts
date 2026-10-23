@@ -141,11 +141,11 @@ export async function persistDraftLines(
     const line=lines[index],calc=line.calculated,input=line.input;
     await conn.execute(
       `INSERT INTO invoice_lines
-        (id,invoice_id,catalog_item_id,line_number,line_kind,description,unit_code,quantity,unit_price,
+        (id,invoice_id,catalog_item_id,line_number,line_kind,milestone,description,unit_code,quantity,unit_price,
          discount_amount,discount_type,discount_value,tax_rate,tax_code,tax_rule_id,tax_registration_id,
          tax_calculation_mode,tax_amount,line_total)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [line.id,invoiceId,input.catalogItemId??null,index+1,input.lineKind,input.description.trim(),input.unitCode,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [line.id,invoiceId,input.catalogItemId??null,index+1,input.lineKind,input.milestone?.trim()||null,input.description.trim(),input.unitCode,
        calc.quantity,calc.unitPrice,calc.discountAmount,input.discountType,input.discountValue,line.taxRate,
        input.taxCode??null,line.taxRuleId,line.taxRegistrationId,line.taxMode,calc.taxAmount,calc.lineTotal]);
   }
