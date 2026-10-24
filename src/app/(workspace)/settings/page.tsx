@@ -120,7 +120,7 @@ export default function SettingsPage(){
  const [registrations,setRegistrations]=useState<Registration[]>([]);const [taxRules,setTaxRules]=useState<TaxRule[]>([]);
  const [numberings,setNumberings]=useState<Numbering[]>([]);const [templates,setTemplates]=useState<Template[]>([]);
  const [readiness,setReadiness]=useState<Record<string,Readiness>>({});
- const [entityId,setEntityId]=useState("");const [busy,setBusy]=useState(true);const [saving,setSaving]=useState(false);
+ const [entityId,setEntityId]=useState("");const [busy,setBusy]=useState(true);const [saving,setSaving]=useState(false);const [entitiesLoaded,setEntitiesLoaded]=useState(false);
  const [error,setError]=useState("");const [notice,setNotice]=useState("");
  const [entityEdit,setEntityEdit]=useState("");const [brandEdit,setBrandEdit]=useState("");const [unitEdit,setUnitEdit]=useState("");
  const [company,setCompany]=useState<Draft>(companyBlank());const [brand,setBrand]=useState<Draft>(brandBlank());const [unit,setUnit]=useState<Draft>(unitBlank());
@@ -128,17 +128,38 @@ export default function SettingsPage(){
  const setValue=(setter:Dispatch<SetStateAction<Draft>>,key:string,value:string|boolean)=>setter(old=>({...old,[key]:value}));
  const loadAll=useCallback(async()=>{
   setBusy(true);setError("");
+  const failures:string[]=[];
+  const loadSection=async<T,>(label:string,path:string):Promise<T|null>=>{
+   try{return await api<T>(path)}
+   catch(e){failures.push(label+": "+(e instanceof Error?e.message:"request failed"));return null}
+  };
   try{
-   const results=await Promise.all([
-    api<Entity[]>("/api/v1/legal-entities?status=all"),api<Brand[]>("/api/v1/brands?status=all"),
-    api<Unit[]>("/api/v1/business-units?status=all"),api<TaxRule[]>("/api/v1/tax-rules"),
-    api<Numbering[]>("/api/v1/numbering-configs"),api<Template[]>("/api/v1/document-templates")
+   // Load each settings area independently. A failure in Tax or Templates must never
+   // make a healthy company list look empty and encourage a duplicate supplier to be created.
+   const [es,bs,us,ts,ns,ds]=await Promise.all([
+    loadSection<Entity[]>("Company profiles","/api/v1/legal-entities?status=all"),
+    loadSection<Brand[]>("Brands","/api/v1/brands?status=all"),
+    loadSection<Unit[]>("Business units","/api/v1/business-units?status=all"),
+    loadSection<TaxRule[]>("Tax rules","/api/v1/tax-rules"),
+    loadSection<Numbering[]>("Numbering series","/api/v1/numbering-configs"),
+    loadSection<Template[]>("Document templates","/api/v1/document-templates")
    ]);
-   const es=results[0]??[];setEntities(es);setBrands(results[1]??[]);setUnits(results[2]??[]);setTaxRules(results[3]??[]);setNumberings(results[4]??[]);setTemplates(results[5]??[]);
-   setEntityId(old=>es.some(e=>e.id===old)?old:(es[0]?.id??""));
-   const rr=await Promise.all(es.map(async e=>{try{return [e.id,await api<Readiness>("/api/v1/legal-entities/"+e.id+"/readiness")] as const}catch{return [e.id,{legalEntityId:e.id,ready:false,checks:[{key:"unavailable",passed:false,message:"Readiness could not be verified."}]}] as const}}));
-   setReadiness(Object.fromEntries(rr));
-  }catch(e){setError(e instanceof Error?e.message:"Company settings failed to load.")}
+   setEntitiesLoaded(es!==null);
+   if(es!==null){setEntities(es);setEntityId(old=>es.some(e=>e.id===old)?old:(es[0]?.id??""));}
+   if(bs!==null)setBrands(bs);
+   if(us!==null)setUnits(us);
+   if(ts!==null)setTaxRules(ts);
+   if(ns!==null)setNumberings(ns);
+   if(ds!==null)setTemplates(ds);
+   if(es!==null){
+    const rr=await Promise.all(es.filter(e=>e.isActive).map(async e=>{
+     try{return [e.id,await api<Readiness>("/api/v1/legal-entities/"+e.id+"/readiness")] as const}
+     catch(error){failures.push("Readiness for "+e.displayName+": "+(error instanceof Error?error.message:"request failed"));return [e.id,{legalEntityId:e.id,ready:false,checks:[{key:"unavailable",passed:false,message:"Readiness could not be verified."}]}] as const}
+    }));
+    setReadiness(Object.fromEntries(rr));
+   }
+   setError(failures.length?"Some settings data could not be verified: "+failures.slice(0,4).join(" · ")+(failures.length>4?" · and "+(failures.length-4)+" more issue(s).":""):"");
+  }catch(e){setEntitiesLoaded(false);setError(e instanceof Error?e.message:"Company settings failed to load.")}
   finally{setBusy(false)}
  },[]);
  useEffect(()=>{
@@ -300,11 +321,12 @@ export default function SettingsPage(){
   <PageHeader eyebrow="INVOICING SETUP" title="Your invoicing workspace" description="Set up only what you need to start creating and sending invoices. Advanced finance controls remain available when you need them." action={<Button variant="secondary" onClick={()=>setShowAdvancedSettings(true)}>Advanced settings</Button>}/>
   {error?<div className="config-message"><InlineAlert tone="danger" title="Setup needs attention">{error}</InlineAlert><Button variant="secondary" onClick={()=>void loadAll()}>Reload</Button></div>:null}
   {notice?<div className="config-message"><InlineAlert tone="success" title="Saved">{notice}</InlineAlert><Button variant="ghost" size="sm" onClick={()=>setNotice("")}>Dismiss</Button></div>:null}
+  {canonicalSupplierEntities.length>1?<div className="config-message"><InlineAlert tone="warning" title="Multiple active supplier profiles found">The reconciliation was correctly blocked because these active records match Falchion Xeniaa: {canonicalSupplierEntities.map(e=>e.legalName+" / "+e.displayName+" (record "+e.id.slice(0,8)+")").join("; ")}. Do not create another supplier or retry reconciliation yet. Open Advanced settings → Company & entities, verify the genuine registered supplier and review invoice/history and active mappings before deactivating any confirmed duplicate.</InlineAlert><Button variant="secondary" onClick={()=>setShowAdvancedSettings(true)}>Review company entities</Button></div>:null}
   {legacyProductBrandEntities.length>0&&canonicalSupplierEntities.length===0?<div className="config-message"><InlineAlert tone="warning" title="Product brands were entered as legal entities">The active records named {legacyProductBrandEntities.map(e=>e.displayName).join(", ")} look like product brands, not the parent supplier. Save the genuine Falchion Xeniaa legal supplier profile first, then use “Reconcile product brands” below. Do not rename or delete historical records to clear this warning.</InlineAlert></div>:null}
   {canonicalSupplierEntities.length>0&&legacyProductBrandEntities.length>0?<div className="config-message"><InlineAlert tone="warning" title="Legacy legal-entity records retained">Falchion Xeniaa can own all three product brands. Older brand-named legal entities remain visible for history review; reconciliation does not merge or delete them.</InlineAlert></div>:null}
   <div className="quick-setup-grid">
    <section className="quick-setup-primary">
-    {activeEntities.length===0||quickAddEntity?<Card className="quick-setup-card">
+    {!entitiesLoaded?<Card className="quick-setup-card"><p className="eyebrow">COMPANY PROFILE CHECK</p><h2>Unable to verify company profiles</h2><p>The company list did not load successfully. Creating another supplier is disabled until existing company records can be verified, so we do not accidentally create duplicates.</p><div className="config-form-actions"><span/><Button onClick={()=>void loadAll()} disabled={busy}>{busy?"Loading…":"Retry settings load"}</Button><Button variant="secondary" onClick={()=>setShowAdvancedSettings(true)}>Advanced settings</Button></div></Card>:activeEntities.length===0||quickAddEntity?<Card className="quick-setup-card">
      <p className="eyebrow">STEP 1 · BUSINESS BASICS</p>
      <h2>{quickAddEntity?"Add the Falchion Xeniaa supplier":"Add your business"}</h2>
      <p className="quick-setup-lead">These are the only details we need to create your supplier profile. We do not fill in tax IDs, tax rates, or bank details for you.</p>
