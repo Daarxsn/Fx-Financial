@@ -84,7 +84,12 @@ assert.ok(migration.includes("ADD COLUMN milestone VARCHAR(160) NULL"), "migrati
 assert.ok(renderer.includes('"Milestone"') && renderer.includes('"Amount in words:"'), "PDFs must match the supplied sample invoice structure");
 assert.ok(renderer.includes('"Beneficiary Name: "') && renderer.includes('"Terms & Conditions"'), "the PDF must include the supplied payment/terms footer area");
 assert.ok(renderer.includes('await import("sharp")') && renderer.includes('.jpeg({ quality: 92, progressive: false, chromaSubsampling: "4:4:4" })'), "supplied logos must be normalized to a PDFKit-compatible baseline JPEG before embedding");
-assert.ok(renderer.includes('rect(0, 0, doc.page.width, 8)') && renderer.includes('const brandAccent = isCoworks ? "#931314" : isDigitech ? "#111111" : gold;'), "each brand must use its supplied template accent and top-strip treatment");
+assert.ok(renderer.includes('const stripeWidth = width / 3;') &&
+  renderer.includes('fillColor("#F2C354").rect(left, separatorY, stripeWidth, 4)') &&
+  renderer.includes('fillColor("#F04A37").rect(left + stripeWidth, separatorY, stripeWidth, 4)') &&
+  renderer.includes('fillColor("#5EA978").rect(left + stripeWidth * 2, separatorY, width - stripeWidth * 2, 4)') &&
+  renderer.includes('addCell(columnXs[index], y, columnWidths[index], headerHeight, "#ECECEC")'),
+  "PDFs must use the supplied three-colour separator and neutral table header from the reference invoice designs");
 
 assert.ok(composer.includes('id="invoice-valid-until"') && composer.includes('Expires on') && composer.includes('readOnly aria-readonly="true"'), "invoice date must be automatic/read-only and expiry must be user-selected");
 assert.ok(composer.includes('Apply CGST') && composer.includes('Apply SGST') && composer.includes('Amount (calculated)'), "proforma editor must expose optional GST toggles and server-calculated amounts");
