@@ -46,6 +46,8 @@ assert.ok(service.includes("data.email_id ?? data.id"), "Resend webhook must rea
 assert.ok(service.includes("pdfRecord.contentSnapshotId !== snapshot.id"), "Email content and PDF attachment must be tied to the same immutable snapshot revision");
 assert.ok(service.includes("Terminal provider outcomes never regress"), "Provider webhooks must not regress terminal delivery status");
 assert.ok(retryRoute.includes("retryFailedEmail"), "Manual retry must use the bounded retry workflow");
+assert.ok(retryRoute.includes("processEmailOutboxBatch(1,outboxId)") && retryRoute.includes("maxDuration=30"),
+  "manual retry should attempt provider delivery immediately and retain the scheduled-worker fallback");
 assert.ok(webhookRoute.includes("await request.text()"), "Webhook signature must use the exact raw request body");
 for (const header of ["svix-id", "svix-timestamp", "svix-signature"]) {
   assert.ok(webhookRoute.includes(header), "Webhook must validate " + header);
