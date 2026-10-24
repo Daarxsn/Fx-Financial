@@ -169,14 +169,26 @@ export function InvoiceWorkspace(){
    const issued=await getRequest("/api/v1/invoices/"+id+"/issue",{method:"POST",headers:{"X-CSRF-Token":issueToken,"Idempotency-Key":key},body:JSON.stringify({documentDate:form.invoiceDate||today()})});
    if(!issued.response.ok){setSuccess("Draft saved, but it was not issued.");setError(issued.body.error?.message??"Issuance is blocked by a required approval or configuration.");setEditor(false);await refresh();await openInvoice(id,true);return false;}
    let emailError="";
+   let emailStatus="";
    try{
     const emailToken=await csrf();
     const sent=await getRequest("/api/v1/email/outbox",{method:"POST",headers:{"X-CSRF-Token":emailToken,"Idempotency-Key":emailKey},body:JSON.stringify({sourceType:"INVOICE",sourceId:id,recipientEmail:recipientEmail.trim(),recipientConfirmed:true})});
     if(!sent.response.ok)throw new Error(sent.body.error?.message??"Email could not be queued.");
+    emailStatus=str(record(sent.body.data).status);
+    if(["FAILED","BOUNCED","COMPLAINED","REQUIRES_REVIEW"].includes(emailStatus)){
+     throw new Error("The invoice was issued, but the email provider did not accept delivery ("+emailStatus+"). Open email delivery history to review and retry.");
+    }
     setEmailKey(crypto.randomUUID());
    }catch(mailCause){emailError=mailCause instanceof Error?mailCause.message:"Email could not be queued.";}
-   setSuccess(emailError?"Invoice issued successfully. Email needs attention.":"Invoice issued and email queued. Check its delivery status in the invoice details.");
-   if(emailError)setError("The invoice was issued, but email was not queued: "+emailError);
+   const emailSuccess=emailStatus==="DELIVERED"
+    ?"Invoice issued and email delivered."
+    :emailStatus==="SENT"
+     ?"Invoice issued and email accepted by the provider. Delivery confirmation will appear in email history."
+     :emailStatus==="QUEUED"
+      ?"Invoice issued and email queued for retry. Check email delivery history for its current status."
+      :"Invoice issued and email queued. Check its delivery status in the invoice details.";
+   setSuccess(emailError?"Invoice issued successfully. Email needs attention.":emailSuccess);
+   if(emailError)setError("The invoice was issued, but email needs attention: "+emailError);
    setEditor(false);await refresh();await openInvoice(id,true);return !emailError;
   }catch(e){setError(e instanceof Error?e.message:"Invoice draft could not be saved.");return false;}finally{setSaving(false);}
  };
