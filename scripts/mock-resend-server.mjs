@@ -17,7 +17,17 @@ const server=createServer(async(request,response)=>{
     if(request.headers["x-test-token"]!==token) {
       reply(response,401,{error:"unauthorized"});return;
     }
-    reply(response,200,{count:messages.size,messages:[...messages.values()].map(item=>({id:item.id,idempotencyKey:item.idempotencyKey,subject:item.payload.subject,to:item.payload.to,attachmentCount:Array.isArray(item.payload.attachments)?item.payload.attachments.length:0}))});return;
+    reply(response,200,{count:messages.size,messages:[...messages.values()].map(item=>{
+      const attachments=Array.isArray(item.payload.attachments)?item.payload.attachments:[];
+      return {
+        id:item.id,idempotencyKey:item.idempotencyKey,subject:item.payload.subject,to:item.payload.to,
+        attachmentCount:attachments.length,
+        attachmentFilenames:attachments.map(attachment=>String(attachment.filename??"")),
+        attachmentPdfSignatureValid:attachments.length>0&&attachments.every(attachment=>
+          attachment.content_type==="application/pdf"&&typeof attachment.content==="string"&&
+          Buffer.from(attachment.content,"base64").subarray(0,5).toString("ascii")==="%PDF-"),
+      };
+    })});return;
   }
   if(request.method==="POST" && request.url==="/emails") {
     if(request.headers.authorization!=="Bearer ci-resend-test-key") { reply(response,401,{error:"invalid api key"});return; }
