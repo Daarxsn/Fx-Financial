@@ -250,8 +250,15 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       const titleWidth = 245;
       const titleX = right - titleWidth;
       doc.font("Helvetica-Bold").fontSize(14).fillColor("#050505").text(sourceLabel, titleX, 49, { width: titleWidth, align: "right" });
+      const documentNumberLabel = isDraftPreview
+        ? "Document no: Not issued"
+        : snapshot.sourceType === "RECEIPT"
+          ? "Receipt no: " + text(snapshot.documentNumber)
+          : snapshot.sourceType === "QUOTATION"
+            ? "Quotation no: " + text(snapshot.documentNumber)
+            : "Invoice no: " + text(snapshot.documentNumber);
       doc.font("Helvetica").fontSize(10).fillColor("#111111")
-        .text(isDraftPreview ? "Document no: Not issued" : "Invoice no: " + text(snapshot.documentNumber), titleX, 70, { width: titleWidth, align: "right" });
+        .text(documentNumberLabel, titleX, 70, { width: titleWidth, align: "right" });
       if (isDraftPreview) {
         doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#8A5B00")
           .text("DRAFT PREVIEW — NOT AN ISSUED INVOICE", titleX, 84, { width: titleWidth, align: "right" });
