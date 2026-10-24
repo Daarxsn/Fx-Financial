@@ -12,7 +12,7 @@ export async function GET(){
   const [entities]=await pool.query<(RowDataPacket & {id:string;display_name:string;currency:string;tax_setup_status:string;default_tax_code:string|null})[]>(
     `SELECT id,display_name,currency,tax_setup_status,default_tax_code FROM legal_entities WHERE id IN (${placeholders}) AND is_active=TRUE ORDER BY display_name,id`,scope);
   const [brandRows]=await pool.query<(RowDataPacket & {id:string;name:string;code:string;logo_reference:string|null;default_template_key:string|null;theme_json:unknown;legal_entity_id:string;entity_legal_name:string;entity_name:string;currency:string;tax_setup_status:string;default_tax_code:string|null;is_default:number;mapping_count:number})[]>(
-    `SELECT id,name,code,logo_reference,default_template_key,theme_json,legal_entity_id,entity_name,currency,tax_setup_status,is_default,mapping_count
+    `SELECT id,name,code,logo_reference,default_template_key,theme_json,legal_entity_id,entity_legal_name,entity_name,currency,tax_setup_status,is_default,mapping_count
      FROM (
        SELECT b.id,b.name,b.code,b.logo_reference,b.default_template_key,b.theme_json,
               e.id AS legal_entity_id,e.legal_name AS entity_legal_name,e.display_name AS entity_name,e.currency,e.tax_setup_status,e.default_tax_code,ble.is_default,
