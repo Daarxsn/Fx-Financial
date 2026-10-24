@@ -3,11 +3,12 @@ import { z } from "zod";
 import { requirePermission } from "@/lib/auth/authorize";
 import { assertCsrf } from "@/lib/auth/csrf";
 import { jsonNoStore } from "@/lib/http/api-response";
-import { EmailWorkflowError, getEmailSourcePreview, listEmailOutbox, queueDocumentEmail, type EmailSourceType } from "@/lib/email/service";
+import { EmailWorkflowError, getEmailSourcePreview, listEmailOutbox, processEmailOutboxBatch, queueDocumentEmail, type EmailSourceType } from "@/lib/email/service";
 import { emailApiError } from "@/lib/email/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 const sourceTypes = ["INVOICE","QUOTATION","RECEIPT"] as const;
 const uuid = z.string().uuid();
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
     if (!uuid.safeParse(idempotencyKey).success) {
       throw new EmailWorkflowError("VALIDATION_ERROR",422,"Send a UUID in the Idempotency-Key header.");
     }
-    const data = await queueDocumentEmail({
+    const queued = await queueDocumentEmail({
       sourceType:input.sourceType,
       sourceId:input.sourceId,
       actorId:actor.userId,
@@ -84,7 +85,43 @@ export async function POST(request: NextRequest) {
       recipientConfirmed:input.recipientConfirmed,
       idempotencyKey,
     });
-    return jsonNoStore({data},data.idempotentReplay ? 200 : 202);
+    // Persist first, then try the specific outbox item during this request. The scheduled
+    // worker remains the retry/recovery path if the provider is slow or temporarily unavailable.
+    let data: Record<string, unknown> = { ...queued, immediateDeliveryAttempted:false };
+    if (queued.status === "QUEUED") {
+      try {
+        await processEmailOutboxBatch(1,queued.id);
+        data = { ...data, immediateDeliveryAttempted:true };
+      } catch (error) {
+        console.warn("Immediate email delivery attempt deferred to the durable worker",{
+          outboxId:queued.id,
+          errorName:error instanceof Error?error.name:"UnknownError",
+        });
+        data = { ...data, immediateDeliveryDeferred:true };
+      }
+    }
+    try {
+      const latest = await listEmailOutbox({
+        legalEntityIds:actor.legalEntityIds,
+        sourceType:input.sourceType,
+        sourceId:input.sourceId,
+      });
+      const current = latest.find(item=>item.id===queued.id);
+      if (current) data = {
+        ...current,
+        idempotentReplay:queued.idempotentReplay,
+        immediateDeliveryAttempted:data.immediateDeliveryAttempted===true,
+        ...(data.immediateDeliveryDeferred===true ? {immediateDeliveryDeferred:true}:{}),
+      };
+    } catch (error) {
+      // The outbox write/attempt may already have succeeded. Do not turn that into a false
+      // "not queued" response; the delivery panel can reconcile from durable history.
+      console.warn("Email queue response could not refresh delivery status",{
+        outboxId:queued.id,
+        errorName:error instanceof Error?error.name:"UnknownError",
+      });
+    }
+    return jsonNoStore({data},queued.idempotentReplay ? 200 : 202);
   } catch (error) {
     return emailApiError(error);
   }
