@@ -362,7 +362,7 @@ try {
   assert.equal(await invoiceReadyToSend.getByLabel("Email to send the invoice to").inputValue(), overrideRecipientEmail,
     "the explicitly chosen per-invoice recipient persists after the second draft save");
   await invoiceReadyToSend.getByRole("button", { name: "Issue & send invoice", exact: true }).click();
-  await page.getByText("Invoice issued and email queued. Check its delivery status in the invoice details.", { exact: true }).waitFor();
+  await page.getByText("Invoice issued and email accepted by the provider. Delivery confirmation will appear in email history.", { exact: true }).waitFor();
   await page.getByRole("heading", { name: "Email delivery and evidence" }).waitFor();
 
   const [invoiceByLineRows] = await db.execute(
@@ -377,19 +377,23 @@ try {
   assert.equal(invoiceByLineRows[0].draft_recipient_email, overrideRecipientEmail,
     "invoice row stores the explicit one-off recipient");
   const [queuedEmailRows] = await db.execute(
-    "SELECT recipient_email,status FROM email_outbox WHERE source_document_type='INVOICE' AND source_document_id=? ORDER BY created_at DESC LIMIT 1",
+    "SELECT recipient_email,status,generated_document_id,attachment_sha256,attachment_byte_size,provider_message_id FROM email_outbox WHERE source_document_type='INVOICE' AND source_document_id=? ORDER BY created_at DESC LIMIT 1",
     [invoiceByLineRows[0].id],
   );
   assert.equal(queuedEmailRows.length, 1, "Issue & send queues one durable email with the issued invoice PDF.");
   assert.equal(queuedEmailRows[0].recipient_email, overrideRecipientEmail);
-  assert.equal(queuedEmailRows[0].status, "QUEUED");
+  assert.equal(queuedEmailRows[0].status, "SENT", "Issue & send attempts the provider immediately and records provider acceptance");
+  assert.ok(queuedEmailRows[0].generated_document_id, "email uses the verified generated invoice PDF");
+  assert.match(queuedEmailRows[0].attachment_sha256, /^[a-f0-9]{64}$/, "outbox stores the checksum of the attached PDF");
+  assert.ok(Number(queuedEmailRows[0].attachment_byte_size)>1000, "outbox records the PDF attachment byte size");
+  assert.ok(queuedEmailRows[0].provider_message_id, "the provider acceptance reference is saved");
   const [issuedBrowserSnapshots] = await db.execute(
     "SELECT configuration_sha256 FROM document_configuration_snapshots WHERE resource_type='INVOICE' AND resource_id=?",
     [invoiceByLineRows[0].id],
   );
   assert.equal(issuedBrowserSnapshots.length, 1, "UI issuance persists one immutable configuration snapshot");
   assert.match(String(issuedBrowserSnapshots[0].configuration_sha256), /^[0-9a-f]{64}$/);
-  pass("Invoice workspace edits the draft, issues it with one primary action, queues the PDF email, allocates a number and persists an integrity-hashed snapshot.");
+  pass("Invoice workspace edits the draft, issues it with one primary action, sends a verified PDF to the chosen recipient through the mock provider, allocates a number and persists an integrity-hashed snapshot.");
 
   // Pack 9 browser acceptance: the onboarding/settings surface reports readiness for the real test entity.
   await page.goto(baseUrl + "/settings");
