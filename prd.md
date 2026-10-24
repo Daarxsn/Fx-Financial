@@ -7,7 +7,7 @@
 
 ## 1. Product purpose
 
-Provide Falchion Xeniaa with a secure, multi-brand invoice and financial-document workspace. The product must make everyday billing straightforward while preserving financial correctness, legal-entity boundaries, evidence, auditability and operational safety. It is not merely CRUD for invoices and must not fabricate business, tax or issuer data to make a workflow appear complete.
+Provide Falchion Xeniaa with a secure, multi-brand invoice generator that makes four everyday tasks obvious and reliable: create an invoice, preview it, send it, and manage its status/history. Keep financial correctness, legal-entity boundaries, access control and auditability, but do not let advanced financial-document features obscure this core journey. Never fabricate business, tax, issuer or email-provider data.
 
 ## 2. Users and permissions
 
@@ -21,20 +21,29 @@ A role name alone is not authorization. Server-side permission checks and legal-
 
 The shipped product brands are **MyFX POS**, **FX Digitech**, and **FX Coworks**. A brand is a commercial identity, not automatically a legal entity. The actual issuer must be resolved through an explicit, approved brand-to-legal-entity mapping. Do not infer the issuer, currency, tax registration, numbering policy, bank details, terms or statutory disclosures from a logo, sample invoice or brand name.
 
-## 4. Core capabilities
+## 4. Core capabilities — Stage 1 MVP
 
-1. Authenticated access with secure local-password sessions, CSRF/origin protections and role/permission controls.
-2. Company, brand, legal-entity, currency, tax, numbering and template configuration with effective dates, validation and auditable changes.
-3. Customer master data and reusable item/service catalogue, with safe search, archive semantics, import/export validation and permission checks.
-4. Quotations with controlled lifecycle and safe conversion to an editable invoice draft.
-5. Invoices with draft editing, server-side validation, controlled numbering, issue-time financial snapshots, lifecycle history and audited correction/cancellation paths.
-6. Exact-decimal calculations for quantities, prices, discounts, taxes and totals; server-calculated values are authoritative.
-7. Manual payment recording and allocation, partial/full payment status, receipts and reasoned/audited reversals. **No payment gateway is in the first-release scope.**
-8. Branded PDF generation from approved configuration and immutable document snapshots; private object storage, integrity checks, authorized download and history.
-9. Durable email outbox with idempotency, bounded retry, delivery events and clear distinction between queued, provider-accepted and delivered states.
-10. Finance-approved, versioned overdue reminder policies and authenticated scheduled processing.
-11. Overview dashboards, reconciled reports, controlled CSV exports and searchable audit history.
-12. Repeatable migrations, readiness checks, deployment smoke tests, backup/recovery procedures and evidence-based UAT/release gates.
+1. **Create:** an authorized user can find the invoice workspace, start a new invoice from a visible action, select one of the three configured product brands, choose or create a customer where permitted, add line items, save and reopen a draft.
+2. **Preview:** the user can preview the saved invoice before issue/send. The preview must clearly distinguish a draft screen preview from the final issued PDF; it must never imply that missing supplier/tax/numbering approvals are complete.
+3. **Issue:** issuance validates approved issuer, numbering, tax and document policy; server-side decimal-safe totals are authoritative and the issued snapshot is immutable.
+4. **Send:** after issuance, the user can queue an email with the correct verified PDF attachment to an explicitly confirmed recipient. The interface distinguishes queued, provider-accepted, sent and delivered states and shows actionable errors.
+5. **Manage:** searchable invoice list and detail view; draft edit, preview, PDF history/download, email delivery history, outstanding/paid state and safe manual payment recording.
+6. **Customer/item reuse:** keep the minimal customer and item data required to make invoice creation fast. Advanced import/export or catalog operations are not prerequisites for the core invoice journey.
+7. **Access and audit:** authenticated, permission-checked and legal-entity-scoped reads/mutations; CSRF/origin protection; audit evidence for sensitive lifecycle actions.
+8. **Operational foundation:** migrations, tests, error handling, readiness checks and evidence-based deployment gates needed to run the above reliably.
+
+### Stage 1 exit criteria
+
+- A visible workspace route and create-invoice action exist and are reachable for the intended role.
+- An authorized user can create, save, reopen, edit and preview a draft without being forced into a hidden or inaccessible state.
+- The issued PDF matches the saved, approved invoice snapshot; download is permission-checked and integrity-verified.
+- Issue-and-send has tested success and failure paths, idempotency and visible delivery status. Live delivery is separately verified against the real configured provider.
+- A user can find an invoice and understand its current lifecycle, payment and delivery state.
+- Relevant automated tests pass for the exact candidate commit; manual visual/accessibility and live-provider gates are separately recorded.
+
+### Deferred until Stage 1 is stable
+
+Quotation workflows, reminder-policy automation, broad reporting/dashboard work, bulk import/export, advanced document families, payment gateways and accounting/ERP expansion are not allowed to block the core invoice path. Existing working code may remain in the repository, but Stage 1 navigation and implementation effort must prioritize the four core tasks.
 
 ## 5. Non-functional requirements
 
