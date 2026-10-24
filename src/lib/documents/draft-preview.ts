@@ -3,6 +3,7 @@ import "server-only";
 import type { RowDataPacket } from "mysql2";
 import { pool } from "@/lib/db/pool";
 import { renderDocumentPdf, type PdfSnapshot } from "@/lib/documents/pdf";
+import { isProductBrandLegalEntityName } from "@/lib/brand-assets";
 
 function object(value: unknown): Record<string, unknown> {
   if (typeof value === "string") { try { value = JSON.parse(value) as unknown; } catch { return {}; } }
@@ -61,7 +62,7 @@ export async function renderDraftInvoicePreviewPdf(invoiceId:string):Promise<Buf
   if(!lineRows.length) throw new Error("Add at least one described invoice line before previewing.");
   const invoiceDate=dateText(row.invoice_date);
   const [entityVersionRows]=await pool.execute<(RowDataPacket & {config_snapshot:unknown})[]>(
-    "SELECT config_snapshot FROM legal_entity_config_versions WHERE legal_entity_id=? ORDER BY version_number DESC LIMIT 1",
+    "SELECT config_snapshot FROM legal_entity_config_versions WHERE legal_entity_id=? AND effective_from<=NOW(3) ORDER BY version_number DESC LIMIT 1",
     [row.legal_entity_id],
   );
   const entityVersion=object(entityVersionRows[0]?.config_snapshot);
@@ -72,6 +73,7 @@ export async function renderDraftInvoicePreviewPdf(invoiceId:string):Promise<Buf
     displayName:entityVersion.displayName??row.display_name,
     registrationNumber:entityVersion.registrationNumber??row.registration_number,
     taxIdentifier:entityVersion.taxIdentifier??row.tax_identifier,
+    taxSetupStatus:entityVersion.taxSetupStatus??row.tax_setup_status,
     address:entityVersion.address??object(row.address_json),
     billingAddress:entityVersion.billingAddress??(row.billing_address_json===null?null:object(row.billing_address_json)),
     countryCode:entityVersion.countryCode??row.country_code,
@@ -95,10 +97,14 @@ export async function renderDraftInvoicePreviewPdf(invoiceId:string):Promise<Buf
   const brandRow=brandRows[0];
   if(!brandRow) throw new Error("The selected product brand is inactive or unavailable.");
   const [brandVersionRows]=await pool.execute<(RowDataPacket & {config_snapshot:unknown})[]>(
-    "SELECT config_snapshot FROM brand_config_versions WHERE brand_id=? ORDER BY version_number DESC LIMIT 1",
+    "SELECT config_snapshot FROM brand_config_versions WHERE brand_id=? AND effective_from<=NOW(3) ORDER BY version_number DESC LIMIT 1",
     [row.brand_id],
   );
   const brandVersion=object(brandVersionRows[0]?.config_snapshot);
+  const [brandMappingRows]=await pool.execute<RowDataPacket[]>(
+    "SELECT brand_id FROM brand_legal_entities WHERE brand_id=? AND legal_entity_id=? AND effective_from<=NOW(3) AND (effective_until IS NULL OR effective_until>NOW(3)) LIMIT 1",
+    [row.brand_id,row.legal_entity_id],
+  );
   const brandConfig={...brandVersion,id:brandRow.id,name:brandRow.name,code:brandRow.code,logoReference:brandVersion.logoReference??brandRow.logo_reference,
     theme:brandVersion.theme??object(brandRow.theme_json)};
 
@@ -107,21 +113,24 @@ export async function renderDraftInvoicePreviewPdf(invoiceId:string):Promise<Buf
     FROM invoice_document_templates
     WHERE legal_entity_id=? AND brand_id <=> ? AND document_type='INVOICE' AND is_active=TRUE
       AND effective_from<=? AND (effective_until IS NULL OR effective_until>=?)
-    ORDER BY version_number DESC LIMIT 1`;
+    ORDER BY version_number DESC`;
   const [templates]=await pool.execute<(RowDataPacket & {id:string;template_key:string;display_name:string;version_number:number;template_config:unknown})[]>(
     templateQuery,[row.legal_entity_id,row.brand_id,invoiceDate??"1900-01-01",invoiceDate??"1900-01-01"],
   );
   let selectedTemplate=templates[0];
+  let templateWarning="";
+  if(templates.length>1)templateWarning="More than one active brand template is effective for this date; resolve template configuration before issuing.";
   if(!selectedTemplate) {
     const [fallbacks]=await pool.execute<typeof templates>(
       `SELECT id,template_key,display_name,version_number,template_config
         FROM invoice_document_templates
         WHERE legal_entity_id=? AND brand_id IS NULL AND document_type='INVOICE' AND is_active=TRUE
           AND effective_from<=? AND (effective_until IS NULL OR effective_until>=?)
-        ORDER BY version_number DESC LIMIT 1`,
+        ORDER BY version_number DESC`,
       [row.legal_entity_id,invoiceDate??"1900-01-01",invoiceDate??"1900-01-01"],
     );
     selectedTemplate=fallbacks[0];
+    if(fallbacks.length>1)templateWarning="More than one active supplier-wide invoice template is effective for this date; resolve template configuration before issuing.";
   }
   if(selectedTemplate)templateConfig=object(selectedTemplate.template_config);
 
@@ -137,11 +146,43 @@ export async function renderDraftInvoicePreviewPdf(invoiceId:string):Promise<Buf
     [row.legal_entity_id,invoiceDate??"1900-01-01",invoiceDate??"1900-01-01"],
   );
 
+  const warnings:string[]=[];
+  const supplierLegalName=String(entityConfig.legalName??entityConfig.displayName??"").trim();
+  const supplierAddress=object(entityConfig.address);
+  if(!supplierLegalName||!String(supplierAddress.line1??"").trim()||!String(supplierAddress.city??"").trim()||!String(supplierAddress.postalCode??"").trim()) {
+    warnings.push("Supplier legal name or registered address is incomplete in company settings.");
+  }
+  if(isProductBrandLegalEntityName(supplierLegalName)||isProductBrandLegalEntityName(String(entityConfig.displayName??""))) {
+    warnings.push("This supplier profile uses a product-brand name. Confirm the genuine registered supplier before issuing; the preview will not silently rename it.");
+  }
+  if(!brandMappingRows.length) {
+    warnings.push("The selected product brand is not effectively mapped to this supplier. Resolve brand mappings before issuing.");
+  }
+  if(row.tax_setup_status==="UNCONFIGURED"||entityConfig.taxSetupStatus==="UNCONFIGURED") {
+    warnings.push("Tax setup is not approved. The final invoice cannot be issued until the required tax decision and effective registrations are recorded.");
+  } else if(entityConfig.taxSetupStatus==="APPROVED_CONFIGURED"&&registrationRows.length===0) {
+    warnings.push("No approved, effective tax registration was found for this invoice date.");
+  }
+  const bank=object(entityConfig.bankDetails);
+  if(!Object.values(bank).some(value=>typeof value==="string"&&value.trim().length>0)) {
+    warnings.push("Bank/payment details are not configured; no bank details have been added to this draft preview.");
+  }
+  if(templateWarning)warnings.push(templateWarning);
+  else if(!selectedTemplate)warnings.push("No active invoice template was found for this brand and date. This proforma layout is preview-only until template configuration is corrected.");
+  lineRows.forEach((line,index)=>{
+    if(Number(line.unit_price)===0)warnings.push("Line "+(index+1)+" has a zero unit rate. Confirm this is intentional or enter the actual rate before issuing.");
+    if(!String(line.description??"").trim())warnings.push("Line "+(index+1)+" has no description.");
+  });
+  if(!(row.draft_recipient_email||row.customer_email||"").trim())warnings.push("No recipient email is saved. Enter and confirm the client recipient before Issue & send.");
+  const customerAddress=object(row.customer_billing_address);
+  if(!String(customerAddress.line1??"").trim())warnings.push("Customer billing address has not been provided.");
+
   const snapshot:PdfSnapshot={
     sourceType:"INVOICE",
     sourceDocumentId:row.id,
     documentNumber:"DRAFT",
     lifecycleStatus:"DRAFT",
+    previewWarnings:warnings,
     documentDate:invoiceDate,
     dueDate:dateText(row.due_date),
     validUntil:dateText(row.invoice_valid_until),
@@ -179,12 +220,12 @@ export async function renderDraftInvoicePreviewPdf(invoiceId:string):Promise<Buf
       legalEntity:entityConfig,
       brand:brandConfig,
       template:{id:selectedTemplate?.id??null,key:selectedTemplate?.template_key??"STANDARD",name:selectedTemplate?.display_name??"Proforma invoice",versionNumber:Number(selectedTemplate?.version_number??0),config:{documentTitle:"PROFORMA INVOICE:",...templateConfig,terms:templateConfig.terms??entityConfig.invoiceTerms??"",footer:templateConfig.footer??entityConfig.invoiceFooter??""}},
-      selectedTaxRegistrations:registrationRows.map(reg=>({
+      selectedTaxRegistrations:entityConfig.taxSetupStatus==="APPROVED_CONFIGURED"?registrationRows.map(reg=>({
         id:reg.id,registrationKey:reg.registration_key,versionNumber:Number(reg.version_number),
         registrationType:reg.registration_type,jurisdiction:reg.jurisdiction,registrationNumber:reg.registration_number,
         displayLabel:reg.display_label,isPrimary:Boolean(reg.is_primary),effectiveFrom:reg.effective_from,effectiveUntil:reg.effective_until,
         approvalReference:reg.approval_reference,
-      })),
+      })):[],
     },
     lines:lineRows.map((line,index)=>({
       lineNumber:Number(line.line_number),lineKind:line.line_kind,milestone:line.milestone??"",
