@@ -36,7 +36,7 @@ for (const needle of [
 
 assert.ok(outboxRoute.includes("assertCsrf"), "Email POST must enforce CSRF");
 assert.ok(outboxRoute.includes("recipientConfirmed"), "Email POST must require explicit recipient confirmation");
-assert.ok(outboxRoute.includes("processEmailOutboxBatch(1,queued.id)") && outboxRoute.includes("maxDuration = 30"),
+assert.ok(outboxRoute.includes("processEmailOutboxBatch(1,queuedId)") && outboxRoute.includes("maxDuration = 30"),
   "document-email POST must attempt delivery for the queued item immediately, within a bounded server request");
 assert.ok(service.includes("onlyOutboxId ?") && service.includes("WHERE id=? AND ((status='QUEUED'"),
   "immediate delivery must target only the requested outbox row and leave other queued messages for the worker");
