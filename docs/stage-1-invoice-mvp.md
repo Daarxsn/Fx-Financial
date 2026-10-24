@@ -43,6 +43,9 @@ The existing component and APIs did not guarantee a working user journey:
 - [x] Changed invoice opening to read/detail mode; edit mode is explicit.
 - [x] Added a row-level Preview action and a saved-data invoice preview with print/save-to-PDF affordance.
 - [x] Added regression assertions for route existence, home CTA, button visibility, preview access and draft detail/edit behavior.
+- [x] The email POST commits the request to the durable outbox, then attempts only that outbox item immediately; the scheduled worker remains the retry/recovery path for queued or transiently failed attempts.
+- [x] The issue/send UI distinguishes provider acceptance (`SENT`) from provider-confirmed delivery (`DELIVERED`) and surfaces failed/review states rather than claiming every queued email was delivered.
+- [ ] Verify real Resend credentials and a verified sender/domain in Preview, send the exact generated PDF to a controlled mailbox, inspect the attachment and confirm the provider delivery webhook before claiming environment-level delivery.
 - [x] Updated `prd.md`, `architecture.md`, `rules.md`, `phases.md`, `design.md`, `memory.md`, `agent.md` and `README.md`.
 
 ## Acceptance checklist
