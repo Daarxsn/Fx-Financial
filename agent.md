@@ -84,3 +84,14 @@ When reporting work, include:
 - **Next step:** one specific, highest-value action.
 
 Be direct. Do not claim success before receiving tool confirmation. If blocked, explain the blocker and offer the safest next step instead of making speculative edits.
+
+## Stage 1 invoice workflow checks (2026-10-24)
+
+Before modifying an invoice feature, verify the full user-facing route rather than only its API or component:
+
+1. Confirm `src/app/(workspace)/invoices/page.tsx` exists and renders `InvoiceWorkspace`; confirm the sidebar and overview links resolve to it.
+2. Confirm the create action is visible for a user with `invoices:draft:create` even when company/brand/customer setup is incomplete. Block the operation with a clear explanation, not by silently removing the action.
+3. Confirm saving a draft returns to detail/read mode; reopening a draft must not force edit mode. Confirm preview is visible and uses saved server-calculated data; unsaved edits must be saved before preview.
+4. Confirm issue/preview/PDF/email are distinct stages with permission checks, idempotency and explicit errors. Test that email queue success is not mislabeled as delivery success.
+5. Extend `scripts/verify-simple-invoice-workflow.mjs` for route existence, home CTA, button visibility, preview access and draft detail/edit behavior. Run it along with lint, typecheck, build and exact-SHA CI; then perform browser acceptance where available.
+6. Update all seven root documents and the Stage 1 phase tracker when scope, behavior or validation status changes. Do not mark code complete as verified until command/CI/browser evidence is recorded.
