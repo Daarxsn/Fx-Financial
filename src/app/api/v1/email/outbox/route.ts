@@ -85,16 +85,23 @@ export async function POST(request: NextRequest) {
       recipientConfirmed:input.recipientConfirmed,
       idempotencyKey,
     });
+    const queuedRecord = queued as Record<string, unknown>;
+    const queuedId = typeof queuedRecord.id === "string" ? queuedRecord.id : "";
+    const queuedStatus = typeof queuedRecord.status === "string" ? queuedRecord.status : "";
+    const idempotentReplay = queuedRecord.idempotentReplay === true;
+    if (!uuid.safeParse(queuedId).success || !queuedStatus) {
+      throw new EmailWorkflowError("EMAIL_OUTBOX_UNAVAILABLE",500,"The durable email request could not be reloaded.");
+    }
     // Persist first, then try the specific outbox item during this request. The scheduled
     // worker remains the retry/recovery path if the provider is slow or temporarily unavailable.
-    let data: Record<string, unknown> = { ...queued, immediateDeliveryAttempted:false };
-    if (queued.status === "QUEUED") {
+    let data: Record<string, unknown> = { ...queuedRecord, immediateDeliveryAttempted:false };
+    if (queuedStatus === "QUEUED") {
       try {
-        await processEmailOutboxBatch(1,queued.id);
+        await processEmailOutboxBatch(1,queuedId);
         data = { ...data, immediateDeliveryAttempted:true };
       } catch (error) {
         console.warn("Immediate email delivery attempt deferred to the durable worker",{
-          outboxId:queued.id,
+          outboxId:queuedId,
           errorName:error instanceof Error?error.name:"UnknownError",
         });
         data = { ...data, immediateDeliveryDeferred:true };
@@ -106,10 +113,10 @@ export async function POST(request: NextRequest) {
         sourceType:input.sourceType,
         sourceId:input.sourceId,
       });
-      const current = latest.find(item=>item.id===queued.id);
+      const current = latest.find(item=>item.id===queuedId);
       if (current) data = {
         ...current,
-        idempotentReplay:queued.idempotentReplay,
+        idempotentReplay,
         immediateDeliveryAttempted:data.immediateDeliveryAttempted===true,
         ...(data.immediateDeliveryDeferred===true ? {immediateDeliveryDeferred:true}:{}),
       };
@@ -117,11 +124,11 @@ export async function POST(request: NextRequest) {
       // The outbox write/attempt may already have succeeded. Do not turn that into a false
       // "not queued" response; the delivery panel can reconcile from durable history.
       console.warn("Email queue response could not refresh delivery status",{
-        outboxId:queued.id,
+        outboxId:queuedId,
         errorName:error instanceof Error?error.name:"UnknownError",
       });
     }
-    return jsonNoStore({data},queued.idempotentReplay ? 200 : 202);
+    return jsonNoStore({data},idempotentReplay ? 200 : 202);
   } catch (error) {
     return emailApiError(error);
   }
