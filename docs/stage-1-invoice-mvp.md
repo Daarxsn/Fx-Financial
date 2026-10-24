@@ -76,6 +76,10 @@ The existing component and APIs did not guarantee a working user journey:
 - [ ] Record manual browser evidence and unresolved business/provider approvals.
 - [ ] Update this tracker and the seven root documents based on actual test results.
 
+## Latest CI failure and correction
+
+The failed CI run for [`8d74d63`](https://github.com/Daarxsn/Fx-Financial/commit/8d74d6307ec03a98ceb9bc978acba7c22f0849b2) was isolated to `npm run invoice:access-ui-test`. The product page had already been updated to describe the actual invoice workflow and correctly state that PDF/email require approved issuer setup and a verified sender configuration; the regression test still expected older copy saying those capabilities were not enabled and that accepted quotations convert directly to invoice drafts. The app behavior is intentional; the stale test assertion has been updated to validate the current user-facing contract. Re-run CI on the fix commit before marking validation complete.
+
 ## Current source-level verification (2026-10-24)
 
 - Latest inspected main HEAD at this check: [df145c1](https://github.com/Daarxsn/Fx-Financial/commit/df145c1751831781b341ea6373e2ffad7bbf6f95).

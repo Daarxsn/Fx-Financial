@@ -28,7 +28,10 @@ const checks = [
 
   ["users & access route is discoverable for authorized administrators", shell.includes('href: "/access"') && shell.includes('permission: "users:manage"') && accessPage.includes("<AccessWorkspace />")],
   ["dashboard directly exposes both invoice and quotation workspaces", home.includes('title: "Invoices"') && home.includes('href: "/invoices"') && home.includes('title: "Quotations"') && home.includes('href: "/quotations"')],
-  ["dashboard explains draft conversion and current PDF/email limitations", home.includes("convert accepted quotes into invoice drafts") && home.includes("PDF generation and email delivery are not enabled yet")],
+  ["dashboard explains the current invoice workflow and PDF/email prerequisites",
+    home.includes("Create, preview, send and manage invoices from one clear workspace") &&
+    home.includes("Open Invoices to create a draft, preview the saved invoice, issue it when the required finance checks pass, and send it through the configured email service.") &&
+    home.includes("PDF/email need approved issuer setup and a verified sender configuration")],
   ["public brand image assets bypass the login navigation gate", proxy.includes('pathname.startsWith("/brand/")')],
   ["mobile topbar hides redundant environment decorations below 520px", css.includes("@media (max-width: 520px)") && css.includes(".topbar .environment-pill, .topbar .topbar__divider { display: none; }")],
   ["invitation UI requires an explicit finance role and entity scope", access.includes("roleKeys: [roleKey], legalEntityIds: entityIds") && access.includes("Select at least one active legal entity")],
