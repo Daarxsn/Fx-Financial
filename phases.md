@@ -5,6 +5,8 @@ This is the high-level execution map. The detailed `docs/phase-*`, Pack runbooks
 ## Product delivery stages (decision 2026-10-24)
 
 ### Stage 1 — Core invoice MVP (IN PROGRESS)
+**Detailed tracker:** [docs/stage-1-invoice-mvp.md](docs/stage-1-invoice-mvp.md) — baseline findings, acceptance evidence, open gates and next action.
+
 **Goal:** create, preview, send and manage invoices reliably before expanding the product.
 
 - [x] Repository reconnaissance confirmed the invoice component and backend APIs existed but `src/app/(workspace)/invoices/page.tsx` was missing from `main`, leaving the component unreachable through the intended route.
