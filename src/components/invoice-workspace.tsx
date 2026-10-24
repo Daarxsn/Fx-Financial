@@ -39,7 +39,7 @@ export function InvoiceWorkspace(){
  const [loading,setLoading]=useState(true);const [optionsLoading,setOptionsLoading]=useState(false);
  const [saving,setSaving]=useState(false);const [issuing,setIssuing]=useState("");
  const [error,setError]=useState("");const [success,setSuccess]=useState("");
- const [editor,setEditor]=useState(false);const [selected,setSelected]=useState<Invoice|null>(null);
+ const [editor,setEditor]=useState(false);const [selected,setSelected]=useState<Invoice|null>(null);const [showPreview,setShowPreview]=useState(false);
  const [form,setForm]=useState({legalEntityId:"",brandId:"",customerId:"",currency:"",invoiceDate:today(),dueDate:"",paymentTermsDays:"0",notes:""});
  const [customerMode,setCustomerMode]=useState<"existing"|"new">("existing");
  const [quickCustomer,setQuickCustomer]=useState<QuickCustomer>({name:"",phone:"",line1:"",city:"",state:"",postalCode:"",countryCode:"IN"});
@@ -56,7 +56,7 @@ export function InvoiceWorkspace(){
  const validBrands=options.brands.filter(b=>b.canAutoMap);
  const missingSetup=!optionsLoading&&canCreate&&(!options.legalEntities.length||!validBrands.length);
  const selectedBrand=options.brands.find(b=>b.id===form.brandId);
- const selectedEntity=options.legalEntities.find(e=>e.id===form.legalEntityId);
+ const selectedEntity=options.legalEntities.find(e=>e.id===form.legalEntityId);const previewBrand=options.brands.find(b=>b.id===selected?.brandId);const previewEntity=options.legalEntities.find(e=>e.id===selected?.legalEntityId);
  const rules=useMemo(()=>options.taxRules.filter(r=>r.legalEntityId===form.legalEntityId&&(!form.invoiceDate||r.effectiveFrom<=form.invoiceDate)&&(!r.effectiveUntil||r.effectiveUntil>=form.invoiceDate)),[options.taxRules,form.legalEntityId,form.invoiceDate]);
  const getRequest=useCallback(async(url:string,init:RequestInit={})=>{
   const response=await fetch(url,{...init,cache:"no-store",headers:{"Accept":"application/json",...(init.body?{"Content-Type":"application/json"}:{}),...(init.headers??{})}});
@@ -121,12 +121,12 @@ export function InvoiceWorkspace(){
  const updateQuickCustomer=(key:keyof QuickCustomer,value:string)=>setQuickCustomer(old=>({...old,[key]:value}));
  const chooseBrand=(brandId:string)=>{const brand=validBrands.find(b=>b.id===brandId);setForm(old=>({...old,brandId,legalEntityId:brand?.legalEntityId??"",currency:brand?.currency??"INR"}));setLines(old=>old.map(line=>({...line,taxCode:brand?.defaultTaxCode??""})));setDirty(true);setCreateKey(crypto.randomUUID()+crypto.randomUUID());};
  const logoForBrand=(brand:BrandChoice)=>{const code=(brand.code+" "+brand.name).toUpperCase();if(code.includes("COWORK"))return "/brand/fx-coworks.webp";if(code.includes("DIGI"))return "/brand/fx-digitech.webp";if(code.includes("MYFX")||code.includes("POS"))return "/brand/myfx-pos.webp";return brand.logoReference?.startsWith("/brand/")?brand.logoReference:"/brand/falchion-xeniaa-logo.webp";};
- const startNew=()=>{setSelected(null);setPaymentHistory([]);setReversingPaymentId("");setCustomerMode(canAddCustomer?"new":"existing");setQuickCustomer({name:"",phone:"",line1:"",city:"",state:"",postalCode:"",countryCode:"IN"});setRecipientEmail("");setEmailKey(crypto.randomUUID());setForm({legalEntityId:"",brandId:"",customerId:"",currency:"",invoiceDate:today(),dueDate:"",paymentTermsDays:"0",notes:""});setLines([freshLine()]);setDirty(true);setEditor(true);setError("");setSuccess("");setCreateKey(crypto.randomUUID()+crypto.randomUUID());};
+ const startNew=()=>{setSelected(null);setShowPreview(false);setPaymentHistory([]);setReversingPaymentId("");setCustomerMode(canAddCustomer?"new":"existing");setQuickCustomer({name:"",phone:"",line1:"",city:"",state:"",postalCode:"",countryCode:"IN"});setRecipientEmail("");setEmailKey(crypto.randomUUID());setForm({legalEntityId:"",brandId:"",customerId:"",currency:"",invoiceDate:today(),dueDate:"",paymentTermsDays:"0",notes:""});setLines([freshLine()]);setDirty(true);setEditor(true);setError("");setSuccess("");setCreateKey(crypto.randomUUID()+crypto.randomUUID());};
  const openInvoice=async(id:string,preserveMessages=false)=>{
   if(!preserveMessages){setError("");setSuccess("");}setSaving(true);
   try{const r=await getRequest("/api/v1/invoices/"+id);if(!r.response.ok)throw new Error(r.body.error?.message??"Invoice could not be opened.");
    const v=record(r.body.data) as unknown as Invoice;setSelected(v);setCustomerMode("existing");setRecipientEmail(v.draftRecipientEmail??options.customers.find(c=>c.id===v.customerId)?.email??recipientEmail);setEmailKey(crypto.randomUUID());setForm({legalEntityId:v.legalEntityId,brandId:v.brandId??"",customerId:v.customerId,currency:v.currency,invoiceDate:v.invoiceDate??today(),dueDate:v.dueDate??"",paymentTermsDays:String(v.paymentTermsDays??0),notes:v.notes??""});
-   setLines(linesFrom(v.lines));setDirty(false);setEditor(v.lifecycleStatus==="DRAFT"&&canUpdate);await refreshPaymentHistory(id);
+   setLines(linesFrom(v.lines));setDirty(false);setShowPreview(false);setEditor(false);await refreshPaymentHistory(id);
   }catch(e){setError(e instanceof Error?e.message:"Invoice could not be opened.");}finally{setSaving(false);}
  };
  const makePayload=(customerId:string)=>({legalEntityId:form.legalEntityId,brandId:form.brandId||null,customerId,currency:form.currency,invoiceDate:form.invoiceDate||null,dueDate:form.dueDate||null,paymentTermsDays:Number(form.paymentTermsDays),notes:form.notes||null,recipientEmail:recipientEmail.trim(),
@@ -144,7 +144,7 @@ export function InvoiceWorkspace(){
   setCustomerMode("existing");setForm(old=>({...old,customerId:id,paymentTermsDays:"0"}));setQuickCustomer({name:"",phone:"",line1:"",city:"",state:"",postalCode:"",countryCode:"IN"});
   await refreshOptions();return id;
  };
- const save=async(e?:FormEvent<HTMLFormElement>,issueAndSend=false)=>{e?.preventDefault();setSaving(true);setError("");setSuccess("");
+ const save=async(e?:FormEvent<HTMLFormElement>,issueAndSend=false):Promise<boolean>=>{e?.preventDefault();setSaving(true);setError("");setSuccess("");
   try{
    if(!form.brandId||!form.legalEntityId)throw new Error("Choose an invoice brand. Its approved issuer is selected automatically.");
    if(issueAndSend&&(!canIssue||!canSendEmail))throw new Error("Your role cannot both issue and email invoices. Save the draft or ask the administrator to update access.");
@@ -160,11 +160,11 @@ export function InvoiceWorkspace(){
    const id=str(record(r.body.data).id)||selected?.id||"";
    if(!id)throw new Error("Invoice draft was saved but the response did not include its document ID.");
    setDirty(false);
-   if(!issueAndSend){setSuccess("Draft saved. The server recalculated the totals.");setEditor(false);await refresh();await openInvoice(id,true);return;}
+   if(!issueAndSend){setSuccess("Draft saved. The server recalculated the totals.");setEditor(false);await refresh();await openInvoice(id,true);return true;}
    const key=issueKeys[id]??("fx-issue-"+crypto.randomUUID()+"-"+crypto.randomUUID());setIssueKeys(old=>({...old,[id]:key}));
    const issueToken=await csrf();
    const issued=await getRequest("/api/v1/invoices/"+id+"/issue",{method:"POST",headers:{"X-CSRF-Token":issueToken,"Idempotency-Key":key},body:JSON.stringify({documentDate:form.invoiceDate||today()})});
-   if(!issued.response.ok){setSuccess("Draft saved, but it was not issued.");setError(issued.body.error?.message??"Issuance is blocked by a required approval or configuration.");setEditor(false);await refresh();await openInvoice(id,true);return;}
+   if(!issued.response.ok){setSuccess("Draft saved, but it was not issued.");setError(issued.body.error?.message??"Issuance is blocked by a required approval or configuration.");setEditor(false);await refresh();await openInvoice(id,true);return false;}
    let emailError="";
    try{
     const emailToken=await csrf();
@@ -174,9 +174,10 @@ export function InvoiceWorkspace(){
    }catch(mailCause){emailError=mailCause instanceof Error?mailCause.message:"Email could not be queued.";}
    setSuccess(emailError?"Invoice issued successfully. Email needs attention.":"Invoice issued and email queued. Check its delivery status in the invoice details.");
    if(emailError)setError("The invoice was issued, but email was not queued: "+emailError);
-   setEditor(false);await refresh();await openInvoice(id,true);
-  }catch(e){setError(e instanceof Error?e.message:"Invoice draft could not be saved.");}finally{setSaving(false);}
+   setEditor(false);await refresh();await openInvoice(id,true);return !emailError;
+  }catch(e){setError(e instanceof Error?e.message:"Invoice draft could not be saved.");return false;}finally{setSaving(false);}
  };
+ const saveDraftForPreview=async()=>{const saved=await save(undefined,false);if(saved)setShowPreview(true);};
  const issue=async(row:Invoice)=>{setIssuing(row.id);setError("");setSuccess("");
   try{const token=await csrf();const key=issueKeys[row.id]??("fx-issue-"+crypto.randomUUID()+"-"+crypto.randomUUID());setIssueKeys(old=>({...old,[row.id]:key}));
    const r=await getRequest("/api/v1/invoices/"+row.id+"/issue",{method:"POST",headers:{"X-CSRF-Token":token,"Idempotency-Key":key},body:JSON.stringify({documentDate:row.invoiceDate||today()})});
@@ -190,7 +191,7 @@ export function InvoiceWorkspace(){
   <div className="invoice-workspace-toolbar">
    <div className="invoice-workspace-search"><label className="form-label" htmlFor="invoice-search">Search invoices</label><input id="invoice-search" className="form-control" value={query} placeholder="Invoice number or customer" onChange={e=>{setQuery(e.target.value);setOffset(0);}}/></div>
    <div><label className="form-label" htmlFor="invoice-status">Status</label><select className="form-control" id="invoice-status" value={status} onChange={e=>{setStatus(e.target.value);setOffset(0);}}><option value="all">All statuses</option><option value="DRAFT">Draft</option><option value="ISSUED">Issued</option><option value="CANCELLED">Cancelled</option></select></div>
-   {canCreate?<Button disabled={optionsLoading||!options.legalEntities.length||!validBrands.length||(!options.customers.length&&!canAddCustomer)} onClick={startNew}>+ New invoice</Button>:null}
+   {canCreate?<Button disabled={optionsLoading} onClick={startNew}>+ New invoice</Button>:null}
   </div>
   <InlineAlert tone="info" title="Server-authoritative financials">The server calculates exact-decimal amounts using HALF_UP rounding to four places. Approved, effective tax rules determine rates and inclusive/exclusive treatment. Multi-currency conversion is disabled until an approved FX policy exists.</InlineAlert>
   {!canRead?<InlineAlert tone="warning" title="Invoice access is not assigned">
@@ -210,6 +211,7 @@ export function InvoiceWorkspace(){
    </div>:null}
   {error?<InlineAlert tone="danger" title="Invoice action needs attention">{error}</InlineAlert>:null}
   {success?<InlineAlert tone="success" title="Invoice updated">{success}</InlineAlert>:null}
+  {!optionsLoading&&canCreate&&!options.customers.length&&!canAddCustomer?<InlineAlert tone="warning" title="Customer setup required">You have permission to create invoices but cannot create customer records, and no active customers are available. Ask an administrator to add a customer or grant <code>customers:create</code>.</InlineAlert>:null}
   {optionsLoading?<LoadingState label="Loading legal entities, customers, catalog and approved tax rules…"/>:null}
   <div className="invoice-workspace-summary"><strong>{loading?"Loading invoices…":total+" "+(total===1?"invoice":"invoices")}</strong><span>Outstanding is based on recorded allocations. Draft, issue and payment status are separate.</span></div>
   <div className="data-table-scroll"><table className="data-table"><thead><tr><th>Invoice</th><th>Customer</th><th>Status</th><th>Date</th><th>Total</th><th>Outstanding</th><th>Actions</th></tr></thead><tbody>
@@ -218,7 +220,8 @@ export function InvoiceWorkspace(){
   </tbody></table></div>
   <div className="master-data-pagination"><span>Showing {total===0?0:offset+1}–{Math.min(offset+rows.length,total)} of {total}</span><div><Button variant="secondary" size="sm" disabled={offset===0||loading} onClick={()=>setOffset(Math.max(0,offset-limit))}>Previous</Button><Button variant="secondary" size="sm" disabled={loading||offset+limit>=total} onClick={()=>setOffset(offset+limit)}>Next</Button></div></div>
   {selected&&!editor?<div className="invoice-editor">
-   <div className="invoice-editor__heading"><div><p className="page-eyebrow">{selected.lifecycleStatus==="ISSUED"?"ISSUED DOCUMENT":"INVOICE DETAILS"}</p><h2>{selected.invoiceNumber||"Draft · "+selected.id.slice(0,8)}</h2><p>{selected.customerName} · {selected.lifecycleStatus} · {selected.paymentStatus}</p></div><Button variant="ghost" onClick={()=>setSelected(null)}>Close details</Button></div>
+   <div className="invoice-editor__heading"><div><p className="page-eyebrow">{selected.lifecycleStatus==="ISSUED"?"ISSUED DOCUMENT":"INVOICE DETAILS"}</p><h2>{selected.invoiceNumber||"Draft · "+selected.id.slice(0,8)}</h2><p>{selected.customerName} · {selected.lifecycleStatus} · {selected.paymentStatus}</p></div><div className="invoice-editor__actions"><Button variant="secondary" onClick={()=>setShowPreview(v=>!v)}>{showPreview?"Hide preview":"Preview invoice"}</Button><Button variant="ghost" onClick={()=>{setSelected(null);setShowPreview(false);}}>Close details</Button></div></div>
+   {showPreview?<section className="invoice-preview-wrap" aria-labelledby="invoice-preview-title"><div className="invoice-preview-toolbar"><div><strong id="invoice-preview-title">Invoice preview</strong><p>{selected.lifecycleStatus==="DRAFT"?"Saved draft preview. Review this version before issuing.":"Saved invoice details. The verified issued PDF is available in document history below."}</p></div><div className="invoice-preview-toolbar__actions"><Button variant="secondary" size="sm" onClick={()=>window.print()}>Print / Save as PDF</Button><Button variant="ghost" size="sm" onClick={()=>setShowPreview(false)}>Close preview</Button></div></div><article className="invoice-preview-sheet"><header className="invoice-preview-sheet__header"><div className="invoice-preview-sheet__issuer">{previewBrand?<Image src={logoForBrand(previewBrand)} alt={previewBrand.name+" logo"} width={112} height={56} unoptimized/>:null}<div><strong>{previewEntity?.name??"Issuer configuration unavailable"}</strong><span>{previewBrand?.name??"Brand not selected"}</span></div></div><div className="invoice-preview-sheet__title"><span>{selected.lifecycleStatus==="DRAFT"?"DRAFT INVOICE":"INVOICE"}</span><h2>{selected.invoiceNumber??"Draft preview"}</h2><p>Date: {selected.invoiceDate??"Not set"}</p><p>Due: {selected.dueDate??"Not set"}</p></div></header><div className="invoice-preview-sheet__parties"><div><span className="invoice-preview-label">BILL TO</span><strong>{selected.customerName}</strong><p>{selected.draftRecipientEmail||options.customers.find(c=>c.id===selected.customerId)?.email||"Recipient email not set"}</p></div><div><span className="invoice-preview-label">CURRENCY</span><strong>{selected.currency}</strong><p>{selected.lifecycleStatus==="DRAFT"?"Not yet issued":"Issued record"}</p></div></div><div className="data-table-scroll"><table className="data-table invoice-preview-table"><thead><tr><th>Description</th><th>Qty</th><th>Unit rate</th><th>Tax</th><th>Total</th></tr></thead><tbody>{(selected.lines??[]).map((line,index)=><tr key={str(line.id)||index}><td><strong>{str(line.description)||"—"}</strong>{str(line.milestone)?<div className="invoice-workspace-muted">{str(line.milestone)}</div>:null}</td><td>{str(line.quantity)||"—"} {str(line.unitCode)}</td><td>{currency(selected.currency,line.unitPrice)}</td><td>{currency(selected.currency,line.taxAmount)}{str(line.taxCode)?" · "+str(line.taxCode):""}</td><td>{currency(selected.currency,line.lineTotal)}</td></tr>)}</tbody></table></div><div className="invoice-preview-sheet__totals"><div><span>Subtotal</span><strong>{currency(selected.currency,selected.subtotal)}</strong></div><div><span>Discount</span><strong>− {currency(selected.currency,selected.discountTotal)}</strong></div><div><span>Tax</span><strong>{currency(selected.currency,selected.taxTotal)}</strong></div><div className="invoice-preview-sheet__grand"><span>Total</span><strong>{currency(selected.currency,selected.grandTotal)}</strong></div></div>{selected.notes?<div className="invoice-preview-sheet__notes"><strong>Notes</strong><p>{selected.notes}</p></div>:null}<footer className="invoice-preview-sheet__footer">This is a screen preview of saved invoice data. It is not an issued PDF or evidence of tax/issuer approval.</footer></article></section>:null}
    {selected.lifecycleStatus==="ISSUED"?<InlineAlert tone="warning" title="Issued financial record is immutable">Amounts and line descriptions cannot be edited after issuance. Use an approved correction workflow for changes.</InlineAlert>:null}
     <InvoiceCorrectionPanel invoiceId={selected.id} lifecycleStatus={selected.lifecycleStatus} documentType={selected.documentType} canRequest={canUpdate} canReview={permissions.includes("approvals:read")} />
    <div className="invoice-editor__calculation">
@@ -304,7 +307,7 @@ export function InvoiceWorkspace(){
     <div className="invoice-editor__calculation">
      {dirty?<p>Unsaved changes. Save the draft to display server-calculated totals.</p>:selected?<><div><span>Subtotal (net of tax)</span><strong>{currency(form.currency,selected.subtotal)}</strong></div><div><span>Discount total</span><strong>− {currency(form.currency,selected.discountTotal)}</strong></div><div><span>Taxable value</span><strong>{currency(form.currency,selected.taxableValue)}</strong></div><div><span>Tax</span><strong>{currency(form.currency,selected.taxTotal)}</strong></div><div className="invoice-editor__grand"><span>Grand total</span><strong>{currency(form.currency,selected.grandTotal)}</strong></div><div><span>Paid</span><strong>{currency(form.currency,selected.paidAmount)}</strong></div><div className="invoice-editor__grand"><span>Outstanding</span><strong>{currency(form.currency,selected.outstandingBalance)}</strong></div></>:<p>Totals appear after the server accepts and calculates this draft.</p>}
     </div>
-    <div className="invoice-editor__actions"><Button type="button" variant="secondary" disabled={saving} onClick={()=>setEditor(false)}>Cancel</Button><Button type="submit" disabled={saving||optionsLoading||(!selected&&!canCreate)||(Boolean(selected)&&!canUpdate)}>{saving?"Saving…":"Save draft"}</Button>{canIssue&&canSendEmail?<Button type="button" disabled={saving||optionsLoading||!recipientEmail.trim()||(!selected&&!canCreate)||(Boolean(selected)&&!canUpdate)} onClick={()=>{const formElement=document.getElementById("invoice-composer-form") as HTMLFormElement|null;if(formElement?.reportValidity())void save(undefined,true);}}>{saving?"Processing…":"Issue & send invoice"}</Button>:canIssue&&selected?.lifecycleStatus==="DRAFT"?<Button type="button" disabled={saving||Boolean(issuing)} onClick={()=>void issue(selected)}>{issuing===selected.id?"Issuing…":"Issue invoice"}</Button>:null}</div>
+    <div className="invoice-editor__actions"><Button type="button" variant="secondary" disabled={saving||optionsLoading||(!selected&&!canCreate)||(Boolean(selected)&&!canUpdate)} onClick={()=>{if(selected&&!dirty){setEditor(false);setShowPreview(true);}else void saveDraftForPreview();}}>{selected&&!dirty?"Preview saved invoice":"Save draft & preview"}</Button><Button type="button" variant="secondary" disabled={saving} onClick={()=>setEditor(false)}>Cancel</Button><Button type="submit" disabled={saving||optionsLoading||(!selected&&!canCreate)||(Boolean(selected)&&!canUpdate)}>{saving?"Saving…":"Save draft"}</Button>{canIssue&&canSendEmail?<Button type="button" disabled={saving||optionsLoading||!recipientEmail.trim()||(!selected&&!canCreate)||(Boolean(selected)&&!canUpdate)} onClick={()=>{const formElement=document.getElementById("invoice-composer-form") as HTMLFormElement|null;if(formElement?.reportValidity())void save(undefined,true);}}>{saving?"Processing…":"Issue & send invoice"}</Button>:canIssue&&selected?.lifecycleStatus==="DRAFT"?<Button type="button" disabled={saving||Boolean(issuing)} onClick={()=>void issue(selected)}>{issuing===selected.id?"Issuing…":"Issue invoice"}</Button>:null}</div>
    </form>
   </div>:null}
  </div>;
