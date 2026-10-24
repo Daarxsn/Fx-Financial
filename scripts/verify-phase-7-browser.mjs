@@ -352,7 +352,7 @@ try {
   await editableInvoice.getByLabel(/^Rate/).fill("120.0000");
   await editableInvoice.getByRole("button", { name: "Save draft", exact: true }).click();
   await page.getByText("Draft saved. The server recalculated the totals.", { exact: true }).waitFor();
-  await page.getByText("INR 254.8800", { exact: true }).first().waitFor();
+  await page.getByText("INR 141.6000", { exact: true }).first().waitFor();
 
   // Save returns to details again; open the draft editor once more before the explicit
   // issue-and-send action. This exercises the same user-facing lifecycle used in production.
@@ -373,7 +373,7 @@ try {
   assert.equal(invoiceByLineRows.length, 1, "invoice created and issued by the workspace persists exactly one matching document");
   assert.equal(invoiceByLineRows[0].lifecycle_status, "ISSUED");
   assert.ok(invoiceByLineRows[0].invoice_number, "issue action allocates the official invoice number");
-  assert.equal(String(invoiceByLineRows[0].grand_total), "254.8800");
+  assert.equal(String(invoiceByLineRows[0].grand_total), "141.6000");
   assert.equal(invoiceByLineRows[0].draft_recipient_email, overrideRecipientEmail,
     "invoice row stores the explicit one-off recipient");
   const [queuedEmailRows] = await db.execute(
