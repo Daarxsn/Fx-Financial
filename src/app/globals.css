@@ -1545,3 +1545,42 @@ a, button, input, select, textarea { transition-duration: 160ms; }
 .invoice-recipient-confirm input{margin-top:3px}
 .invoice-inline-link{border:0;background:transparent;color:var(--accent,#0d665b);text-decoration:underline;cursor:pointer;padding:4px 0;font:inherit}
 @media(max-width:760px){.invoice-composer-brand{grid-template-columns:1fr;padding:14px}.invoice-line-grid--simple{grid-template-columns:1fr 1fr}.invoice-line-grid--simple .invoice-form-field--wide{grid-column:1/-1}.invoice-composer-brand__issuer{align-items:flex-start;flex-direction:column}.invoice-line-list-heading{align-items:flex-start}}
+
+
+/* Stage 1 invoice preview: a readable saved-data preview before issuance. */
+.invoice-preview-wrap { display: grid; gap: 14px; margin: 20px 0; }
+.invoice-preview-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.invoice-preview-toolbar p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.invoice-preview-toolbar__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.invoice-preview-sheet { width: 100%; max-width: 920px; margin: 0 auto; padding: clamp(20px, 4vw, 48px); background: #fff; color: #222; border: 1px solid #e4e4e4; border-radius: 12px; box-shadow: 0 8px 28px rgb(17 17 17 / 7%); }
+.invoice-preview-sheet__header { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding-bottom: 26px; border-bottom: 2px solid #d8b15c; }
+.invoice-preview-sheet__issuer { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.invoice-preview-sheet__issuer img { width: 100px; height: 54px; object-fit: contain; object-position: left center; }
+.invoice-preview-sheet__issuer div, .invoice-preview-sheet__title { display: grid; gap: 5px; }
+.invoice-preview-sheet__issuer strong { font-size: 15px; }
+.invoice-preview-sheet__issuer span, .invoice-preview-sheet__title p { color: #666; font-size: 12px; margin: 0; }
+.invoice-preview-sheet__title { text-align: right; }
+.invoice-preview-sheet__title > span, .invoice-preview-label { color: #7c5a19; font-size: 10px; font-weight: 800; letter-spacing: .12em; }
+.invoice-preview-sheet__title h2 { margin: 0; font-size: clamp(22px, 3vw, 30px); color: #111; overflow-wrap: anywhere; }
+.invoice-preview-sheet__parties { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; padding: 26px 0; }
+.invoice-preview-sheet__parties > div { display: grid; align-content: start; gap: 6px; }
+.invoice-preview-sheet__parties strong { font-size: 14px; overflow-wrap: anywhere; }
+.invoice-preview-sheet__parties p { margin: 0; color: #666; font-size: 12px; overflow-wrap: anywhere; }
+.invoice-preview-table { min-width: 540px; }
+.invoice-preview-sheet__totals { width: min(100%, 380px); margin: 24px 0 0 auto; display: grid; gap: 9px; }
+.invoice-preview-sheet__totals > div { display: flex; justify-content: space-between; gap: 16px; }
+.invoice-preview-sheet__grand { padding-top: 12px; border-top: 1px solid #d8d8d8; font-size: 17px; font-weight: 800; }
+.invoice-preview-sheet__notes { margin-top: 24px; padding-top: 16px; border-top: 1px solid #e4e4e4; }
+.invoice-preview-sheet__notes p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.invoice-preview-sheet__footer { margin-top: 28px; padding-top: 12px; border-top: 1px solid #e4e4e4; color: #666; font-size: 10px; }
+@media (max-width: 640px) {
+  .invoice-preview-sheet__header { flex-direction: column; }
+  .invoice-preview-sheet__title { text-align: left; }
+  .invoice-preview-sheet__parties { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+}
+@media print {
+  body * { visibility: hidden !important; }
+  .invoice-preview-sheet, .invoice-preview-sheet * { visibility: visible !important; }
+  .invoice-preview-sheet { position: absolute !important; inset: 0 auto auto 0 !important; width: 100% !important; max-width: none !important; margin: 0 !important; padding: 12mm !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
+  .invoice-preview-wrap { margin: 0 !important; }
+}
