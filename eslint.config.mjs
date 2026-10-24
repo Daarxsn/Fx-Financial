@@ -10,6 +10,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local agent tooling can live inside a developer's checkout but is not part
+    // of the invoice application and must not be included in the project lint.
+    "hive/**",
   ]),
 ]);
 
