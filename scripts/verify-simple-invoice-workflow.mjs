@@ -22,6 +22,7 @@ const migration = read("database/migrations/030_invoice_line_milestone.sql");
 const proformaMigration = read("database/migrations/032_proforma_invoice_document_fields.sql");
 const previewRoute = read("src/app/api/v1/invoices/[invoiceId]/preview/route.ts");
 const draftPreviewService = read("src/lib/documents/draft-preview.ts");
+const configurationService = read("src/lib/configuration/service.ts");
 const signatureRoute = read("src/app/api/v1/legal-entities/[entityId]/signature/route.ts");
 const signatureUpload = read("src/components/signature-upload.tsx");
 
@@ -51,6 +52,12 @@ assert.ok(brandAssets.includes('code: "MYFXPOS"') && brandAssets.includes('code:
   "first setup must reuse the three established product-brand identities and logo assets");
 assert.ok(options.includes("canAutoMap"), "brand options must only auto-select a safe issuer mapping");
 assert.ok(options.includes("legalEntityId:b.legal_entity_id"), "brand options must return the mapped issuer legal entity");
+assert.ok(options.includes("issuerIdentityReady") && options.includes("isProductBrandLegalEntityName(b.entity_legal_name)") &&
+  options.includes("!isProductBrandLegalEntityName(b.entity_name)"),
+  "invoice composer options must refuse product-brand names as legal issuers rather than auto-selecting them");
+assert.ok(configurationService.includes("isProductBrandLegalEntityName(entity.legal_name)") &&
+  configurationService.includes("A product brand cannot be used as the legal supplier"),
+  "server-side immutable configuration capture must block issuing a document from a product-brand legal entity");
 assert.ok(invoicePage.includes("InvoiceWorkspace"), "the /invoices route must render the invoice workspace instead of leaving the implemented composer unreachable");
 assert.ok(workspaceHome.includes('href="/invoices">+ Create new invoice</Link>'), "the workspace home must expose a direct create-invoice action");
 assert.ok(composer.includes("{canCreate?<Button disabled={optionsLoading} onClick={startNew}>+ New invoice</Button>:null}"), "invoice creation must remain visible when setup is incomplete and explain blockers instead of silently hiding the action");
@@ -66,6 +73,11 @@ assert.ok(settings.includes('label="Supplier name shown on invoices"') &&
   "first-time setup must distinguish the legal supplier identity from the three invoice brands");
 assert.ok(composer.includes("Issue & send invoice"), "the composer must offer the combined issue-and-send action");
 assert.ok(composer.includes('<Field label="Email to send the invoice to" wide hint='), "recipient email must use the shared labelled field so assistive technology can associate the input and hint");
+assert.ok(composer.includes('name="invoice-recipient-email"') && composer.includes('autoComplete="off"') &&
+  !composer.includes('autoComplete="email"'),
+  "invoice recipient must not trigger browser profile email autofill before the customer or recipient is explicitly chosen");
+assert.ok(composer.includes("selectedBrandReadyForIssuance") && composer.includes("issuerIdentityReady"),
+  "issue controls must remain disabled until the selected brand resolves to an approved legal supplier and tax setup");
 assert.ok(composer.includes('"/api/v1/customers"'), "customer creation must be available directly in the invoice workflow");
 assert.ok(composer.includes('"/api/v1/email/outbox"'), "the combined action must queue email through the existing durable outbox");
 assert.ok(composer.includes("recipientConfirmed:true"), "email queueing must require explicit recipient confirmation");
