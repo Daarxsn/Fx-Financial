@@ -73,3 +73,17 @@ A successful local build proves neither database/provider reachability nor produ
 ## 10. Architecture change protocol
 
 Before a material change: inspect the existing implementation and tests, state the problem, identify impacted layers/data/API contracts, propose the smallest compatible change, add migration/rollback considerations, implement tests, run relevant gates, review the diff, update this file and related phase docs, then commit directly to `main` as required by the project owner.
+
+## Stage 1 MVP request path (decision 2026-10-24)
+
+The user-facing invoice journey must be traceable from a real App Router page, not merely from an API route or an unreferenced React component:
+
+1. `src/app/(workspace)/invoices/page.tsx` renders `InvoiceWorkspace`; the sidebar and workspace overview link to `/invoices` and provide an explicit create action.
+2. `InvoiceWorkspace` loads the authenticated profile, draft options and invoice list. A permitted create action remains visible when setup is incomplete; blockers must be explained inline and linked to Settings rather than hiding the entry point.
+3. Drafts are persisted through `/api/v1/invoices` and `/api/v1/invoices/[invoiceId]`. Opening a draft defaults to read/detail mode; edit mode is explicit. Saving returns the user to details where preview is reachable.
+4. Pre-issue preview renders saved, server-calculated invoice data and is clearly labelled as a screen preview. It must not imply that it is the immutable issued PDF or that issuer/tax/numbering approval has passed.
+5. Issuance uses `/api/v1/invoices/[invoiceId]/issue`; email uses `/api/v1/email/outbox`, which generates/verifies the PDF and queues delivery. Delivery states and errors remain visible through email history. The external sender/provider must be verified separately.
+
+**Known baseline finding (2026-10-24):** the invoice component and APIs existed, but the expected App Router page path did not exist on `main`; draft opening also forced edit mode, and the create button was hidden when issuer/customer setup prerequisites were absent. These are product-entry/visibility defects even when backend routes exist. Code changes add the page, dashboard action, explicit saved-data preview and visible setup blockers; verify against CI and browser tests before calling them complete.
+
+Keep the established Next.js/React/TypeScript/MySQL/PDFKit/private-storage architecture. Do not replace the architecture or add Vite to solve a missing page, missing action, or workflow wiring defect.
