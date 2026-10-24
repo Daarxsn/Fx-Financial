@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { PoolConnection, RowDataPacket } from "mysql2/promise";
 import { pool } from "@/lib/db/pool";
 import { ConfigurationConflictError, ConfigurationNotReadyError } from "@/lib/configuration/errors";
+import { isProductBrandLegalEntityName } from "@/lib/brand-assets";
 
 export type LegalEntityRecord = RowDataPacket & {
   id: string; legal_name: string; display_name: string; registration_number: string | null; tax_identifier: string | null;
@@ -329,6 +330,9 @@ export async function captureDocumentConfigurationSnapshot(
       tax_setup_approval_reference,tax_setup_approved_by,tax_setup_approved_at,is_active FROM legal_entities WHERE id=? FOR UPDATE`, [input.legalEntityId]);
   const entity = entities[0];
   if (!entity || !entity.is_active) throw new ConfigurationNotReadyError("The legal entity does not exist or is inactive.");
+  if (isProductBrandLegalEntityName(entity.legal_name) || isProductBrandLegalEntityName(entity.display_name)) {
+    throw new ConfigurationNotReadyError("A product brand cannot be used as the legal supplier. Verify the registered Falchion Xeniaa supplier profile and reconcile product-brand mappings in Settings before issuing.");
+  }
   if (entity.tax_setup_status === "UNCONFIGURED" || !entity.tax_setup_approval_reference ||
       !entity.tax_setup_approved_by || !entity.tax_setup_approved_at) {
     throw new ConfigurationNotReadyError("Tax setup has no recorded finance/tax decision.");
