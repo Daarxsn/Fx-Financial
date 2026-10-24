@@ -74,3 +74,12 @@ Use the exact supplied transparent WebP assets for Falchion Xeniaa, MyFX POS, FX
 - [ ] Keyboard, focus, contrast and semantic controls are checked.
 - [ ] Desktop/tablet/mobile and light/dark layouts are manually reviewed.
 - [ ] Actual PDF screen/print rendering is approved separately.
+
+## Stage 1 invoice flow and visibility
+
+- The workspace overview must show a prominent **Create new invoice** action and the sidebar Invoices link must resolve to a real page.
+- The invoice list toolbar must show **+ New invoice** to users who have `invoices:draft:create`. Missing supplier mapping, legal entity, customer access, tax setup or numbering approval must produce a visible explanation and next step; never hide the action solely because configuration is incomplete.
+- Invoice details open in read mode. **Preview invoice**, **Edit draft**, **Issue**, and **Send** are distinct actions with explicit state and permission checks.
+- A draft preview uses persisted values and server-calculated totals. If the draft is dirty, the primary preview path is **Save draft & preview**. Label this as a draft screen preview, not an issued PDF.
+- Keep the preview legible on small screens and provide print/save-to-PDF. Print output should isolate the invoice sheet rather than printing the application navigation and controls.
+- Empty list, loading, missing setup, insufficient permission, validation failure, issuance block, PDF failure and email failure all need visible, non-deceptive states. Never display success before the server response confirms the corresponding action.
