@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { invoiceCalendarDateSchema, invoiceDraftCreateSchema } from "@/lib/validation/invoice";
+import { invoiceCalendarDateSchema, invoiceDraftFieldsSchema } from "@/lib/validation/invoice";
 
-const quotationFieldsSchema = invoiceDraftCreateSchema.extend({
+const quotationFieldsSchema = invoiceDraftFieldsSchema.extend({
   validUntil: invoiceCalendarDateSchema.nullable().optional(),
 }).strict();
 

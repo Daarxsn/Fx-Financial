@@ -22,7 +22,7 @@ const recipientEmailInput = z.string().trim().max(320).refine(
 );
 const taxRateInput = z.string().regex(/^(0|[1-9][0-9]{0,2})([.][0-9]{1,6})?$/, "Enter a tax rate from 0 to 100 with up to six decimal places.")
   .refine(value => Number(value) <= 100, "Tax rate cannot exceed 100 percent.");
-const invoiceDraftFieldsSchema = z.object({
+export const invoiceDraftFieldsSchema = z.object({
   legalEntityId: z.string().uuid(),brandId: z.string().uuid().nullable().optional(),customerId: z.string().uuid(),
   currency: z.string().regex(/^[A-Z]{3}$/),invoiceDate: invoiceCalendarDateSchema.nullable().optional(),
   dueDate: invoiceCalendarDateSchema.nullable().optional(),validUntil: invoiceCalendarDateSchema.nullable().optional(),paymentTermsDays: z.number().int().min(0).max(3650).optional(),
