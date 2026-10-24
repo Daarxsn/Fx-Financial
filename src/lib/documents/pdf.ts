@@ -35,6 +35,8 @@ export type PdfSnapshot = {
   configurationSha256: string | null;
   configurationSnapshot: unknown;
   lines: unknown[];
+  /** Data-derived setup/input warnings for an unissued draft preview. */
+  previewWarnings?: string[];
   method?: string;
   reference?: string | null;
   reversalReason?: string | null;
@@ -191,10 +193,7 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       const code = text(brand.code ?? brand.name, "").toUpperCase();
       const isCoworks = code.includes("COWORK");
       const isDigitech = code.includes("DIGI");
-      const gold = "#DCAF51";
-      const brandAccent = isCoworks ? "#931314" : isDigitech ? "#111111" : gold;
-      const brandSecondary = isCoworks ? gold : "#931314";
-      const sourceLabel = snapshot.sourceType === "INVOICE"
+            const sourceLabel = snapshot.sourceType === "INVOICE"
         ? text(templateConfig.documentTitle, "PROFORMA INVOICE:")
         : snapshot.sourceType === "QUOTATION" ? "QUOTATION" : "PAYMENT RECEIPT";
       const isDraftPreview = snapshot.sourceType === "INVOICE" && snapshot.lifecycleStatus === "DRAFT";
@@ -202,8 +201,8 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       const doc = new PDFDocument({
         size: "A4", margins: { top: 34, bottom: 50, left: 34, right: 36 }, bufferPages: true, compress: true,
         info: {
-          Title: sourceLabel + " " + snapshot.documentNumber,
-          Subject: "Document snapshot " + text(snapshot.configurationSnapshotId, ""),
+          Title: sourceLabel + (isDraftPreview ? " DRAFT PREVIEW" : " " + snapshot.documentNumber),
+          Subject: isDraftPreview ? "Unissued draft preview - not an issue record" : "Document snapshot " + text(snapshot.configurationSnapshotId, ""),
           Author: text(object(snapshot.supplier).legalName ?? object(snapshot.supplier).displayName ?? object(snapshot.supplier).name, "Falchion Xeniaa"),
           Creator: "Falchion Xeniaa Invoice Management System", Producer: "PDFKit",
           CreationDate: Number.isFinite(issuedTime.getTime()) ? issuedTime : new Date(0),
@@ -243,34 +242,37 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       const ensure = (height: number) => { if (doc.y + height > pageBottom()) { doc.addPage(); doc.y = 36; } };
 
       rendererStage = "header";
-      // Brand-specific top stripes follow the supplied A4 invoice samples.
-      doc.save().fillColor(brandAccent).rect(0, 0, doc.page.width, 8).fill().restore();
-      doc.save().fillColor(brandSecondary).rect(0, 8, doc.page.width, 3).fill().restore();
-      const wordmarkFit: [number, number] = isDigitech ? [210, 78] : [138, 108];
-      if (logoBuffer) doc.image(logoBuffer, left + 8, 27, { fit: wordmarkFit, valign: "center" });
+            const wordmarkFit: [number, number] = isDigitech ? [210, 78] : [138, 108];
+      if (logoBuffer) doc.image(logoBuffer, left + 4, 40, { fit: wordmarkFit, valign: "center" });
       else {
         doc.font("Helvetica-Bold").fontSize(25).fillColor("#111111").text(isCoworks ? "FX Coworks" : isDigitech ? "FX DigTech" : "myfx POS", left + 8, 55, { width: 205 });
       }
       const titleWidth = 245;
       const titleX = right - titleWidth;
-      doc.font("Helvetica-Bold").fontSize(14).fillColor("#050505").text(sourceLabel, titleX, 39, { width: titleWidth, align: "right" });
+      doc.font("Helvetica-Bold").fontSize(14).fillColor("#050505").text(sourceLabel, titleX, 49, { width: titleWidth, align: "right" });
       doc.font("Helvetica").fontSize(10).fillColor("#111111")
-        .text(isDraftPreview ? "Document no: Not issued" : "Invoice no: " + text(snapshot.documentNumber), titleX, 59, { width: titleWidth, align: "right" });
+        .text(isDraftPreview ? "Document no: Not issued" : "Invoice no: " + text(snapshot.documentNumber), titleX, 70, { width: titleWidth, align: "right" });
       if (isDraftPreview) {
         doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#8A5B00")
-          .text("DRAFT PREVIEW — NOT AN ISSUED INVOICE", titleX, 74, { width: titleWidth, align: "right" });
+          .text("DRAFT PREVIEW — NOT AN ISSUED INVOICE", titleX, 84, { width: titleWidth, align: "right" });
       }
-      doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#111111").text("Date: ", titleX + 12, isDraftPreview ? 94 : 83, { width: 58, align: "right", continued: true });
+      doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#111111").text("Date: ", titleX + 12, isDraftPreview ? 104 : 94, { width: 58, align: "right", continued: true });
       doc.font("Helvetica").fontSize(9.5).fillColor("#111111").text(snapshot.documentDate?.slice(0, 10) ?? "—", { width: titleWidth - 72, align: "right" });
-      const expiryLabel = snapshot.sourceType === "QUOTATION" || snapshot.sourceType === "INVOICE" ? "Expires on: " : "Payment date: ";
-      const expiry = snapshot.sourceType === "QUOTATION" || snapshot.sourceType === "INVOICE" ? snapshot.validUntil : snapshot.documentDate;
-      doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#111111").text(expiryLabel, titleX + 6, isDraftPreview ? 116 : 104, { width: 68, align: "right", continued: true });
+      const isProforma = sourceLabel.toUpperCase().includes("PROFORMA");
+      const showExpiry = snapshot.sourceType === "QUOTATION" || (snapshot.sourceType === "INVOICE" && (isDraftPreview || isProforma));
+      const expiryLabel = showExpiry ? "Expires on: " : snapshot.sourceType === "INVOICE" ? "Due date: " : "Payment date: ";
+      const expiry = snapshot.sourceType === "QUOTATION" ? snapshot.validUntil : snapshot.sourceType === "INVOICE" ? (showExpiry ? snapshot.validUntil : snapshot.dueDate) : snapshot.documentDate;
+      doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#111111").text(expiryLabel, titleX + 6, isDraftPreview ? 126 : 116, { width: 68, align: "right", continued: true });
       doc.font("Helvetica").fontSize(9.5).fillColor("#111111").text(expiry?.slice(0, 10) ?? "Not set", { width: titleWidth - 74, align: "right" });
-      const separatorY = 164;
-      doc.save().strokeColor("#D7D7D7").lineWidth(1).moveTo(left, separatorY).lineTo(right, separatorY).stroke().restore();
+      // Three-colour accent rule matching the supplied client-facing proforma.
+      const separatorY = 151;
+      const stripeWidth = width / 3;
+      doc.save().fillColor("#F2C354").rect(left, separatorY, stripeWidth, 4).fill().restore();
+      doc.save().fillColor("#F04A37").rect(left + stripeWidth, separatorY, stripeWidth, 4).fill().restore();
+      doc.save().fillColor("#5EA978").rect(left + stripeWidth * 2, separatorY, width - stripeWidth * 2, 4).fill().restore();
 
       rendererStage = "issuer-customer";
-      const identityY = 194;
+      const identityY = 181;
       const half = (width - 20) / 2;
       const customerX = left + half + 20;
       const leftAddress = addressLines(supplier.billingAddress ?? supplier.address ?? supplier.registeredAddress);
@@ -285,7 +287,7 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
         clean(supplier.invoicePhone ?? supplier.phone),
         ...leftAddress,
         ...taxRegLines,
-        ...(!taxRegLines.length && clean(supplier.taxIdentifier ?? supplier.gstNumber) ? ["GSTIN: " + clean(supplier.taxIdentifier ?? supplier.gstNumber)] : []),
+        ...(!isDraftPreview && !taxRegLines.length && clean(entityConfig.taxSetupStatus) === "APPROVED_CONFIGURED" && clean(supplier.taxIdentifier ?? supplier.gstNumber) ? ["GSTIN: " + clean(supplier.taxIdentifier ?? supplier.gstNumber)] : []),
       ].filter(Boolean);
       doc.font("Helvetica-Bold").fontSize(12).fillColor("#050505").text(issuer.toUpperCase(), left, identityY, { width: half });
       body(9).text(issuerLines.join("\n") || "Supplier details from approved company settings.", left, identityY + 23, { width: half, lineGap: 2 });
@@ -297,15 +299,16 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
         ...customerAddress.map((part, index) => index === 0 ? "Address: " + part : part),
         clean(customer.taxIdentifier) ? "GSTIN: " + clean(customer.taxIdentifier) : "",
       ].filter(Boolean);
-      body(9).text(clientLines.join("\n") || "Customer billing details", customerX, identityY + 23, { width: half, lineGap: 2 });
+      body(9).text(clientLines.join("\n") || "Customer billing details", customerX, identityY + 23, { width: half, align: "right", lineGap: 2 });
       const leftBlockHeight = doc.heightOfString(issuerLines.join("\n") || "Supplier details from approved company settings.", { width: half });
       const rightBlockHeight = doc.heightOfString(clientLines.join("\n") || "Customer billing details", { width: half });
       const identityBottom = Math.max(identityY + 23 + leftBlockHeight, identityY + 23 + rightBlockHeight);
-      doc.y = Math.max(identityBottom + 34, 288);
+      // Keep deliberate whitespace between party details and the client-facing line table.
+      doc.y = Math.max(identityBottom + 64, 338);
 
       rendererStage = "line-items";
       const rows = Array.isArray(snapshot.lines) ? snapshot.lines : [];
-      const columnWidths = [width * 0.07, width * 0.45, width * 0.16, width * 0.15, width * 0.17];
+      const columnWidths = [width * 0.07, width * 0.34, width * 0.17, width * 0.20, width * 0.22];
       const columnXs = [left];
       for (let index = 0; index < columnWidths.length - 1; index++) columnXs.push(columnXs[index] + columnWidths[index]);
       const headerHeight = 34;
@@ -313,8 +316,8 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
         const y = doc.y;
         const labels = ["#", "Description", "Milestone", "Rate", "Amount"];
         labels.forEach((label, index) => {
-          addCell(columnXs[index], y, columnWidths[index], headerHeight, brandAccent);
-          doc.font("Helvetica-Bold").fontSize(8).fillColor("#FFFFFF")
+          addCell(columnXs[index], y, columnWidths[index], headerHeight, "#ECECEC");
+          doc.font("Helvetica-Bold").fontSize(8).fillColor("#111111")
             .text(label, columnXs[index] + 4, y + 7, { width: columnWidths[index] - 8, align: index === 0 ? "center" : "left" });
         });
         doc.y = y + headerHeight;
@@ -379,6 +382,25 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       doc.font("Helvetica-Bold").fontSize(9).fillColor("#090909").text("Amount in words:", left, doc.y, { width: width * 0.57 });
       doc.moveDown(0.35);
       body(9).text(words, left, doc.y, { width: width * 0.57, lineGap: 2 });
+      if (isDraftPreview) {
+        const warnings = Array.isArray(snapshot.previewWarnings)
+          ? snapshot.previewWarnings.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+          : [];
+        const warningText = warnings.length
+          ? warnings.map((value, index) => (index + 1) + ". " + value).join("\n")
+          : "This document has not been issued and has no official invoice number.";
+        body(7);
+        const warningBodyHeight = doc.heightOfString(warningText, { width: width - 20 });
+        const warningHeight = 23 + warningBodyHeight + 12;
+        ensure(warningHeight + 10);
+        doc.moveDown(0.65);
+        const warningY = doc.y;
+        doc.save().fillColor("#FFF6DF").roundedRect(left, warningY, width, warningHeight, 4).fill().restore();
+        doc.font("Helvetica-Bold").fontSize(8).fillColor("#8A4B08")
+          .text("DRAFT ONLY - NOT A CUSTOMER INVOICE", left + 8, warningY + 6, { width: width - 16 });
+        body(7).text(warningText, left + 8, warningY + 19, { width: width - 16, lineGap: 1 });
+        doc.y = warningY + warningHeight + 6;
+      }
       if (snapshot.sourceType === "RECEIPT") {
         doc.moveDown(0.5);
         body(8).text("METHOD: " + text(snapshot.method) + "    REFERENCE: " + text(snapshot.reference), left, doc.y, { width });
