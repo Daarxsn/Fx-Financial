@@ -182,3 +182,90 @@ export async function getPrivateObject(key: string): Promise<Buffer> {
     throw new PrivateStorageError("DOCUMENT_STORAGE_UNAVAILABLE","The private document could not be retrieved.");
   }
 }
+
+
+// Private signature assets are kept alongside document evidence, never in public/static storage.
+const MAX_PRIVATE_ASSET_BYTES = 2 * 1024 * 1024;
+function validPrivateAssetKey(key: string): boolean {
+  return /^signatures\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.png$/i.test(key);
+}
+function localAssetTarget(root: string, key: string): string {
+  if (!validPrivateAssetKey(key)) throw failConfig();
+  const full = resolve(root, key);
+  const rel = relative(root, full);
+  if (!rel || rel === ".." || rel.startsWith(".." + sep) || isAbsolute(rel)) throw failConfig();
+  return full;
+}
+
+export async function putPrivateAsset(key: string, bytes: Buffer, expectedSha256: string): Promise<void> {
+  if (!validPrivateAssetKey(key) || bytes.length <= 0 || bytes.length > MAX_PRIVATE_ASSET_BYTES ||
+      !/^[0-9a-f]{64}$/.test(expectedSha256) || sha(bytes) !== expectedSha256) {
+    throw new PrivateStorageError("DOCUMENT_INTEGRITY_FAILURE", "Signature asset integrity validation failed.");
+  }
+  const cfg = getConfig();
+  if (cfg.driver === "filesystem") {
+    const target = localAssetTarget(cfg.root, key);
+    await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+    try {
+      await writeFile(target, bytes, { flag: "wx", mode: 0o600 });
+      const readBack = await readFile(target);
+      if (readBack.length !== bytes.length || sha(readBack) !== expectedSha256) {
+        throw new PrivateStorageError("DOCUMENT_INTEGRITY_FAILURE", "Stored signature asset failed verification.");
+      }
+      return;
+    } catch (error) {
+      if (error instanceof PrivateStorageError) throw error;
+      throw new PrivateStorageError("DOCUMENT_STORAGE_UNAVAILABLE", "The signature asset could not be stored privately.");
+    }
+  }
+  await checkBucket(cfg);
+  try {
+    await cfg.client.send(new PutObjectCommand({
+      Bucket: cfg.bucket, Key: key, Body: bytes, ContentLength: bytes.length, ContentType: "image/png",
+      CacheControl: "private, no-store, max-age=0", Metadata: { sha256: expectedSha256 },
+      ServerSideEncryption: cfg.encryption,
+      ...(cfg.encryption === "aws:kms" && cfg.kmsKeyId ? { SSEKMSKeyId: cfg.kmsKeyId } : {}),
+      IfNoneMatch: "*",
+    }));
+    const head = await cfg.client.send(new HeadObjectCommand({ Bucket: cfg.bucket, Key: key }));
+    if (Number(head.ContentLength ?? 0) !== bytes.length || head.Metadata?.sha256 !== expectedSha256) {
+      throw new PrivateStorageError("DOCUMENT_INTEGRITY_FAILURE", "Stored signature asset failed verification.");
+    }
+  } catch (error) {
+    if (error instanceof PrivateStorageError) throw error;
+    throw new PrivateStorageError("DOCUMENT_STORAGE_UNAVAILABLE", "The signature asset could not be stored or verified privately.");
+  }
+}
+
+export async function getPrivateAsset(key: string): Promise<Buffer> {
+  if (!validPrivateAssetKey(key)) throw failConfig();
+  const cfg = getConfig();
+  if (cfg.driver === "filesystem") {
+    try {
+      const bytes = await readFile(localAssetTarget(cfg.root, key));
+      if (bytes.length <= 0 || bytes.length > MAX_PRIVATE_ASSET_BYTES) {
+        throw new PrivateStorageError("DOCUMENT_INTEGRITY_FAILURE", "Signature asset size is invalid.");
+      }
+      return bytes;
+    } catch (error) {
+      if (error instanceof PrivateStorageError) throw error;
+      throw new PrivateStorageError("DOCUMENT_STORAGE_UNAVAILABLE", "The configured private signature asset could not be retrieved.");
+    }
+  }
+  await checkBucket(cfg);
+  try {
+    const result = await cfg.client.send(new GetObjectCommand({ Bucket: cfg.bucket, Key: key }));
+    const size = Number(result.ContentLength ?? 0);
+    if (!result.Body || !Number.isSafeInteger(size) || size <= 0 || size > MAX_PRIVATE_ASSET_BYTES) {
+      throw new PrivateStorageError("DOCUMENT_INTEGRITY_FAILURE", "Signature asset size is invalid.");
+    }
+    const bytes = Buffer.from(await result.Body.transformToByteArray());
+    if (bytes.length !== size) throw new PrivateStorageError("DOCUMENT_INTEGRITY_FAILURE", "Signature asset size is invalid.");
+    const digest = result.Metadata?.sha256;
+    if (digest && sha(bytes) !== digest) throw new PrivateStorageError("DOCUMENT_INTEGRITY_FAILURE", "Signature asset integrity validation failed.");
+    return bytes;
+  } catch (error) {
+    if (error instanceof PrivateStorageError) throw error;
+    throw new PrivateStorageError("DOCUMENT_STORAGE_UNAVAILABLE", "The configured private signature asset could not be retrieved.");
+  }
+}
