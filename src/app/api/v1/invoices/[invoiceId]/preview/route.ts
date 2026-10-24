@@ -10,7 +10,7 @@ import { documentApiError } from "@/lib/documents/http";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(_request:NextRequest,context:{params:Promise<{invoiceId:string}>}) {
+export async function GET(request:NextRequest,context:{params:Promise<{invoiceId:string}>}) {
   try {
     const actor=await requirePermission("invoices:read");
     const {invoiceId}=await context.params;
@@ -45,7 +45,7 @@ export async function GET(_request:NextRequest,context:{params:Promise<{invoiceI
       status:200,
       headers:{
         "Content-Type":"application/pdf",
-        "Content-Disposition":'inline; filename="'+fileName+'"',
+        "Content-Disposition":(request.nextUrl.searchParams.get("download")==="1"?"attachment":"inline")+'; filename="'+fileName+'"'',
         "Content-Length":String(bytes.length),
         "Cache-Control":"private, no-store, max-age=0",
         "Pragma":"no-cache",
