@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
-import { calculateInvoice, normalizeMoney, outstandingBalance, defaultDueDate, assertValidDueDate } from "../src/lib/finance/invoice-calculation";
+import { calculateInvoice, calculateInvoiceTaxComponents, normalizeMoney, outstandingBalance, defaultDueDate, assertValidDueDate } from "../src/lib/finance/invoice-calculation";
 import { invoiceCalendarDateSchema } from "../src/lib/validation/invoice";
 const exclusive = calculateInvoice([{description:"Consulting",quantity:"2",unitPrice:"100.0000",discountType:"PERCENT",discountValue:"10",taxRatePercent:"18",taxCalculationMode:"EXCLUSIVE"}]);
 assert.equal(exclusive.subtotal,"200.0000"); assert.equal(exclusive.discountTotal,"20.0000"); assert.equal(exclusive.taxableValue,"180.0000"); assert.equal(exclusive.taxTotal,"32.4000"); assert.equal(exclusive.grandTotal,"212.4000");
+const componentTaxes = calculateInvoiceTaxComponents("1000.0000",true,"9.000000",true,"9.000000");
+assert.equal(componentTaxes.cgstAmount,"90.0000"); assert.equal(componentTaxes.sgstAmount,"90.0000");
+assert.equal(componentTaxes.taxTotal,"180.0000"); assert.equal(componentTaxes.grandTotal,"1180.0000");
+const cgstOnly = calculateInvoiceTaxComponents("125.0000",true,"9",false,"9");
+assert.equal(cgstOnly.cgstAmount,"11.2500"); assert.equal(cgstOnly.sgstAmount,"0.0000"); assert.equal(cgstOnly.grandTotal,"136.2500");
+const noTax = calculateInvoiceTaxComponents("125.0000",false,"9",false,"9");
+assert.equal(noTax.taxTotal,"0.0000"); assert.equal(noTax.grandTotal,"125.0000");
+assert.throws(()=>calculateInvoiceTaxComponents("100.0000",true,"100.000001",false,"0"),/100 percent/);
 const inclusive = calculateInvoice([{description:"Inclusive product",quantity:"1",unitPrice:"118.0000",discountValue:"0",taxRatePercent:"18",taxCalculationMode:"INCLUSIVE"}]);
 assert.equal(inclusive.subtotal,"100.0000"); assert.equal(inclusive.taxableValue,"100.0000"); assert.equal(inclusive.taxTotal,"18.0000"); assert.equal(inclusive.grandTotal,"118.0000");
 const inclusiveDiscount = calculateInvoice([{description:"Inclusive promotion",quantity:"1",unitPrice:"118.0000",discountType:"PERCENT",discountValue:"10",taxRatePercent:"18",taxCalculationMode:"INCLUSIVE"}]);

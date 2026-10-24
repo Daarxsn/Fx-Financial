@@ -91,3 +91,8 @@ Migration 004 enables the local-password/session model. Before enabling sign-in 
 - Create the initial administrator once via `npm run auth:bootstrap-admin` using `BOOTSTRAP_ADMIN_CONFIRM=CREATE_FIRST_ADMIN`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_NAME` and `BOOTSTRAP_ADMIN_PASSWORD` in a private operator environment. The script refuses if any system-administrator assignment already exists.
 
 Migration/seed/bootstrap must be performed under the approved production change process after a backup and restore preflight. Do not paste passwords, invitation tokens, database credentials or `SESSION_SECRET` into tickets/chat or commit them to this repository.
+
+
+## Migration 032 — client-facing proforma fields
+
+Migration 032 adds a separate proforma expiry date, an explicit LINE versus invoice-level CGST/SGST calculation mode, enabled flags, editable draft rates and server-calculated component amounts. Existing records default to the legacy line-tax mode and zero split-tax amounts. It also adds a private signature asset reference on legal entities; the signature itself is stored in private document storage, not a public static folder. CI now verifies 32 migration records after migration replay and restore.

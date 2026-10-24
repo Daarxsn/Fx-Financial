@@ -82,6 +82,30 @@ function calculateDiscount(gross: bigint, type: DiscountType, value: bigint, mod
   return { entered, net: mode === "INCLUSIVE" ? splitInclusiveGross(entered, rate) : entered };
 }
 
+export type InvoiceTaxComponents = {
+  cgstAmount: string; sgstAmount: string; taxTotal: string; grandTotal: string;
+};
+
+/** Exact-decimal invoice-level CGST/SGST; issuance must separately validate approved rates. */
+export function calculateInvoiceTaxComponents(
+  taxableValue: string, cgstEnabled: boolean, cgstRatePercent: string,
+  sgstEnabled: boolean, sgstRatePercent: string,
+): InvoiceTaxComponents {
+  const base = parseScaled(taxableValue, 4, MONEY_PATTERN, "Taxable value");
+  const component = (enabled: boolean, rateText: string, label: string): bigint => {
+    if (!enabled) return 0n;
+    const rate = parseScaled(rateText, 6, TAX_RATE_PATTERN, label + " rate");
+    if (rate > HUNDRED_TAX) throw new Error(label + " rate must not exceed 100 percent.");
+    return assertMoneyRange(roundDivHalfUp(base * rate, HUNDRED_TAX), label + " amount");
+  };
+  const cgst = component(cgstEnabled, cgstRatePercent, "CGST");
+  const sgst = component(sgstEnabled, sgstRatePercent, "SGST");
+  const tax = assertMoneyRange(cgst + sgst, "Invoice tax total");
+  const grand = assertMoneyRange(base + tax, "Invoice grand total");
+  return { cgstAmount: formatScaled(cgst, 4), sgstAmount: formatScaled(sgst, 4),
+    taxTotal: formatScaled(tax, 4), grandTotal: formatScaled(grand, 4) };
+}
+
 export function calculateInvoice(lines: InvoiceCalculationLineInput[]): InvoiceCalculation {
   if (!Array.isArray(lines) || lines.length < 1 || lines.length > 500) {
     throw new Error("An invoice must contain between 1 and 500 lines.");

@@ -36,6 +36,7 @@ export async function resolveDraftLines(
   invoiceDate:string|null,
   currency:string,
   inputs:DraftLine[],
+  invoiceTaxMode:"LINE"|"COMPONENTS"="LINE",
 ):Promise<{calculation:InvoiceCalculation; lines:ResolvedLine[]}> {
   const effectiveDate=invoiceDate ?? calendarDateInTimeZone(entity.time_zone);
   if(!effectiveDate)throw new ConfigurationNotReadyError("A valid legal-entity time zone is required to determine tax-rule effective dates.");
@@ -53,7 +54,10 @@ export async function resolveDraftLines(
     let taxMode:"EXCLUSIVE"|"INCLUSIVE"="EXCLUSIVE";
     let taxRuleId:string|null=null;
     let taxRegistrationId:string|null=null;
-    if(entity.tax_setup_status==="APPROVED_CONFIGURED"){
+    if(invoiceTaxMode==="COMPONENTS"){
+      if(input.taxCode)throw new InvoiceDraftValidationError("Invoice-level CGST/SGST cannot be combined with line-level tax codes.");
+      taxRate="0.000000";taxMode="EXCLUSIVE";
+    } else if(entity.tax_setup_status==="APPROVED_CONFIGURED"){
       if(!input.taxCode)throw new InvoiceDraftValidationError("Line "+(index+1)+" requires an approved tax code for this legal entity.");
       const [rules]=await conn.execute<(RowDataPacket & {id:string;rate:string|number;calculation_mode:"EXCLUSIVE"|"INCLUSIVE";jurisdiction:string})[]>(
         `SELECT id,rate,calculation_mode,jurisdiction FROM tax_rules
@@ -96,7 +100,7 @@ export async function resolveDraftLines(
 export async function validateDraftContext(
   conn:PoolConnection,
   actor:SessionPrincipal,
-  fields:Pick<DraftFields,"legalEntityId"|"brandId"|"customerId"|"currency"|"invoiceDate"|"dueDate"|"paymentTermsDays">,
+  fields:Pick<DraftFields,"legalEntityId"|"brandId"|"customerId"|"currency"|"invoiceDate"|"dueDate"|"validUntil"|"paymentTermsDays">,
 ):Promise<{entity:EntityRow;paymentTermsDays:number;invoiceDate:string|null;dueDate:string|null}> {
   if(!actor.legalEntityIds.includes(fields.legalEntityId)){
     throw new ConfigurationNotReadyError("The selected legal entity is not in your assigned invoice scope.");
@@ -127,11 +131,12 @@ export async function validateDraftContext(
   const invoiceDate=fields.invoiceDate??null;
   let dueDate=fields.dueDate??null;
   if(fields.dueDate==null && invoiceDate)dueDate=defaultDueDate(invoiceDate,terms);
+  if(fields.validUntil&&invoiceDate&&fields.validUntil<invoiceDate)throw new InvoiceDraftValidationError("Expiry date cannot be earlier than the invoice date.");
   if(dueDate){
     if(!invoiceDate)throw new InvoiceDraftValidationError("A due date requires an invoice date.");
     try{assertValidDueDate(invoiceDate,dueDate);}catch(error){throw new InvoiceDraftValidationError(error instanceof Error?error.message:"Invoice due date is invalid.");}
   }
-  return {entity,paymentTermsDays:terms,invoiceDate,dueDate};
+  return {entity,paymentTermsDays:terms,invoiceDate,dueDate,validUntil:fields.validUntil??null};
 }
 export async function persistDraftLines(
   conn:PoolConnection,invoiceId:string,actorId:string,lines:ResolvedLine[],
