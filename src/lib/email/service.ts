@@ -464,7 +464,7 @@ function dayDifference(earlier: string, later: string): number {
   return Number.isFinite(a) && Number.isFinite(b) ? Math.floor((b - a) / 86400000) : -1;
 }
 
-export async function processEmailOutboxBatch(limit = 3): Promise<{ claimed: number; sentToProvider: number; deferred: number; failed: number; review: number }> {
+export async function processEmailOutboxBatch(limit = 3, onlyOutboxId?: string): Promise<{ claimed: number; sentToProvider: number; deferred: number; failed: number; review: number }> {
   const config = providerConfig();
   const max = Math.max(1,Math.min(5,Math.floor(limit)));
   const counts = { claimed:0,sentToProvider:0,deferred:0,failed:0,review:0 };
@@ -474,9 +474,10 @@ export async function processEmailOutboxBatch(limit = 3): Promise<{ claimed: num
     let token = "";
     try {
       await conn.beginTransaction();
-      const [rows] = await conn.execute<OutboxRow[]>(
-        "SELECT * FROM email_outbox WHERE (status='QUEUED' AND (next_attempt_at IS NULL OR next_attempt_at<=NOW(3))) OR (status='SENDING' AND lease_until<NOW(3)) ORDER BY COALESCE(next_attempt_at,created_at),created_at LIMIT 1 FOR UPDATE SKIP LOCKED",
-      );
+      const claimSql = onlyOutboxId
+        ? "SELECT * FROM email_outbox WHERE id=? AND ((status='QUEUED' AND (next_attempt_at IS NULL OR next_attempt_at<=NOW(3))) OR (status='SENDING' AND lease_until<NOW(3))) ORDER BY COALESCE(next_attempt_at,created_at),created_at LIMIT 1 FOR UPDATE SKIP LOCKED"
+        : "SELECT * FROM email_outbox WHERE ((status='QUEUED' AND (next_attempt_at IS NULL OR next_attempt_at<=NOW(3))) OR (status='SENDING' AND lease_until<NOW(3))) ORDER BY COALESCE(next_attempt_at,created_at),created_at LIMIT 1 FOR UPDATE SKIP LOCKED";
+      const [rows] = await conn.execute<OutboxRow[]>(claimSql,onlyOutboxId ? [onlyOutboxId] : []);
       row = rows[0];
       if (!row) { await conn.commit(); break; }
       token = randomUUID();
