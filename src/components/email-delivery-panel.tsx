@@ -80,10 +80,22 @@ export function EmailDeliveryPanel({sourceType,sourceId}:Props) {
         headers:{"Accept":"application/json","Content-Type":"application/json","X-CSRF-Token":csrf,"Idempotency-Key":idempotencyKey},
         body:JSON.stringify({sourceType,sourceId,recipientEmail:recipientEmail.trim(),recipientConfirmed:confirmed}),
       });
-      let body: {data?:EmailItem & {idempotentReplay?:boolean};error?:{message?:string}}={};
+      let body: {data?:EmailItem & {idempotentReplay?:boolean;immediateDeliveryAttempted?:boolean;immediateDeliveryDeferred?:boolean};error?:{message?:string}}={};
       try { body=await response.json() as typeof body; } catch { /* generic error below */ }
       if(!response.ok) throw new Error(body.error?.message??"The email could not be queued.");
-      setMessage(body.data?.idempotentReplay?"This email request was already accepted; no new email was queued.":"Email queued durably. The delivery timeline will update after the provider accepts it and sends delivery events.");
+      const status=body.data?.status??"QUEUED";
+      const deliveryMessage=status==="DELIVERED"
+        ?"The provider confirms this email was delivered."
+        :status==="SENT"
+          ?"The email provider accepted the message. Delivery confirmation will appear when the provider sends its event."
+          :status==="FAILED"||status==="BOUNCED"||status==="COMPLAINED"||status==="REQUIRES_REVIEW"
+            ?"The email was not confirmed as delivered ("+status+"). Review the delivery timeline and retry if appropriate."
+            :body.data?.immediateDeliveryDeferred
+              ?"The email is saved in the durable outbox. An immediate attempt was deferred; the worker will retry it."
+              :body.data?.immediateDeliveryAttempted
+                ?"The immediate send attempt did not complete delivery. The durable outbox will retry according to policy."
+                :"The email is saved in the durable outbox and awaits delivery processing.";
+      setMessage(body.data?.idempotentReplay?"This email request was already accepted; no duplicate was created. "+deliveryMessage:deliveryMessage);
       setIdempotencyKey(crypto.randomUUID());
       setConfirmed(false);
       await refresh();
