@@ -294,20 +294,37 @@ jobs:
           DATABASE_PASSWORD: ci_root_password
           DATABASE_SSL: "false"
           SESSION_SECRET: "ci-only-session-secret-value-not-for-production-000000"
-          RESEND_API_URL: https://api.resend.com
+          RESEND_API_URL: http://127.0.0.1:3030
           RESEND_API_KEY: ci-resend-test-key
           RESEND_FROM_EMAIL: "Falchion CI <billing@example.invalid>"
           PHASE7_BROWSER_BASE_URL: http://127.0.0.1:3003
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/phase7-browser"
-          setsid ./node_modules/.bin/next dev --hostname 127.0.0.1 --port 3003 > "$RUNNER_TEMP/phase7-browser/next.log" 2>&1 &
-          server_pid=$!
+          node scripts/mock-resend-server.mjs > "$RUNNER_TEMP/phase7-browser/mock-resend.log" 2>&1 &
+          provider_pid=$!
+          server_pid=""
           cleanup_server() {
-            kill -- "-$server_pid" 2>/dev/null || kill "$server_pid" 2>/dev/null || true
-            wait "$server_pid" 2>/dev/null || true
+            if [ -n "$server_pid" ]; then
+              kill -- "-$server_pid" 2>/dev/null || kill "$server_pid" 2>/dev/null || true
+              wait "$server_pid" 2>/dev/null || true
+            fi
+            kill "$provider_pid" 2>/dev/null || true
+            wait "$provider_pid" 2>/dev/null || true
           }
           trap cleanup_server EXIT
+          provider_ready="false"
+          for attempt in $(seq 1 15); do
+            provider_status="$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3030/health || true)"
+            if [ "$provider_status" = "200" ]; then provider_ready="true"; break; fi
+            sleep 1
+          done
+          if [ "$provider_ready" != "true" ]; then
+            cat "$RUNNER_TEMP/phase7-browser/mock-resend.log"
+            exit 1
+          fi
+          setsid ./node_modules/.bin/next dev --hostname 127.0.0.1 --port 3003 > "$RUNNER_TEMP/phase7-browser/next.log" 2>&1 &
+          server_pid=$!
           ready="false"
           for attempt in $(seq 1 30); do
             status="$(curl -sS -o "$RUNNER_TEMP/phase7-browser/health.json" -w '%{http_code}' http://127.0.0.1:3003/api/health || true)"
@@ -323,6 +340,8 @@ jobs:
           else
             echo "===== Next.js server log (browser test failed) ====="
             cat "$RUNNER_TEMP/phase7-browser/next.log"
+            echo "===== Mock Resend log (browser test failed) ====="
+            cat "$RUNNER_TEMP/phase7-browser/mock-resend.log"
             exit 1
           fi
       - name: Upload browser diagnostics on failure
