@@ -78,3 +78,12 @@ Run only commands relevant to the change where time/environment is constrained, 
 ## When blocked
 
 Record the exact blocker, evidence needed, safe next action and responsible approver. Do not bypass a failed security/financial check, lower test standards silently, or replace unknown real-world values with guesses.
+
+## Stage 1 visibility and end-to-end rules
+
+- A backend route, permission, API test, or React component does not prove a user can reach a feature. Verify the App Router page exists, its navigation entry resolves, and the intended role can see and activate the action.
+- Keep **New invoice** visible to users with `invoices:draft:create` even when setup is incomplete. Disable only while loading or while an operation is genuinely unavailable; show a specific setup/access explanation and a direct next step.
+- Opening an invoice must not automatically put a draft into edit mode. Details, preview and edit are distinct explicit actions.
+- A draft preview must use persisted/server-calculated values. If the user has unsaved edits, offer to save before previewing; never silently preview stale values.
+- Test the complete visible path: workspace home → Invoices → New invoice → save draft → reopen details → preview → issue (only when approved) → send/queue email → inspect delivery history. Include empty/setup-blocked, permission-denied, validation-error, PDF-generation-failure and email-queue/provider-failure states.
+- Do not report sending as complete merely because the API accepted an outbox request. Distinguish queued, provider-accepted, sent and delivered, and state whether real provider delivery was tested.
