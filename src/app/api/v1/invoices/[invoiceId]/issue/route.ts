@@ -8,7 +8,7 @@ import { apiError, jsonNoStore } from "@/lib/http/api-response";
 import { ConfigurationConflictError, ConfigurationNotReadyError } from "@/lib/configuration/errors";
 import { captureDocumentConfigurationSnapshot, jsonValue } from "@/lib/configuration/service";
 import { unresolvedInvoicePolicyDecisions } from "@/lib/configuration/policy-decisions";
-import { calculateInvoice, defaultDueDate, assertValidDueDate } from "@/lib/finance/invoice-calculation";
+import { calculateInvoice, calculateInvoiceTaxComponents, defaultDueDate, assertValidDueDate } from "@/lib/finance/invoice-calculation";
 import { calendarDateSchema } from "@/lib/validation/configuration";
 import { z } from "zod";
 import { captureDocumentSourceSnapshot } from "@/lib/documents/service";
@@ -48,6 +48,10 @@ type InvoiceRow = RowDataPacket & {
   financial_year: string | null;
   invoice_date: Date | string | null;
   due_date: Date | string | null;
+  invoice_valid_until: Date | string | null;
+  tax_mode: "LINE" | "COMPONENTS";
+  cgst_enabled: number; cgst_rate: string | null; sgst_enabled: number; sgst_rate: string | null;
+  cgst_amount: string; sgst_amount: string;
   currency: string;
   grand_total: string | number;
   issue_idempotency_key: string | null;
@@ -87,7 +91,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ in
     conn = await pool.getConnection();
     await conn.beginTransaction();
     const [invoiceRows] = await conn.execute<InvoiceRow[]>(
-      "SELECT id,legal_entity_id,brand_id,customer_id,document_type,lifecycle_status,payment_terms_days,invoice_number,financial_year,invoice_date,due_date,currency,grand_total,issue_idempotency_key FROM invoices WHERE id=? FOR UPDATE",
+      "SELECT id,legal_entity_id,brand_id,customer_id,document_type,lifecycle_status,payment_terms_days,invoice_number,financial_year,invoice_date,due_date,invoice_valid_until,tax_mode,cgst_enabled,cgst_rate,sgst_enabled,sgst_rate,cgst_amount,sgst_amount,currency,grand_total,issue_idempotency_key FROM invoices WHERE id=? FOR UPDATE",
       [invoiceId],
     );
     if (!invoiceRows.length) {
@@ -192,48 +196,112 @@ export async function POST(request: NextRequest, context: { params: Promise<{ in
     }
     let taxRuleIds: string[] = [];
     let taxRegistrationIds: string[] = [];
-    if (taxStatus === "APPROVED_CONFIGURED") {
-      const invalid = lineRows.find((line) => {
-        const taxJurisdiction = line.configured_tax_jurisdiction?.trim().toLowerCase();
-        const registrationJurisdiction = line.configured_registration_jurisdiction?.trim().toLowerCase();
-        return !line.tax_rule_id || !line.tax_registration_id || !line.tax_code ||
-          line.configured_tax_code !== line.tax_code || line.configured_tax_calculation_mode !== line.tax_calculation_mode ||
-          !taxJurisdiction || !registrationJurisdiction || taxJurisdiction !== registrationJurisdiction;
-      });
-      if (invalid) throw new ConfigurationNotReadyError("Every invoice line must reference an approved tax rule and a registration for the same jurisdiction, with a matching tax code and rate.");
-      taxRuleIds = [...new Set(lineRows.map((line) => String(line.tax_rule_id)))];
-      taxRegistrationIds = [...new Set(lineRows.map((line) => String(line.tax_registration_id)))];
-    } else if (taxStatus === "APPROVED_NOT_APPLICABLE") {
-      const inconsistent = lineRows.some((line) => line.tax_rule_id !== null || line.tax_registration_id !== null || line.tax_code !== null);
-      if (inconsistent) throw new ConfigurationConflictError("The approved tax setup is not applicable; invoice lines must not contain tax rule references.");
-    } else {
-      throw new ConfigurationNotReadyError("A recorded, approved tax decision is required before invoice issuance.");
-    }
+    let calculation: ReturnType<typeof calculateInvoice>;
+    let componentTotals = { cgstAmount:"0.0000", sgstAmount:"0.0000", taxTotal:"0.0000", grandTotal:"0.0000" };
+    const percentUnits = (value: string | number): bigint => {
+      const [whole, fraction = ""] = String(value).split(".");
+      return BigInt(whole || "0") * 1_000_000n + BigInt((fraction + "000000").slice(0,6));
+    };
 
-    // Recompute every line and document total from persisted exact-decimal inputs and approved tax rules.
-    // Never trust client/stored tax rates or totals as authoritative at issue time.
-    const calculation = calculateInvoice(lineRows.map((line) => ({
-      lineKind: line.line_kind, description: line.description, quantity: String(line.quantity), unitPrice: String(line.unit_price),
-      discountType: line.discount_type, discountValue: String(line.discount_value),
-      taxRatePercent: taxStatus === "APPROVED_CONFIGURED" ? String(line.configured_rate) : "0.000000",
-      taxCalculationMode: taxStatus === "APPROVED_CONFIGURED" ? line.configured_tax_calculation_mode! : "EXCLUSIVE",
-    })));
-    for (let index = 0; index < lineRows.length; index++) {
-      const line = lineRows[index], calculated = calculation.lines[index];
-      const rate = taxStatus === "APPROVED_CONFIGURED" ? String(line.configured_rate) : "0.000000";
-      await conn.execute(
-        "UPDATE invoice_lines SET discount_amount=?,tax_rate=?,tax_calculation_mode=?,tax_amount=?,line_total=? WHERE id=? AND invoice_id=?",
-        [calculated.discountAmount, rate, calculated.taxCalculationMode, calculated.taxAmount, calculated.lineTotal, line.id, invoice.id],
-      );
+    if (invoice.tax_mode === "COMPONENTS") {
+      if (lineRows.some(line => line.tax_rule_id !== null || line.tax_registration_id !== null || line.tax_code !== null)) {
+        throw new ConfigurationConflictError("Invoice-level CGST/SGST cannot be mixed with line-level tax rules.");
+      }
+      if (taxStatus === "UNCONFIGURED") {
+        throw new ConfigurationNotReadyError("A recorded, approved tax decision is required before invoice issuance.");
+      }
+      const cgstEnabled = Boolean(invoice.cgst_enabled);
+      const sgstEnabled = Boolean(invoice.sgst_enabled);
+      if (taxStatus === "APPROVED_NOT_APPLICABLE" && (cgstEnabled || sgstEnabled)) {
+        throw new ConfigurationConflictError("The approved tax decision is not applicable. Disable CGST and SGST or obtain an approved configured-tax decision.");
+      }
+      if (taxStatus === "APPROVED_CONFIGURED" && !cgstEnabled && !sgstEnabled) {
+        throw new ConfigurationNotReadyError("This supplier has configured tax. Select the applicable approved CGST and/or SGST components; tax-exempt treatment needs an approved not-applicable decision.");
+      }
+      if (taxStatus === "APPROVED_CONFIGURED") {
+        if ((cgstEnabled && !invoice.cgst_rate) || (sgstEnabled && !invoice.sgst_rate)) {
+          throw new ConfigurationNotReadyError("Enter a rate for each enabled tax component.");
+        }
+        const combinedRate = (cgstEnabled ? percentUnits(String(invoice.cgst_rate)) : 0n) +
+          (sgstEnabled ? percentUnits(String(invoice.sgst_rate)) : 0n);
+        const [candidateRules] = await conn.execute<(RowDataPacket & {id:string;rate:string|number;jurisdiction:string})[]>(
+          `SELECT id,rate,jurisdiction FROM tax_rules
+            WHERE legal_entity_id=? AND is_active=TRUE AND approved_at IS NOT NULL AND approval_reference IS NOT NULL
+              AND calculation_mode="EXCLUSIVE" AND effective_from<=? AND (effective_until IS NULL OR effective_until>=?)
+            ORDER BY effective_from DESC,id FOR UPDATE`,
+          [invoice.legal_entity_id,documentDate,documentDate],
+        );
+        const matchingRule = candidateRules.find(rule => percentUnits(rule.rate) === combinedRate);
+        if (!matchingRule) {
+          throw new ConfigurationNotReadyError("The enabled CGST/SGST rates must add up to an approved, effective tax rule for this supplier and invoice date. Update the rates in Tax settings if the combination is not approved.");
+        }
+        const [registrations] = await conn.execute<(RowDataPacket & {id:string})[]>(
+          `SELECT id FROM legal_entity_tax_registrations
+            WHERE legal_entity_id=? AND is_active=TRUE AND approved_at IS NOT NULL AND approval_reference IS NOT NULL
+              AND LOWER(TRIM(jurisdiction))=LOWER(TRIM(?)) AND effective_from<=? AND (effective_until IS NULL OR effective_until>=?)
+            ORDER BY is_primary DESC,effective_from DESC,version_number DESC LIMIT 1 FOR UPDATE`,
+          [invoice.legal_entity_id,matchingRule.jurisdiction,documentDate,documentDate],
+        );
+        if (!registrations.length) {
+          throw new ConfigurationNotReadyError("The approved tax rule has no matching approved registration effective on this invoice date.");
+        }
+        taxRuleIds = [matchingRule.id];
+        taxRegistrationIds = [registrations[0].id];
+      }
+      const baseCalculation = calculateInvoice(lineRows.map(line => ({
+        lineKind:line.line_kind,description:line.description,quantity:String(line.quantity),unitPrice:String(line.unit_price),
+        discountType:line.discount_type,discountValue:String(line.discount_value),taxRatePercent:"0.000000",taxCalculationMode:"EXCLUSIVE" as const,
+      })));
+      componentTotals = calculateInvoiceTaxComponents(baseCalculation.taxableValue,cgstEnabled,String(invoice.cgst_rate??"0.000000"),sgstEnabled,String(invoice.sgst_rate??"0.000000"));
+      calculation = {...baseCalculation,taxTotal:componentTotals.taxTotal,grandTotal:componentTotals.grandTotal};
+      for (let index=0;index<lineRows.length;index++) {
+        const line=lineRows[index], calculated=calculation.lines[index];
+        await conn.execute(
+          "UPDATE invoice_lines SET discount_amount=?,tax_rate='0.000000',tax_calculation_mode='EXCLUSIVE',tax_amount='0.0000',line_total=? WHERE id=? AND invoice_id=?",
+          [calculated.discountAmount,calculated.lineTotal,line.id,invoice.id],
+        );
+      }
+    } else {
+      if (taxStatus === "APPROVED_CONFIGURED") {
+        const invalid = lineRows.find((line) => {
+          const taxJurisdiction=line.configured_tax_jurisdiction?.trim().toLowerCase();
+          const registrationJurisdiction=line.configured_registration_jurisdiction?.trim().toLowerCase();
+          return !line.tax_rule_id || !line.tax_registration_id || !line.tax_code ||
+            line.configured_tax_code!==line.tax_code || line.configured_tax_calculation_mode!==line.tax_calculation_mode ||
+            !taxJurisdiction || !registrationJurisdiction || taxJurisdiction!==registrationJurisdiction;
+        });
+        if (invalid) throw new ConfigurationNotReadyError("Every invoice line must reference an approved tax rule and a registration for the same jurisdiction, with a matching tax code and rate.");
+        taxRuleIds=[...new Set(lineRows.map(line=>String(line.tax_rule_id)))];
+        taxRegistrationIds=[...new Set(lineRows.map(line=>String(line.tax_registration_id)))];
+      } else if (taxStatus === "APPROVED_NOT_APPLICABLE") {
+        const inconsistent=lineRows.some(line=>line.tax_rule_id!==null || line.tax_registration_id!==null || line.tax_code!==null);
+        if (inconsistent) throw new ConfigurationConflictError("The approved tax setup is not applicable; invoice lines must not contain tax rule references.");
+      } else {
+        throw new ConfigurationNotReadyError("A recorded, approved tax decision is required before invoice issuance.");
+      }
+      calculation = calculateInvoice(lineRows.map(line=>({
+        lineKind:line.line_kind,description:line.description,quantity:String(line.quantity),unitPrice:String(line.unit_price),
+        discountType:line.discount_type,discountValue:String(line.discount_value),
+        taxRatePercent:taxStatus==="APPROVED_CONFIGURED"?String(line.configured_rate):"0.000000",
+        taxCalculationMode:taxStatus==="APPROVED_CONFIGURED"?line.configured_tax_calculation_mode!:"EXCLUSIVE",
+      })));
+      for(let index=0;index<lineRows.length;index++){
+        const line=lineRows[index],calculated=calculation.lines[index];
+        const rate=taxStatus==="APPROVED_CONFIGURED"?String(line.configured_rate):"0.000000";
+        await conn.execute("UPDATE invoice_lines SET discount_amount=?,tax_rate=?,tax_calculation_mode=?,tax_amount=?,line_total=? WHERE id=? AND invoice_id=?",
+          [calculated.discountAmount,rate,calculated.taxCalculationMode,calculated.taxAmount,calculated.lineTotal,line.id,invoice.id]);
+      }
     }
+    const expiryDate = invoice.invoice_valid_until instanceof Date ? invoice.invoice_valid_until.toISOString().slice(0,10) : invoice.invoice_valid_until === null ? null : String(invoice.invoice_valid_until).slice(0,10);
+    if (expiryDate && expiryDate < documentDate) throw new ConfigurationConflictError("The proforma expiry date cannot be earlier than the issue date.");
     const invoiceDueDate = invoice.due_date instanceof Date
       ? invoice.due_date.toISOString().slice(0,10)
       : invoice.due_date === null ? defaultDueDate(documentDate, Number(invoice.payment_terms_days)) : String(invoice.due_date).slice(0,10);
     try { assertValidDueDate(documentDate, invoiceDueDate); }
     catch (error) { throw new ConfigurationConflictError(error instanceof Error ? error.message : "Invoice due date is invalid."); }
     await conn.execute(
-      "UPDATE invoices SET subtotal=?,discount_total=?,tax_total=?,grand_total=? WHERE id=? AND lifecycle_status='DRAFT'",
-      [calculation.subtotal,calculation.discountTotal,calculation.taxTotal,calculation.grandTotal,invoice.id],
+      "UPDATE invoices SET subtotal=?,discount_total=?,tax_total=?,grand_total=?,cgst_amount=?,sgst_amount=? WHERE id=? AND lifecycle_status='DRAFT'",
+      [calculation.subtotal,calculation.discountTotal,calculation.taxTotal,calculation.grandTotal,componentTotals.cgstAmount,componentTotals.sgstAmount,invoice.id],
     );
 
     const snapshotResult = await captureDocumentConfigurationSnapshot(conn, {
@@ -278,9 +346,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ in
     await conn.commit();
     return jsonNoStore({ data: {
       id: invoice.id, status: "ISSUED", invoiceNumber: snapshotResult.invoiceNumber,
-      financialYear: financialYearLabel, invoiceDate: documentDate, currency: invoice.currency,
+      financialYear: financialYearLabel, invoiceDate: documentDate, validUntil: expiryDate, currency: invoice.currency,
       grandTotal: calculation.grandTotal, subtotal: calculation.subtotal, discountTotal: calculation.discountTotal,
-      taxableValue: calculation.taxableValue, taxTotal: calculation.taxTotal, dueDate: invoiceDueDate, configurationSnapshotId: snapshotResult.snapshotId,
+      taxableValue: calculation.taxableValue, taxTotal: calculation.taxTotal, cgstAmount:componentTotals.cgstAmount, sgstAmount:componentTotals.sgstAmount, dueDate: invoiceDueDate, configurationSnapshotId: snapshotResult.snapshotId,
       configurationSha256: snapshotResult.sha256, idempotentReplay: false,
     } });
   } catch (error) {
