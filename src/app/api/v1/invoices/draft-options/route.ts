@@ -2,6 +2,7 @@ import type { RowDataPacket } from "mysql2";
 import { pool } from "@/lib/db/pool";
 import { AuthorizationError, requirePermission } from "@/lib/auth/authorize";
 import { apiError, jsonNoStore } from "@/lib/http/api-response";
+import { isProductBrandLegalEntityName } from "@/lib/brand-assets";
 export const runtime="nodejs";export const dynamic="force-dynamic";
 export async function GET(){
  try{
@@ -10,11 +11,11 @@ export async function GET(){
   const placeholders=scope.map(()=>"?").join(",");
   const [entities]=await pool.query<(RowDataPacket & {id:string;display_name:string;currency:string;tax_setup_status:string;default_tax_code:string|null})[]>(
     `SELECT id,display_name,currency,tax_setup_status,default_tax_code FROM legal_entities WHERE id IN (${placeholders}) AND is_active=TRUE ORDER BY display_name,id`,scope);
-  const [brandRows]=await pool.query<(RowDataPacket & {id:string;name:string;code:string;logo_reference:string|null;default_template_key:string|null;theme_json:unknown;legal_entity_id:string;entity_name:string;currency:string;tax_setup_status:string;default_tax_code:string|null;is_default:number;mapping_count:number})[]>(
+  const [brandRows]=await pool.query<(RowDataPacket & {id:string;name:string;code:string;logo_reference:string|null;default_template_key:string|null;theme_json:unknown;legal_entity_id:string;entity_legal_name:string;entity_name:string;currency:string;tax_setup_status:string;default_tax_code:string|null;is_default:number;mapping_count:number})[]>(
     `SELECT id,name,code,logo_reference,default_template_key,theme_json,legal_entity_id,entity_name,currency,tax_setup_status,is_default,mapping_count
      FROM (
        SELECT b.id,b.name,b.code,b.logo_reference,b.default_template_key,b.theme_json,
-              e.id AS legal_entity_id,e.display_name AS entity_name,e.currency,e.tax_setup_status,e.default_tax_code,ble.is_default,
+              e.id AS legal_entity_id,e.legal_name AS entity_legal_name,e.display_name AS entity_name,e.currency,e.tax_setup_status,e.default_tax_code,ble.is_default,
               COUNT(*) OVER (PARTITION BY b.id) AS mapping_count,
               ROW_NUMBER() OVER (PARTITION BY b.id ORDER BY ble.is_default DESC,ble.legal_entity_id ASC) AS mapping_rank
        FROM brands b
@@ -37,8 +38,10 @@ export async function GET(){
    legalEntities:entities.map(e=>({id:e.id,name:e.display_name,currency:e.currency,taxSetupStatus:e.tax_setup_status,defaultTaxCode:e.default_tax_code})),
    brands:brandRows.map(b=>({id:b.id,name:b.name,code:b.code,logoReference:b.logo_reference,defaultTemplateKey:b.default_template_key,
      theme:typeof b.theme_json==="string"?(()=>{try{return JSON.parse(b.theme_json) as Record<string,unknown>}catch{return {}}})():b.theme_json??{},
-     legalEntityId:b.legal_entity_id,legalEntityName:b.entity_name,currency:b.currency,taxSetupStatus:b.tax_setup_status,defaultTaxCode:b.default_tax_code,
-     canAutoMap:Boolean(b.is_default)||Number(b.mapping_count)===1,
+     legalEntityId:b.legal_entity_id,legalEntityName:b.entity_legal_name,legalEntityDisplayName:b.entity_name,
+     currency:b.currency,taxSetupStatus:b.tax_setup_status,defaultTaxCode:b.default_tax_code,
+     issuerIdentityReady:!isProductBrandLegalEntityName(b.entity_legal_name)&&!isProductBrandLegalEntityName(b.entity_name),
+     canAutoMap:(Boolean(b.is_default)||Number(b.mapping_count)===1)&&!isProductBrandLegalEntityName(b.entity_legal_name)&&!isProductBrandLegalEntityName(b.entity_name),
    })),
    customers:customers.map(c=>({id:c.id,name:c.name,customerCode:c.customer_code,email:c.email,paymentTermsDays:c.payment_terms_days===null?null:Number(c.payment_terms_days)})),
    catalogItems:catalogItems.map(i=>({id:i.id,itemCode:i.item_code,itemType:i.item_type,name:i.name,description:i.customer_description,unitCode:i.unit_code,defaultUnitPrice:String(i.default_unit_price),currency:i.currency,defaultTaxCode:i.default_tax_code})),
