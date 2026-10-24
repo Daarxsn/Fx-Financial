@@ -22,13 +22,14 @@ export default function HomePage() {
       <PageHeader
         eyebrow="FINANCE OPERATIONS"
         title="Your finance, in focus."
-        description="One considered workspace for invoices, quotations, customer records and payment tracking—built around clarity, accurate data and accountable actions."
+        description="Create, preview, send and manage invoices from one clear workspace, with customer records and payment tracking close at hand."
+        action={<Link className="button button--primary button--md" href="/invoices">+ Create new invoice</Link>}
       />
       <section className="welcome-panel" aria-labelledby="welcome-title">
         <div className="welcome-panel__content">
           <StatusBadge tone="info" icon="sparkles">Finance workspace</StatusBadge>
           <h2 id="welcome-title">Every financial detail, in its place.</h2>
-          <p>Use Invoices to create drafts and issue financial documents, or Quotations to prepare quotes, record customer decisions and convert accepted quotes into invoice drafts. Your role, legal-entity access and approved company setup determine which actions are available. PDF generation and email delivery are not enabled yet.</p>
+          <p>Open Invoices to create a draft, preview the saved invoice, issue it when the required finance checks pass, and send it through the configured email service. Your role, legal-entity access and approved company setup determine which actions are available.</p>
           <div className="welcome-panel__foot">
             <span className="welcome-panel__live"><span aria-hidden="true" /> Workspace active</span>
             <span className="welcome-panel__separator" aria-hidden="true" />
@@ -92,7 +93,7 @@ export default function HomePage() {
           <div className="readiness-list">
             <div><span className="readiness-list__icon readiness-list__icon--success"><Icon name="check" size={15} /></span><span><strong>Design system</strong><small>Tokens and shared components</small></span><StatusBadge tone="success">Ready</StatusBadge></div>
             <div><span className="readiness-list__icon readiness-list__icon--success"><Icon name="check" size={15} /></span><span><strong>Responsive shell</strong><small>Desktop, tablet and mobile</small></span><StatusBadge tone="success">Ready</StatusBadge></div>
-            <div><span className="readiness-list__icon"><Icon name="clock" size={15} /></span><span><strong>Reports &amp; delivery</strong><small>Reporting, PDF generation and email remain planned</small></span><StatusBadge tone="warning">In progress</StatusBadge></div>
+            <div><span className="readiness-list__icon"><Icon name="clock" size={15} /></span><span><strong>Reports &amp; delivery</strong><small>PDF/email need approved issuer setup and a verified sender configuration</small></span><StatusBadge tone="warning">In progress</StatusBadge></div>
           </div>
           <div className="readiness-note"><Icon name="lock" size={15} /><span>Unreleased workflows are not presented as active.</span></div>
         </Card>
