@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { BRAND_LOGO_ASSETS, APPROVED_BRAND_COLORS, resolveBrandLogo, isApprovedBrandColor } from "@/lib/brand-assets";
+import { BRAND_LOGO_ASSETS, APPROVED_BRAND_COLORS, resolveBrandLogo, isApprovedBrandColor, isFalchionXeniaaSupplierName, isProductBrandLegalEntityName } from "@/lib/brand-assets";
 import { useCallback, useEffect, useState, type FormEvent, type Dispatch, type SetStateAction, type ReactNode, type CSSProperties } from "react";
 import { Breadcrumbs, Button, Card, EmptyState, InlineAlert, LoadingState, PageHeader, StatusBadge, TextField, TextAreaField, SelectField } from "@/components/ui";
 
@@ -265,12 +265,28 @@ export default function SettingsPage(){
   setCompany(companyBlank());setQuickAddEntity(false);
  }
 
+ async function reconcileProductBrands(){
+  setSaving(true);setError("");setNotice("");
+  try{
+   const result=await api<{preservedLegacyEntities:{id:string;displayName:string;isActive:boolean}[]}>(
+    "/api/v1/legal-entities/reconcile-product-brands","POST",{});
+   const preserved=result.preservedLegacyEntities??[];
+   setNotice(preserved.length
+    ? "All three product brands now map to the single Falchion Xeniaa supplier. "+preserved.length+" brand-named legal-entity record(s) were preserved for history review; no invoice, entity or financial history was deleted or moved."
+    : "All three product brands now map to the single Falchion Xeniaa supplier.");
+   await loadAll();
+  }catch(e){setError(e instanceof Error?e.message:"Product-brand reconciliation failed. No records were changed.");}
+  finally{setSaving(false);}
+ }
+
  let templatePreviewConfig:Record<string,unknown>|null=null;
  try{const parsed:unknown=JSON.parse(String(template.templateConfig));if(parsed&&typeof parsed==="object"&&!Array.isArray(parsed))templatePreviewConfig=parsed as Record<string,unknown>}catch{/* Invalid JSON should not be rendered as a document. */}
  const tabs:[Tab,string,string][]=[["company","Company & entities","Legal identities"],["brands","Brands","Commercial identities"],["units","Business units","Organization"],["tax","Tax","Registrations & rules"],["numbering","Numbering series","Fiscal-year rules"],["templates","Templates","Document layout"]];
  if(busy)return <div className="page"><Breadcrumbs items={[{label:"Workspace",href:"/"},{label:"Settings"}]}/><PageHeader eyebrow="INVOICING SETUP" title="Your invoicing workspace" description="Loading your business profile and first-invoice checklist…"/><LoadingState label="Loading your invoicing setup…"/></div>;
 
  const activeEntities=entities.filter(e=>e.isActive);
+ const canonicalSupplierEntities=activeEntities.filter(e=>isFalchionXeniaaSupplierName(e.legalName)||isFalchionXeniaaSupplierName(e.displayName));
+ const legacyProductBrandEntities=activeEntities.filter(e=>isProductBrandLegalEntityName(e.legalName)||isProductBrandLegalEntityName(e.displayName));
  const quickEntity=activeEntities.find(e=>e.id===entityId)??activeEntities[0]??null;
  const quickReadiness=quickEntity?readiness[quickEntity.id]:undefined;
  const failedReadinessChecks=quickReadiness?.checks.filter(c=>!c.passed)??[];
@@ -283,11 +299,13 @@ export default function SettingsPage(){
   <PageHeader eyebrow="INVOICING SETUP" title="Your invoicing workspace" description="Set up only what you need to start creating and sending invoices. Advanced finance controls remain available when you need them." action={<Button variant="secondary" onClick={()=>setShowAdvancedSettings(true)}>Advanced settings</Button>}/>
   {error?<div className="config-message"><InlineAlert tone="danger" title="Setup needs attention">{error}</InlineAlert><Button variant="secondary" onClick={()=>void loadAll()}>Reload</Button></div>:null}
   {notice?<div className="config-message"><InlineAlert tone="success" title="Saved">{notice}</InlineAlert><Button variant="ghost" size="sm" onClick={()=>setNotice("")}>Dismiss</Button></div>:null}
+  {legacyProductBrandEntities.length>0&&canonicalSupplierEntities.length===0?<div className="config-message"><InlineAlert tone="warning" title="Product brands were entered as legal entities">The active records named {legacyProductBrandEntities.map(e=>e.displayName).join(", ")} look like product brands, not the parent supplier. Save the genuine Falchion Xeniaa legal supplier profile first, then use “Reconcile product brands” below. Do not rename or delete historical records to clear this warning.</InlineAlert></div>:null}
+  {canonicalSupplierEntities.length>0&&legacyProductBrandEntities.length>0?<div className="config-message"><InlineAlert tone="warning" title="Legacy legal-entity records retained">Falchion Xeniaa can own all three product brands. Older brand-named legal entities remain visible for history review; reconciliation does not merge or delete them.</InlineAlert></div>:null}
   <div className="quick-setup-grid">
    <section className="quick-setup-primary">
     {activeEntities.length===0||quickAddEntity?<Card className="quick-setup-card">
      <p className="eyebrow">STEP 1 · BUSINESS BASICS</p>
-     <h2>{quickAddEntity?"Add another business":"Add your business"}</h2>
+     <h2>{quickAddEntity?"Add the Falchion Xeniaa supplier":"Add your business"}</h2>
      <p className="quick-setup-lead">These are the only details we need to create your supplier profile. We do not fill in tax IDs, tax rates, or bank details for you.</p>
      <form className="config-form" onSubmit={e=>void mutate(e,saveQuickSetup,"Business profile saved. Next, add your first customer.")}>
       <Grid>
@@ -306,7 +324,7 @@ export default function SettingsPage(){
      </form>
     </Card>:<Card className="quick-setup-card">
      <p className="eyebrow">YOUR BUSINESS</p>
-     <div className="quick-setup-heading"><div><h2>Business profile</h2><p className="quick-setup-lead">Choose the business that will appear as the supplier on your invoices.</p></div><Button variant="secondary" onClick={()=>{setQuickAddEntity(true);setCompany(companyBlank())}}>Add another business</Button></div>
+     <div className="quick-setup-heading"><div><h2>Business profile</h2><p className="quick-setup-lead">Choose the business that will appear as the supplier on your invoices.</p></div><Button variant="secondary" onClick={()=>{setQuickAddEntity(true);setCompany(companyBlank())}}>Add supplier entity</Button></div>
      <div className="config-record-list">{activeEntities.map(e=><RecordCard key={e.id} title={e.displayName} subtitle={e.legalName} meta={(e.countryCode??"Country not set")+" · "+e.currency} active={e.isActive}
       details={<><Detail label="Address">{[e.address?.line1,e.address?.city,e.address?.countryCode??e.countryCode].filter(Boolean).join(", ")||"Address incomplete"}</Detail><Detail label="Tax setup">{e.taxSetupStatus.replaceAll("_"," ").toLowerCase()}</Detail><Detail label="Contact">{e.invoiceEmail||e.invoicePhone||"Not added"}</Detail></>}
       actions={<><Button size="sm" variant="secondary" onClick={()=>{editEntity(e);setTab("company");setShowAdvancedSettings(true)}}>Edit full details</Button></>}/>)}</div>
@@ -330,7 +348,9 @@ export default function SettingsPage(){
     <Card className="quick-setup-card quick-setup-boundary">
      <p className="eyebrow">WHAT STAYS SIMPLE</p><h2>No setup maze</h2>
      <p>Brands, business units, template versions, and detailed policy controls stay out of your way unless your business needs them.</p>
-     <p>We will never invent a tax rate, registration number, invoice number, or bank detail. Required issue checks still protect your invoices.</p>
+     <p>Falchion Xeniaa is the legal supplier; MyFX POS, FX Digitech and FX Coworks are the three product brands. Save the genuine supplier profile first, then reconcile the brand mappings here.</p>
+     <p>We will never invent a tax rate, registration number, invoice number, or bank detail. Reconciliation preserves older legal-entity records and does not move invoices.</p>
+     <Button onClick={()=>void reconcileProductBrands()} disabled={saving}>{saving?"Reconciling…":"Reconcile product brands"}</Button>
      <Button variant="ghost" onClick={()=>setShowAdvancedSettings(true)}>Open advanced settings</Button>
     </Card>
    </aside>

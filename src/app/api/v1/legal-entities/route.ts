@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { BRAND_LOGO_ASSETS } from "@/lib/brand-assets";
+import { BRAND_LOGO_ASSETS, isFalchionXeniaaSupplierName } from "@/lib/brand-assets";
 import { NextRequest } from "next/server";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { pool } from "@/lib/db/pool";
@@ -149,13 +149,6 @@ export async function POST(request: NextRequest) {
     try {
       stage = "begin company transaction";
       await conn.beginTransaction();
-      stage = "check whether this is the first legal entity";
-      // Only the first legal entity triggers one-time provisioning of the known product brands.
-      // Additional entities require deliberate mappings rather than inheriting every brand.
-      const [existingEntityRows] = await conn.query<(RowDataPacket & { id: string })[]>(
-        "SELECT id FROM legal_entities ORDER BY id LIMIT 1 FOR UPDATE",
-      );
-      const isFirstLegalEntity = existingEntityRows.length === 0;
       stage = "insert legal entity";
       await conn.execute<ResultSetHeader>(
         `INSERT INTO legal_entities
@@ -173,9 +166,20 @@ export async function POST(request: NextRequest) {
       await conn.execute(
         "INSERT INTO user_legal_entity_access (user_id,legal_entity_id,granted_by) VALUES (?,?,?)",
         [actor.userId,id,actor.userId]);
-      if (isFirstLegalEntity) {
-        stage = "provision MyFX POS, FX Digitech and FX Coworks";
-        await provisionInitialProductBrands(conn,id,actor.userId);
+      const isCanonicalSupplier =
+        isFalchionXeniaaSupplierName(input.legalName) || isFalchionXeniaaSupplierName(input.displayName);
+      if (isCanonicalSupplier) {
+        stage = "check existing product-brand records";
+        const productCodes = BRAND_LOGO_ASSETS.filter((asset) => asset.audience === "Product").map((asset) => asset.code);
+        const [existingProductBrands] = await conn.query<(RowDataPacket & { code: string })[]>(
+          `SELECT code FROM brands WHERE code IN (${productCodes.map(() => "?").join(",")}) FOR UPDATE`,
+          productCodes,
+        );
+        // Seed brand records only if none exist. Partial brand state is reconciled separately.
+        if (existingProductBrands.length === 0) {
+          stage = "provision MyFX POS, FX Digitech and FX Coworks";
+          await provisionInitialProductBrands(conn,id,actor.userId);
+        }
       }
       stage = "load company profile";
       const row=await loadEntity(conn,id);

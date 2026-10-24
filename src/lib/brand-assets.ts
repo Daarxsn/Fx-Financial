@@ -25,3 +25,29 @@ export function resolveBrandLogo(reference?: string | null): BrandLogoAsset {
 export function isApprovedBrandColor(value: unknown): value is (typeof APPROVED_BRAND_COLORS)[number]["value"] {
   return typeof value === "string" && APPROVED_BRAND_COLORS.some((color) => color.value === value.toUpperCase());
 }
+
+
+const normalizedBusinessIdentity = (value: string | null | undefined): string =>
+  (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+const FALCHION_SUPPLIER_NAME_KEYS = new Set([
+  "falchionxeniaa",
+  "falchionxeniaapvtltd",
+  "falchionxeniaapvtlimited",
+  "falchionxeniaaprivateltd",
+  "falchionxeniaaprivatelimited",
+]);
+
+export function isFalchionXeniaaSupplierName(value: string | null | undefined): boolean {
+  return FALCHION_SUPPLIER_NAME_KEYS.has(normalizedBusinessIdentity(value));
+}
+
+export function isProductBrandLegalEntityName(value: string | null | undefined): boolean {
+  const normalized = normalizedBusinessIdentity(value);
+  return normalized.length > 0 && BRAND_LOGO_ASSETS.some((asset) =>
+    asset.audience === "Product" && (
+      normalizedBusinessIdentity(asset.name) === normalized ||
+      normalizedBusinessIdentity(asset.code) === normalized
+    )
+  );
+}

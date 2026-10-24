@@ -3409,6 +3409,129 @@ try {
   assert.equal(p4NoQueueUser.response.status,403,"users without approvals:read or invoice draft-update cannot access correction requests");
   console.log("PASS: Pack 4 keeps credit-note execution blocked, permits an independently reasoned rejection, and enforces correction queue access.");
 
+  // Product-brand reconciliation API integration: missing/ambiguous canonical supplier refusal,
+  // mapping history/audit, preserved legacy entities, no invoice issuer movement, idempotent retry.
+  const identityNormalize = value => String(value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const acceptedSupplierKeys = new Set(["falchionxeniaa","falchionxeniaapvtltd","falchionxeniaapvtlimited","falchionxeniaaprivateltd","falchionxeniaaprivatelimited"]);
+  const [supplierRowsBefore] = await db.execute("SELECT id,legal_name,display_name FROM legal_entities WHERE is_active=TRUE");
+  assert.equal(supplierRowsBefore.filter(row => acceptedSupplierKeys.has(identityNormalize(row.legal_name)) ||
+    acceptedSupplierKeys.has(identityNormalize(row.display_name))).length, 0, "fixture starts without canonical supplier");
+  const reconciliationAssets = [
+    {name:"MyFX POS",code:"MYFXPOS",logo:"/brand/myfx-pos.webp",accent:"#DCAF51"},
+    {name:"FX Digitech",code:"DIGITECH",logo:"/brand/fx-digitech.webp",accent:"#F25138"},
+    {name:"FX Coworks",code:"COWORKS",logo:"/brand/fx-coworks.webp",accent:"#931314"},
+  ];
+  const reconciliationBrandIds = [];
+  for (const asset of reconciliationAssets) {
+    const createdBrand = await call("/api/v1/brands", {
+      method:"POST",
+      body:JSON.stringify({
+        name:asset.name,code:asset.code,description:"Disposable reconciliation integration fixture",
+        logoReference:asset.logo,theme:{accentColor:asset.accent,presentationStyle:"STANDARD"},
+        defaultTemplateKey:"STANDARD",legalEntityIds:[entityA.id],
+        changeReason:"Product-brand reconciliation integration fixture",
+      }),
+    },operatorSession.jar);
+    assert.equal(createdBrand.response.status,201,"seed product-brand fixture "+asset.code+": "+JSON.stringify(createdBrand.body?.error??null));
+    reconciliationBrandIds.push({...asset,id:createdBrand.body.data.id});
+  }
+  const legacyEntityResponse = await call("/api/v1/legal-entities", {
+    method:"POST",
+    body:JSON.stringify({
+      legalName:"FxCoworks",displayName:"FxCoworks",
+      address:{line1:"CI legacy brand address",line2:"",city:"Pune",state:"Maharashtra",postalCode:"411001",countryCode:"IN"},
+      billingAddress:null,countryCode:"IN",currency:"INR",invoiceEmail:"legacy-"+suffix+"@example.invalid",
+      invoicePhone:"",website:"",locale:"en-IN",timeZone:"Asia/Kolkata",logoReference:"/brand/fx-coworks.webp",
+      defaultTaxCode:"",taxSetupStatus:"UNCONFIGURED",taxSetupApprovalReference:"",
+      changeReason:"Disposable legacy brand-named entity fixture",
+    }),
+  },operatorSession.jar);
+  assert.equal(legacyEntityResponse.response.status,201,"create disposable legacy brand-as-entity");
+  const legacyEntityId=legacyEntityResponse.body.data.id;
+  const [invoiceIssuerRowsBefore]=await db.execute("SELECT id,legal_entity_id FROM invoices ORDER BY id");
+
+  const missingCanonical=await call("/api/v1/legal-entities/reconcile-product-brands",{method:"POST",body:JSON.stringify({})},operatorSession.jar);
+  assert.equal(missingCanonical.response.status,409);
+  assert.equal(missingCanonical.body.error.code,"CANONICAL_SUPPLIER_NOT_FOUND");
+  const [mappingsWithoutCanonical]=await db.execute(
+    "SELECT legal_entity_id,effective_until FROM brand_legal_entities WHERE brand_id IN (?,?,?) AND effective_from<=NOW(3) AND (effective_until IS NULL OR effective_until>NOW(3))",
+    reconciliationBrandIds.map(brand=>brand.id));
+  assert.equal(mappingsWithoutCanonical.length,3);
+  assert.ok(mappingsWithoutCanonical.every(row=>row.legal_entity_id===entityA.id&&row.effective_until==null),
+    "missing canonical supplier leaves existing mappings untouched");
+
+  async function createCanonicalSupplier(legalName,displayName,label) {
+    const result=await call("/api/v1/legal-entities",{
+      method:"POST",
+      body:JSON.stringify({
+        legalName,displayName,
+        address:{line1:"CI canonical supplier address "+label,line2:"",city:"Pune",state:"Maharashtra",postalCode:"411001",countryCode:"IN"},
+        billingAddress:null,countryCode:"IN",currency:"INR",invoiceEmail:"falchion-"+label+"-"+suffix+"@example.invalid",
+        invoicePhone:"",website:"",locale:"en-IN",timeZone:"Asia/Kolkata",logoReference:"/brand/falchion-xeniaa-logo.webp",
+        defaultTaxCode:"",taxSetupStatus:"UNCONFIGURED",taxSetupApprovalReference:"",
+        changeReason:"Disposable canonical supplier reconciliation fixture",
+      }),
+    },operatorSession.jar);
+    assert.equal(result.response.status,201,"create canonical supplier fixture: "+JSON.stringify(result.body?.error??null));
+    return result.body.data;
+  }
+  const canonicalA=await createCanonicalSupplier("Falchion Xeniaa Pvt Ltd","Falchion Xeniaa Pvt Ltd","a");
+  const canonicalB=await createCanonicalSupplier("Falchion Xeniaa Private Limited","Falchion Xeniaa","b");
+  const ambiguous=await call("/api/v1/legal-entities/reconcile-product-brands",{method:"POST",body:JSON.stringify({})},operatorSession.jar);
+  assert.equal(ambiguous.response.status,409);
+  assert.equal(ambiguous.body.error.code,"CANONICAL_SUPPLIER_AMBIGUOUS");
+  const [mappingsWhileAmbiguous]=await db.execute(
+    "SELECT legal_entity_id,effective_until FROM brand_legal_entities WHERE brand_id IN (?,?,?) AND effective_from<=NOW(3) AND (effective_until IS NULL OR effective_until>NOW(3))",
+    reconciliationBrandIds.map(brand=>brand.id));
+  assert.ok(mappingsWhileAmbiguous.every(row=>row.legal_entity_id===entityA.id&&row.effective_until==null),
+    "ambiguous supplier identities must not mutate brand mappings");
+  const deactivateExtraCanonical=await call("/api/v1/legal-entities/"+canonicalB.id,{
+    method:"PATCH",body:JSON.stringify({isActive:false,changeReason:"Resolve disposable CI canonical supplier ambiguity"}),
+  },operatorSession.jar);
+  assert.equal(deactivateExtraCanonical.response.status,200,"deactivate extra disposable canonical fixture");
+
+  const reconciled=await call("/api/v1/legal-entities/reconcile-product-brands",{method:"POST",body:JSON.stringify({})},operatorSession.jar);
+  assert.equal(reconciled.response.status,200,"single canonical supplier permits reconciliation: "+JSON.stringify(reconciled.body?.error??null));
+  assert.equal(reconciled.body.data.canonicalSupplier.id,canonicalA.id);
+  assert.deepEqual(reconciled.body.data.brands.map(brand=>[brand.code,brand.legalEntityId]),
+    reconciliationAssets.map(asset=>[asset.code,canonicalA.id]));
+  assert.ok(reconciled.body.data.preservedLegacyEntities.some(entity=>entity.id===legacyEntityId));
+  const [legacyStatus]=await db.execute("SELECT is_active FROM legal_entities WHERE id=?",[legacyEntityId]);
+  assert.equal(Boolean(legacyStatus[0].is_active),true,"legacy entity remains active for explicit review");
+
+  for(const brand of reconciliationBrandIds) {
+    const [activeMappings]=await db.execute(
+      "SELECT legal_entity_id,is_default FROM brand_legal_entities WHERE brand_id=? AND effective_from<=NOW(3) AND (effective_until IS NULL OR effective_until>NOW(3))",
+      [brand.id]);
+    assert.equal(activeMappings.length,1,brand.code+" has one current supplier mapping");
+    assert.equal(activeMappings[0].legal_entity_id,canonicalA.id);
+    assert.equal(Boolean(activeMappings[0].is_default),true);
+    const [oldRows]=await db.execute("SELECT effective_until FROM brand_legal_entities WHERE brand_id=? AND legal_entity_id=?",[brand.id,entityA.id]);
+    assert.ok(oldRows[0]?.effective_until,brand.code+" previous mapping is end-dated");
+    const [versionRows]=await db.execute("SELECT COUNT(*) AS n FROM brand_config_versions WHERE brand_id=?",[brand.id]);
+    assert.equal(Number(versionRows[0].n),2,brand.code+" has creation and reconciliation versions");
+    const [auditRows]=await db.execute("SELECT COUNT(*) AS n FROM audit_events WHERE entity_type='brand' AND entity_id=? AND action='brand.product_entity_reconciled'",[brand.id]);
+    assert.equal(Number(auditRows[0].n),1,brand.code+" remap is audited");
+  }
+  const [canonicalAccess]=await db.execute("SELECT user_id FROM user_legal_entity_access WHERE user_id=? AND legal_entity_id=?",[nonFinanceEntityOperator.userId,canonicalA.id]);
+  assert.equal(canonicalAccess.length,1,"administrator has explicit canonical supplier access");
+  const [invoiceIssuerRowsAfter]=await db.execute("SELECT id,legal_entity_id FROM invoices ORDER BY id");
+  assert.deepEqual(invoiceIssuerRowsAfter,invoiceIssuerRowsBefore,"historical invoice issuer IDs remain unchanged");
+
+  const versionsBeforeRetry=await Promise.all(reconciliationBrandIds.map(async brand=>{
+    const [rows]=await db.execute("SELECT COUNT(*) AS n FROM brand_config_versions WHERE brand_id=?",[brand.id]);
+    return Number(rows[0].n);
+  }));
+  const retry=await call("/api/v1/legal-entities/reconcile-product-brands",{method:"POST",body:JSON.stringify({})},operatorSession.jar);
+  assert.equal(retry.response.status,200);
+  assert.equal(retry.body.data.idempotent,true,"reconciliation retry is idempotent");
+  const versionsAfterRetry=await Promise.all(reconciliationBrandIds.map(async brand=>{
+    const [rows]=await db.execute("SELECT COUNT(*) AS n FROM brand_config_versions WHERE brand_id=?",[brand.id]);
+    return Number(rows[0].n);
+  }));
+  assert.deepEqual(versionsAfterRetry,versionsBeforeRetry,"retry does not append redundant versions");
+  console.log("PASS: reconciliation refuses missing/ambiguous suppliers, remaps three brands, preserves legacy records/invoice issuers, audits versions, and is idempotent.");
+
   const dbSessions = await db.execute("SELECT COUNT(*) AS count FROM auth_sessions WHERE user_id=?", [staff.userId]);
   assert.ok(Number(dbSessions[0][0].count) >= 1);
   console.log("PASS: Phase 05B authorization tests cover the exact seven-role grant matrix, effective session permissions, role-by-role reads/writes of every implemented protected data surface, anonymous denial, CSRF, account lifecycle, privilege escalation prevention, scope-change session revocation and rate limiting; customer/catalog API contracts and decimal serialization also pass.");

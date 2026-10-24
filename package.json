@@ -35,7 +35,8 @@
     "pack10:validate": "node scripts/validate-pack-10.mjs",
     "pack10:gate-test": "node scripts/test-pack-10-release-gate.mjs",
     "pack8:query-plans": "node scripts/verify-pack-8-query-plans.mjs",
-    "invoice:simple-workflow-test": "node scripts/verify-simple-invoice-workflow.mjs"
+    "invoice:simple-workflow-test": "node scripts/verify-simple-invoice-workflow.mjs",
+    "product-brand:reconciliation-test": "tsx scripts/verify-product-brand-reconciliation.ts"
   },
   "dependencies": {
     "mysql2": "^3.24.5",

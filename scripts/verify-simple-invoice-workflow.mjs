@@ -23,14 +23,22 @@ assert.ok(options.includes("brands:brandRows.map"), "draft options must expose a
 assert.ok(legalEntityCreateRoute.includes('const actor = await requirePermission("settings:manage")'),
   "legal entity creation must await the settings permission check before reading actor roles or identity");
 
-assert.ok(legalEntityCreateRoute.includes("const isFirstLegalEntity = existingEntityRows.length === 0;") &&
-  legalEntityCreateRoute.includes("if (isFirstLegalEntity) {") &&
+assert.ok(legalEntityCreateRoute.includes("isFalchionXeniaaSupplierName(input.legalName)") &&
+  legalEntityCreateRoute.includes("isFalchionXeniaaSupplierName(input.displayName)") &&
+  legalEntityCreateRoute.includes("existingProductBrands.length === 0") &&
   legalEntityCreateRoute.includes("await provisionInitialProductBrands(conn,id,actor.userId);"),
-  "first company setup must provision the known product brands once without making the user add them manually");
+  "initial product-brand setup must only bootstrap against the canonical Falchion Xeniaa supplier and must not create duplicates");
 assert.ok(legalEntityCreateRoute.includes("brand_legal_entities") &&
   legalEntityCreateRoute.includes("brand_config_versions") &&
   legalEntityCreateRoute.includes("brand.initial_product_brand_provisioned"),
   "initial product-brand mappings must be effective-dated, versioned and audited");
+const reconciliationRoute = read("src/app/api/v1/legal-entities/reconcile-product-brands/route.ts");
+assert.ok(reconciliationRoute.includes("CANONICAL_SUPPLIER_NOT_FOUND") &&
+  reconciliationRoute.includes("CANONICAL_SUPPLIER_AMBIGUOUS"),
+  "product-brand reconciliation must refuse missing and ambiguous supplier identities");
+assert.ok(reconciliationRoute.includes("brand.product_entity_reconciled") &&
+  reconciliationRoute.includes("preservedLegacyEntities"),
+  "product-brand reconciliation must audit mapping changes and report preserved legacy entities");
 assert.ok(brandAssets.includes('code: "MYFXPOS"') && brandAssets.includes('code: "DIGITECH"') &&
   brandAssets.includes('code: "COWORKS"'),
   "first setup must reuse the three established product-brand identities and logo assets");
