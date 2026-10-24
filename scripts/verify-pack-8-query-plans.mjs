@@ -40,7 +40,6 @@ async function explain(name,sql,values,expectedIndex){
 }
 let fixturesCreated=false;
 try{
- const now=new Date();
  await insertMany("legal_entities",
   ["id","legal_name","display_name","address_json","currency","is_active"],
   entityIds.map((id,i)=>[id,"Pack 8 Query Plan Entity "+suffix+" "+i,"P8 "+suffix+" "+i,"{}","INR",1]),10);
