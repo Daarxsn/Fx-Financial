@@ -2387,6 +2387,78 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/v1/invoices/{invoiceId}/preview:
+    parameters:
+      - in: path
+        name: invoiceId
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Invoices]
+      summary: Preview a saved draft or download the verified issued invoice PDF
+      operationId: previewInvoicePdf
+      x-implementation-status: implemented
+      description: Drafts are rendered from saved draft data using the same PDFKit renderer as issued documents. Issued/cancelled invoices return the verified immutable PDF artifact. The response never prints application navigation or browser page headers.
+      responses:
+        "200":
+          description: Inline client-facing A4 invoice PDF
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/v1/legal-entities/{entityId}/signature:
+    parameters:
+      - in: path
+        name: entityId
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Legal Entities]
+      summary: Upload the authorised invoice signature image for a legal supplier
+      operationId: uploadLegalEntityInvoiceSignature
+      x-implementation-status: implemented
+      description: Upload is restricted to settings administrators in the entity scope. Supported PNG, JPEG and WebP inputs are normalized to a private PNG asset. Replacements create a new legal-entity configuration version; prior invoice snapshots remain unchanged.
+      parameters:
+        - { $ref: "#/components/parameters/CsrfToken" }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [signature]
+              properties:
+                signature:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: Signature saved to private storage and issuer configuration versioned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    required: [legalEntityId, signatureConfigured, configVersion]
+                    properties:
+                      legalEntityId: { type: string, format: uuid }
+                      signatureConfigured: { type: boolean, const: true }
+                      configVersion: { type: integer, minimum: 1 }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
 components:
   securitySchemes:
     cookieAuth:

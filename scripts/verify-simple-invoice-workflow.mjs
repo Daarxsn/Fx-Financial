@@ -19,6 +19,11 @@ const invoiceDraftService = read("src/lib/finance/invoice-draft-service.ts");
 const invoiceRoute = read("src/app/api/v1/invoices/[invoiceId]/route.ts");
 const documentService = read("src/lib/documents/service.ts");
 const migration = read("database/migrations/030_invoice_line_milestone.sql");
+const proformaMigration = read("database/migrations/032_proforma_invoice_document_fields.sql");
+const previewRoute = read("src/app/api/v1/invoices/[invoiceId]/preview/route.ts");
+const draftPreviewService = read("src/lib/documents/draft-preview.ts");
+const signatureRoute = read("src/app/api/v1/legal-entities/[entityId]/signature/route.ts");
+const signatureUpload = read("src/components/signature-upload.tsx");
 
 assert.ok(options.includes("brands:brandRows.map"), "draft options must expose available brands");
 
@@ -49,7 +54,7 @@ assert.ok(options.includes("legalEntityId:b.legal_entity_id"), "brand options mu
 assert.ok(invoicePage.includes("InvoiceWorkspace"), "the /invoices route must render the invoice workspace instead of leaving the implemented composer unreachable");
 assert.ok(workspaceHome.includes('href="/invoices">+ Create new invoice</Link>'), "the workspace home must expose a direct create-invoice action");
 assert.ok(composer.includes("{canCreate?<Button disabled={optionsLoading} onClick={startNew}>+ New invoice</Button>:null}"), "invoice creation must remain visible when setup is incomplete and explain blockers instead of silently hiding the action");
-assert.ok(composer.includes("Preview invoice") && composer.includes("Save draft & preview") && composer.includes("invoice-preview-sheet"), "saved invoice details and the editor must expose a printable invoice preview");
+assert.ok(composer.includes("Preview invoice") && composer.includes("Save draft & preview") && composer.includes("invoice-pdf-preview-frame") && composer.includes('"/preview?version="') && !composer.includes("window.print()"), "screen preview and open/download action must use the same server-rendered PDF instead of printing browser chrome");
 assert.ok(composer.includes("const openInvoicePreview=async(id:string)=>{if(await openInvoice(id))setShowPreview(true);}") && composer.includes("onClick={()=>void openInvoicePreview(row.id)}>Preview</Button>"), "invoice rows must expose a direct preview action that opens the selected saved record");
 assert.ok(composer.includes('setEditor(false);await refresh();await openInvoice(id,true);return true;'), "saving a draft must return to invoice details so preview and next actions are reachable");
 assert.ok(composer.includes('setLines(linesFrom(v.lines));setDirty(false);setShowPreview(false);setEditor(false);'), "opening invoice details must not force drafts straight back into edit mode");
@@ -81,4 +86,15 @@ assert.ok(renderer.includes('"Beneficiary Name: "') && renderer.includes('"Terms
 assert.ok(renderer.includes('await import("sharp")') && renderer.includes('.jpeg({ quality: 92, progressive: false, chromaSubsampling: "4:4:4" })'), "supplied logos must be normalized to a PDFKit-compatible baseline JPEG before embedding");
 assert.ok(renderer.includes('rect(0, 0, doc.page.width, 8)') && renderer.includes('const brandAccent = isCoworks ? "#931314" : isDigitech ? "#111111" : gold;'), "each brand must use its supplied template accent and top-strip treatment");
 
-console.log("PASS: first-company product-brand provisioning, simple brand-first invoice composer, inline customer creation, confirmed issue-and-send, milestone round-trip and branded invoice PDF contract.");
+assert.ok(composer.includes('id="invoice-valid-until"') && composer.includes('Expires on') && composer.includes('readOnly aria-readonly="true"'), "invoice date must be automatic/read-only and expiry must be user-selected");
+assert.ok(composer.includes('Apply CGST') && composer.includes('Apply SGST') && composer.includes('Amount (calculated)'), "proforma editor must expose optional GST toggles and server-calculated amounts");
+assert.ok(invoiceSchema.includes('taxMode: z.enum(["LINE","COMPONENTS"])') && invoiceSchema.includes('cgstEnabled: z.boolean()') && invoiceSchema.includes('sgstEnabled: z.boolean()'), "invoice draft schema must accept the two GST components and explicit calculation mode");
+assert.ok(proformaMigration.includes("ADD COLUMN invoice_valid_until DATE") && proformaMigration.includes("ADD COLUMN cgst_enabled BOOLEAN") && proformaMigration.includes("ADD COLUMN sgst_enabled BOOLEAN") && proformaMigration.includes("ADD COLUMN signature_reference"), "forward-only migration must store proforma expiry, GST components and signature reference");
+assert.ok(previewRoute.includes('"Content-Type":"application/pdf"') && previewRoute.includes("renderDraftInvoicePreviewPdf") && previewRoute.includes("generateDocumentPdf"), "preview API must render draft PDFs and reuse the verified issued-PDF workflow");
+assert.ok(draftPreviewService.includes("FROM invoice_lines") && draftPreviewService.includes("legal_entity_config_versions") && draftPreviewService.includes("brand_config_versions"), "draft PDF must use saved invoice lines and configured supplier/brand snapshots rather than browser placeholder data");
+assert.ok(renderer.includes("getPrivateAsset") && renderer.includes('CGST (') && renderer.includes('SGST ('), "the same PDF renderer must include private signature assets and separate enabled GST components");
+assert.ok(signatureRoute.includes("requirePermissionForEntity") && signatureRoute.includes("putPrivateAsset") && signatureRoute.includes("captureLegalEntityConfigVersion") && signatureRoute.includes("recordAudit"), "signature upload must be scoped, private, versioned and audited");
+assert.ok(signatureUpload.includes('"/api/v1/legal-entities/"+entityId+"/signature'), "Settings must provide a signature upload workflow");
+assert.ok(!composer.includes("invoice-preview-sheet") && !composer.includes("window.print()"), "the browser HTML print layout must not be used as the client invoice PDF");
+
+console.log("PASS: brand-first invoice flow, same-renderer client PDF preview, expiry, invoice-level CGST/SGST, private signature upload and audit/version contract.");
