@@ -5,11 +5,12 @@ import Link from "next/link";
 import { BRAND_LOGO_ASSETS, APPROVED_BRAND_COLORS, resolveBrandLogo, isApprovedBrandColor, isFalchionXeniaaSupplierName, isProductBrandLegalEntityName } from "@/lib/brand-assets";
 import { useCallback, useEffect, useState, type FormEvent, type Dispatch, type SetStateAction, type ReactNode, type CSSProperties } from "react";
 import { Breadcrumbs, Button, Card, EmptyState, InlineAlert, LoadingState, PageHeader, StatusBadge, TextField, TextAreaField, SelectField } from "@/components/ui";
+import { SignatureUpload } from "@/components/signature-upload";
 
 type Entity = {
   id:string; legalName:string; displayName:string; registrationNumber:string|null; taxIdentifier:string|null;
   address:Record<string,string>; billingAddress:Record<string,string>|null; countryCode:string|null; invoiceEmail:string|null; invoicePhone:string|null; website:string|null;
-  currency:string; locale:string|null; timeZone:string|null; logoReference:string|null; bankDetailsConfigured:boolean;
+  currency:string; locale:string|null; timeZone:string|null; logoReference:string|null; signatureConfigured:boolean; bankDetailsConfigured:boolean;
   bankAccountLast4:string|null; invoiceTerms:string|null; invoiceFooter:string|null; defaultTaxCode:string|null;
   taxSetupStatus:string; taxSetupApprovalReference:string|null; isActive:boolean;
 };
@@ -369,6 +370,7 @@ export default function SettingsPage(){
   {tab==="company"?<div className="config-layout"><div className="config-main">
    <Heading label="LEGAL SUPPLIER IDENTITY" title={entityEdit&&entityEdit!=="new"?"Edit legal entity":"Legal entities"} description="A legal entity is the supplier named on an issued invoice. A logo or brand name does not create a legal entity."
     action={<Button onClick={()=>{setEntityEdit("new");setCompany(companyBlank())}}>Add legal entity</Button>}/>
+   {entity ? <SignatureUpload entityId={entity.id} configured={entity.signatureConfigured} onUploaded={()=>void loadAll()}/> : null}
    {entityEdit?<Card className="config-form-card"><form className="config-form" onSubmit={e=>void mutate(e,saveEntity,entityEdit==="new"?"Legal entity created; initial version captured.":"Configuration version saved.")}>
     <h3>Legal details</h3><Grid>
      <Input id="legalName" label="Registered legal name" required value={String(company.legalName)} onChange={s=>setValue(setCompany,"legalName",s)}/>
