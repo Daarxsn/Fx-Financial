@@ -68,7 +68,7 @@ export async function handleReportRows(request: NextRequest, kind: ReportKind) {
     if (!statusAllowed(kind, filters.status)) {
       return jsonNoStore({ error: { code: "VALIDATION_ERROR", message: "Unsupported status filter for this report." } }, 400);
     }
-    const { actor, scope } = await authorizedScope(kind, filters.legalEntityId);
+    const { scope } = await authorizedScope(kind, filters.legalEntityId);
     if (scope.forbidden) {
       return jsonNoStore({ error: { code: "NOT_FOUND", message: "Legal entity not found in your assigned scope." } }, 404);
     }
