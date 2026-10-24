@@ -55,6 +55,7 @@ type InvoiceRow = RowDataPacket & {
   currency: string;
   grand_total: string | number;
   issue_idempotency_key: string | null;
+  draft_recipient_email: string;
 };
 
 function jsonObject(value: unknown): Record<string, unknown> {
@@ -91,7 +92,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ in
     conn = await pool.getConnection();
     await conn.beginTransaction();
     const [invoiceRows] = await conn.execute<InvoiceRow[]>(
-      "SELECT id,legal_entity_id,brand_id,customer_id,document_type,lifecycle_status,payment_terms_days,invoice_number,financial_year,invoice_date,due_date,invoice_valid_until,tax_mode,cgst_enabled,cgst_rate,sgst_enabled,sgst_rate,cgst_amount,sgst_amount,currency,grand_total,issue_idempotency_key FROM invoices WHERE id=? FOR UPDATE",
+      "SELECT id,legal_entity_id,brand_id,customer_id,document_type,lifecycle_status,payment_terms_days,invoice_number,financial_year,invoice_date,due_date,invoice_valid_until,tax_mode,cgst_enabled,cgst_rate,sgst_enabled,sgst_rate,cgst_amount,sgst_amount,currency,grand_total,issue_idempotency_key,draft_recipient_email FROM invoices WHERE id=? FOR UPDATE",
       [invoiceId],
     );
     if (!invoiceRows.length) {
@@ -323,7 +324,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ in
     const supplierForInvoice = { ...jsonObject(supplierSnapshot) };
     delete supplierForInvoice.bankDetails;
     const customerSnapshot = {
-      customerId: customer.id, name: customer.name, email: customer.email, phone: customer.phone,
+      customerId: customer.id, name: customer.name, email: invoice.draft_recipient_email || customer.email, phone: customer.phone,
       billingAddress: jsonValue(customer.billing_address_json), taxIdentifier: customer.tax_identifier,
     };
 

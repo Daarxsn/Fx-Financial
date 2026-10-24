@@ -106,11 +106,12 @@ export async function captureDocumentSourceSnapshot(
     const [rows] = await conn.execute<(RowDataPacket & {
       id: string; legal_entity_id: string; document_type: string; invoice_number: string | null; lifecycle_status: string;
       currency: string; subtotal: string; discount_total: string; tax_total: string; grand_total: string;
-      invoice_date: Date | string | null; due_date: Date | string | null; notes: string | null;
+      invoice_date: Date | string | null; due_date: Date | string | null; invoice_valid_until:Date|string|null;
+      tax_mode:"LINE"|"COMPONENTS";cgst_enabled:number;cgst_rate:string|null;sgst_enabled:number;sgst_rate:string|null;cgst_amount:string;sgst_amount:string;notes: string | null;
       supplier_snapshot: unknown; customer_snapshot: unknown; issued_by: string | null;
       configuration_id: string | null; configuration_sha256: string | null; configuration_snapshot: unknown; paid_total: string | number;
     })[]>(
-      "SELECT i.id,i.legal_entity_id,i.document_type,i.invoice_number,i.lifecycle_status,i.currency,i.subtotal,i.discount_total,i.tax_total,i.grand_total,i.invoice_date,i.due_date,i.notes,i.supplier_snapshot,i.customer_snapshot,i.issued_by,d.id AS configuration_id,d.configuration_sha256,d.configuration_snapshot,COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa JOIN payments p ON p.id=pa.payment_id WHERE pa.invoice_id=i.id AND p.status='RECORDED'),0) AS paid_total FROM invoices i LEFT JOIN document_configuration_snapshots d ON d.resource_type=i.document_type AND d.resource_id=i.id WHERE i.id=? LIMIT 1 FOR UPDATE",
+      "SELECT i.id,i.legal_entity_id,i.document_type,i.invoice_number,i.lifecycle_status,i.currency,i.subtotal,i.discount_total,i.tax_total,i.grand_total,i.invoice_date,i.due_date,i.invoice_valid_until,i.tax_mode,i.cgst_enabled,i.cgst_rate,i.sgst_enabled,i.sgst_rate,i.cgst_amount,i.sgst_amount,i.notes,i.supplier_snapshot,i.customer_snapshot,i.issued_by,d.id AS configuration_id,d.configuration_sha256,d.configuration_snapshot,COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa JOIN payments p ON p.id=pa.payment_id WHERE pa.invoice_id=i.id AND p.status='RECORDED'),0) AS paid_total FROM invoices i LEFT JOIN document_configuration_snapshots d ON d.resource_type=i.document_type AND d.resource_id=i.id WHERE i.id=? LIMIT 1 FOR UPDATE",
       [sourceId],
     );
     const row = rows[0];
@@ -132,7 +133,9 @@ export async function captureDocumentSourceSnapshot(
     const content = {
       schemaVersion: 1, captureReason: reason, sourceType, sourceDocumentId: row.id,
       documentNumber: row.invoice_number, lifecycleStatus: row.lifecycle_status,
-      documentDate: dateText(row.invoice_date), dueDate: dateText(row.due_date), validUntil: null,
+      documentDate: dateText(row.invoice_date), dueDate: dateText(row.due_date), validUntil: dateText(row.invoice_valid_until),
+      taxMode:row.tax_mode,cgstEnabled:Boolean(row.cgst_enabled),cgstRate:row.cgst_rate===null?null:String(row.cgst_rate),cgstAmount:String(row.cgst_amount),
+      sgstEnabled:Boolean(row.sgst_enabled),sgstRate:row.sgst_rate===null?null:String(row.sgst_rate),sgstAmount:String(row.sgst_amount),
       currency: row.currency, subtotal: amount(row.subtotal), discountTotal: amount(row.discount_total),
       taxTotal: amount(row.tax_total), grandTotal: amount(row.grand_total), paidAmount: paid,
       paymentStatus: paymentStatus(row.grand_total, paid, row.lifecycle_status), notes: row.notes,

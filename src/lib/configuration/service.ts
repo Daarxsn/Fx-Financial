@@ -8,7 +8,7 @@ export type LegalEntityRecord = RowDataPacket & {
   id: string; legal_name: string; display_name: string; registration_number: string | null; tax_identifier: string | null;
   address_json: unknown; billing_address_json: unknown; country_code: string | null; invoice_email: string | null; invoice_phone: string | null;
   website: string | null; currency: string; locale: string | null; time_zone: string | null;
-  logo_reference: string | null; bank_details_json: unknown; invoice_terms: string | null; invoice_footer: string | null;
+  logo_reference: string | null; signature_reference: string | null; bank_details_json: unknown; invoice_terms: string | null; invoice_footer: string | null;
   default_tax_code: string | null; tax_setup_status: string; tax_setup_approval_reference: string | null;
   tax_setup_approved_by: string | null; tax_setup_approved_at: Date | null;
   is_active: number; created_at: Date; updated_at: Date;
@@ -48,7 +48,7 @@ export function publicLegalEntity(row: LegalEntityRecord) {
     registrationNumber: row.registration_number, taxIdentifier: row.tax_identifier,
     address: jsonValue(row.address_json), billingAddress: row.billing_address_json == null ? null : jsonValue(row.billing_address_json), countryCode: row.country_code,
     invoiceEmail: row.invoice_email, invoicePhone: row.invoice_phone, website: row.website,
-    currency: row.currency, locale: row.locale, timeZone: row.time_zone, logoReference: row.logo_reference,
+    currency: row.currency, locale: row.locale, timeZone: row.time_zone, logoReference: row.logo_reference, signatureConfigured:Boolean(row.signature_reference),
     bankDetailsConfigured: Object.values(bank).some((v) => typeof v === "string" && v.trim().length > 0),
     bankAccountLast4: accountNumber.length >= 4 ? accountNumber.slice(-4) : null,
     invoiceTerms: row.invoice_terms, invoiceFooter: row.invoice_footer, defaultTaxCode: row.default_tax_code,
@@ -81,7 +81,7 @@ export async function recordAudit(
 export async function loadEntity(conn: PoolConnection, id: string): Promise<LegalEntityRecord | null> {
   const [rows] = await conn.execute<LegalEntityRecord[]>(
     `SELECT id, legal_name, display_name, registration_number, tax_identifier, address_json, billing_address_json, country_code,
-      invoice_email, invoice_phone, website, currency, locale, time_zone, logo_reference, bank_details_json,
+      invoice_email, invoice_phone, website, currency, locale, time_zone, logo_reference, signature_reference, bank_details_json,
       invoice_terms, invoice_footer, default_tax_code, tax_setup_status, tax_setup_approval_reference,
       tax_setup_approved_by, tax_setup_approved_at, is_active, created_at, updated_at
      FROM legal_entities WHERE id = ? LIMIT 1`, [id]);
@@ -101,7 +101,7 @@ export async function captureLegalEntityConfigVersion(
     registrationNumber: row.registration_number, taxIdentifier: row.tax_identifier, address: jsonValue(row.address_json),
     billingAddress: row.billing_address_json == null ? null : jsonValue(row.billing_address_json), countryCode: row.country_code, invoiceEmail: row.invoice_email, invoicePhone: row.invoice_phone,
     website: row.website, currency: row.currency, locale: row.locale, timeZone: row.time_zone,
-    logoReference: row.logo_reference, bankDetails: jsonValue(row.bank_details_json),
+    logoReference: row.logo_reference, signatureReference: row.signature_reference, bankDetails: jsonValue(row.bank_details_json),
     invoiceTerms: row.invoice_terms, invoiceFooter: row.invoice_footer, defaultTaxCode: row.default_tax_code,
     taxSetupStatus: row.tax_setup_status, taxSetupApprovalReference: row.tax_setup_approval_reference,
     taxSetupApprovedBy: row.tax_setup_approved_by, taxSetupApprovedAt: row.tax_setup_approved_at,
@@ -472,7 +472,7 @@ export async function captureDocumentConfigurationSnapshot(
 async function loadEntityFromPool(id: string): Promise<LegalEntityRecord | null> {
   const [rows] = await pool.execute<LegalEntityRecord[]>(
     `SELECT id, legal_name, display_name, registration_number, tax_identifier, address_json, country_code,
-      invoice_email, invoice_phone, website, currency, locale, time_zone, logo_reference, bank_details_json,
+      invoice_email, invoice_phone, website, currency, locale, time_zone, logo_reference, signature_reference, bank_details_json,
       invoice_terms, invoice_footer, default_tax_code, tax_setup_status, tax_setup_approval_reference,
       tax_setup_approved_by, tax_setup_approved_at, is_active, created_at, updated_at FROM legal_entities WHERE id = ? LIMIT 1`, [id]);
   return rows[0] ?? null;

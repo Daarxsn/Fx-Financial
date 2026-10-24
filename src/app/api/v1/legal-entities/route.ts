@@ -123,7 +123,7 @@ export async function GET(request: NextRequest) {
     }
     const [rows]=await pool.query<(RowDataPacket & {id:string})[]>(
       `SELECT id, legal_name, display_name, registration_number, tax_identifier, address_json, billing_address_json, country_code,
-        invoice_email, invoice_phone, website, currency, locale, time_zone, logo_reference, bank_details_json,
+        invoice_email, invoice_phone, website, currency, locale, time_zone, logo_reference, signature_reference, bank_details_json,
         invoice_terms, invoice_footer, default_tax_code, tax_setup_status, tax_setup_approval_reference,
         is_active, created_at, updated_at
        FROM legal_entities WHERE ${clauses.join(" AND ")} ORDER BY display_name,id LIMIT ? OFFSET ?`,
