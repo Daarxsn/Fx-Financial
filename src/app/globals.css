@@ -1584,3 +1584,14 @@ a, button, input, select, textarea { transition-duration: 160ms; }
   .invoice-preview-sheet { position: absolute !important; inset: 0 auto auto 0 !important; width: 100% !important; max-width: none !important; margin: 0 !important; padding: 12mm !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
   .invoice-preview-wrap { margin: 0 !important; }
 }
+
+/* Render the same server-side PDF that is downloaded and attached to client email. */
+.invoice-pdf-preview-frame{display:block;width:100%;height:min(1100px,calc(100vh - 230px));min-height:720px;border:1px solid var(--border,#d7dce2);border-radius:8px;background:#fff}
+@media(max-width:640px){.invoice-pdf-preview-frame{min-height:600px;height:calc(100vh - 180px)}}
+.invoice-tax-components{margin:18px 0;padding:18px;border:1px solid var(--border,#d7dce2);border-radius:10px}
+.invoice-tax-components h3{margin:0 0 6px}
+.invoice-tax-components__grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:14px}
+.invoice-tax-component{display:grid;gap:8px;align-content:start}
+.invoice-tax-component__toggle{display:flex;align-items:center;gap:8px;font-weight:700}
+.invoice-tax-component p{font-size:13px;color:var(--muted);margin:0}
+@media(max-width:640px){.invoice-tax-components__grid{grid-template-columns:1fr}}
