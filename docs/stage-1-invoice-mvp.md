@@ -76,6 +76,13 @@ The existing component and APIs did not guarantee a working user journey:
 - [ ] Record manual browser evidence and unresolved business/provider approvals.
 - [ ] Update this tracker and the seven root documents based on actual test results.
 
+## Current source-level verification (2026-10-24)
+
+- Latest inspected main HEAD at this check: [df145c1](https://github.com/Daarxsn/Fx-Financial/commit/df145c1751831781b341ea6373e2ffad7bbf6f95).
+- Source-level checks against fetched main files: **11/11 passed** for route rendering, sidebar route, home CTA, create-button visibility, row preview, save-and-preview/print affordance, detail-mode draft opening, email send/retry controls, PDF generation before email queueing, regression assertions and tracker pending status. These were static source assertions, **not execution of the project test script**.
+- GitHub combined status returned no status checks for the inspected latest commit. Treat CI as pending/unverified, not passing.
+- Relevant code commits: [route page](https://github.com/Daarxsn/Fx-Financial/commit/faf5442dc2f6741d6d75faa0f3ea0d9df18f42f4), [workspace create action](https://github.com/Daarxsn/Fx-Financial/commit/a924c8dac3bc80c16e8e6c699f9fd84a01de4de7), [visible preview workflow](https://github.com/Daarxsn/Fx-Financial/commit/5dac18b131ce8648aa557aa49ff4b6f20ba45ade), [direct row preview](https://github.com/Daarxsn/Fx-Financial/commit/31624738d897ad82f09289a97279dfa1b8fb6c00), and [regression assertions](https://github.com/Daarxsn/Fx-Financial/commit/c685cd9cc120c4adaf99a2af2dcb452064757a87).
+
 ## Known limitations
 
 - The current screen preview is a readable preview of saved invoice data; it is not the generated, immutable issue-time PDF and does not independently display all issuer/customer address fields from the approved snapshot.
