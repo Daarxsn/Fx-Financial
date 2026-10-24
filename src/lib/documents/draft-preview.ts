@@ -227,7 +227,7 @@ export async function renderDraftInvoicePreviewPdf(invoiceId:string):Promise<Buf
         approvalReference:reg.approval_reference,
       })):[],
     },
-    lines:lineRows.map((line,index)=>({
+    lines:lineRows.map(line=>({
       lineNumber:Number(line.line_number),lineKind:line.line_kind,milestone:line.milestone??"",
       description:line.description,unitCode:line.unit_code,quantity:String(line.quantity),unitPrice:String(line.unit_price),
       discountType:line.discount_type,discountValue:String(line.discount_value),discountAmount:String(line.discount_amount),
