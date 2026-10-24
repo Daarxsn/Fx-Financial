@@ -45,7 +45,7 @@ export async function GET(request:NextRequest,context:{params:Promise<{invoiceId
       status:200,
       headers:{
         "Content-Type":"application/pdf",
-        "Content-Disposition":(request.nextUrl.searchParams.get("download")==="1"?"attachment":"inline")+'; filename="'+fileName+'"'',
+        "Content-Disposition":(request.nextUrl.searchParams.get("download")==="1"?"attachment":"inline")+'; filename="'+fileName+'"',
         "Content-Length":String(bytes.length),
         "Cache-Control":"private, no-store, max-age=0",
         "Pragma":"no-cache",
