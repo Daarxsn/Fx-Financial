@@ -74,8 +74,8 @@ assert.ok(settings.includes('label="Supplier name shown on invoices"') &&
 assert.ok(composer.includes("Issue & send invoice"), "the composer must offer the combined issue-and-send action");
 assert.ok(composer.includes('<Field label="Email to send the invoice to" wide hint='), "recipient email must use the shared labelled field so assistive technology can associate the input and hint");
 assert.ok(composer.includes('name="invoice-recipient-email"') && composer.includes('autoComplete="off"') &&
-  !composer.includes('autoComplete="email"'),
-  "invoice recipient must not trigger browser profile email autofill before the customer or recipient is explicitly chosen");
+  !composer.includes('autoComplete="email"') && composer.includes('disabled={customerMode==="existing"&&!form.customerId}'),
+  "invoice recipient must not browser-autofill and must stay disabled until a customer is selected or new-customer entry is active");
 assert.ok(composer.includes("selectedBrandReadyForIssuance") && composer.includes("issuerIdentityReady"),
   "issue controls must remain disabled until the selected brand resolves to an approved legal supplier and tax setup");
 assert.ok(composer.includes('"/api/v1/customers"'), "customer creation must be available directly in the invoice workflow");
