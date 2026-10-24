@@ -30,9 +30,9 @@ export const invoiceDraftFieldsSchema = z.object({
   cgstEnabled: z.boolean().optional().default(false),cgstRate: taxRateInput.optional().default("0.000000"),
   sgstEnabled: z.boolean().optional().default(false),sgstRate: taxRateInput.optional().default("0.000000"),
   notes: z.string().max(5000).nullable().optional(),recipientEmail:recipientEmailInput.optional().default(""),lines: z.array(invoiceLineInputSchema).min(1).max(500),
-}).strict();
+});
 
-export const invoiceDraftCreateSchema = invoiceDraftFieldsSchema.superRefine((value,ctx)=>{
+export const invoiceDraftCreateSchema = invoiceDraftFieldsSchema.strict().superRefine((value,ctx)=>{
   if(value.validUntil&&value.invoiceDate&&value.validUntil<value.invoiceDate) {
     ctx.addIssue({code:"custom",path:["validUntil"],message:"Expiry date cannot be earlier than the invoice date."});
   }
