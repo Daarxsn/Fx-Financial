@@ -50,6 +50,7 @@ assert.ok(invoicePage.includes("InvoiceWorkspace"), "the /invoices route must re
 assert.ok(workspaceHome.includes('href="/invoices">+ Create new invoice</Link>'), "the workspace home must expose a direct create-invoice action");
 assert.ok(composer.includes("{canCreate?<Button disabled={optionsLoading} onClick={startNew}>+ New invoice</Button>:null}"), "invoice creation must remain visible when setup is incomplete and explain blockers instead of silently hiding the action");
 assert.ok(composer.includes("Preview invoice") && composer.includes("Save draft & preview") && composer.includes("invoice-preview-sheet"), "saved invoice details and the editor must expose a printable invoice preview");
+assert.ok(composer.includes("const openInvoicePreview=async(id:string)=>{if(await openInvoice(id))setShowPreview(true);}") && composer.includes("onClick={()=>void openInvoicePreview(row.id)}>Preview</Button>"), "invoice rows must expose a direct preview action that opens the selected saved record");
 assert.ok(composer.includes('setEditor(false);await refresh();await openInvoice(id,true);return true;'), "saving a draft must return to invoice details so preview and next actions are reachable");
 assert.ok(composer.includes('setLines(linesFrom(v.lines));setDirty(false);setShowPreview(false);setEditor(false);'), "opening invoice details must not force drafts straight back into edit mode");
 assert.ok(composer.includes("Invoice from"), "daily invoice creation must start with the brand, not legal-entity settings");
