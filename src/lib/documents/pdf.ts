@@ -4,6 +4,7 @@ import PDFDocument from "pdfkit";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
+import { getPrivateAsset } from "@/lib/documents/storage";
 
 export type PdfSnapshot = {
   sourceType: "INVOICE" | "QUOTATION" | "RECEIPT";
@@ -13,6 +14,13 @@ export type PdfSnapshot = {
   documentDate: string | null;
   dueDate: string | null;
   validUntil: string | null;
+  taxMode?: "LINE" | "COMPONENTS";
+  cgstEnabled?: boolean;
+  cgstRate?: string | null;
+  cgstAmount?: string;
+  sgstEnabled?: boolean;
+  sgstRate?: string | null;
+  sgstAmount?: string;
   currency: string;
   subtotal: string;
   discountTotal: string;
@@ -166,6 +174,17 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
   const templateConfig = object(template.config);
   const entityConfig = object(config.legalEntity);
   const logoBuffer = await approvedBrandLogo(config);
+  let signatureBuffer: Buffer | null = null;
+  const signatureReference = text(entityConfig.signatureReference ?? object(snapshot.supplier).signatureReference, "");
+  if (signatureReference.startsWith("signatures/")) {
+    try { signatureBuffer = await getPrivateAsset(signatureReference); }
+    catch (error) {
+      console.error("Configured invoice signature asset could not be loaded", {
+        sourceType: snapshot.sourceType,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      });
+    }
+  }
   return await new Promise<Buffer>((resolveBuffer, rejectBuffer) => {
     let rendererStage = "document-setup";
     try {
@@ -178,6 +197,7 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       const sourceLabel = snapshot.sourceType === "INVOICE"
         ? text(templateConfig.documentTitle, "PROFORMA INVOICE:")
         : snapshot.sourceType === "QUOTATION" ? "QUOTATION" : "PAYMENT RECEIPT";
+      const isDraftPreview = snapshot.sourceType === "INVOICE" && snapshot.lifecycleStatus === "DRAFT";
       const issuedTime = capturedAt instanceof Date ? capturedAt : new Date(capturedAt);
       const doc = new PDFDocument({
         size: "A4", margins: { top: 34, bottom: 50, left: 34, right: 36 }, bufferPages: true, compress: true,
@@ -234,13 +254,18 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
       const titleWidth = 245;
       const titleX = right - titleWidth;
       doc.font("Helvetica-Bold").fontSize(14).fillColor("#050505").text(sourceLabel, titleX, 39, { width: titleWidth, align: "right" });
-      doc.font("Helvetica").fontSize(10).fillColor("#111111").text("Invoice no: " + text(snapshot.documentNumber), titleX, 59, { width: titleWidth, align: "right" });
-      doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#111111").text("Date: ", titleX + 12, 83, { width: 58, align: "right", continued: true });
+      doc.font("Helvetica").fontSize(10).fillColor("#111111")
+        .text(isDraftPreview ? "Document no: Not issued" : "Invoice no: " + text(snapshot.documentNumber), titleX, 59, { width: titleWidth, align: "right" });
+      if (isDraftPreview) {
+        doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#8A5B00")
+          .text("DRAFT PREVIEW — NOT AN ISSUED INVOICE", titleX, 74, { width: titleWidth, align: "right" });
+      }
+      doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#111111").text("Date: ", titleX + 12, isDraftPreview ? 94 : 83, { width: 58, align: "right", continued: true });
       doc.font("Helvetica").fontSize(9.5).fillColor("#111111").text(snapshot.documentDate?.slice(0, 10) ?? "—", { width: titleWidth - 72, align: "right" });
-      const expiryLabel = snapshot.sourceType === "QUOTATION" ? "Expires on: " : "Due date: ";
-      const expiry = snapshot.sourceType === "QUOTATION" ? snapshot.validUntil : snapshot.dueDate;
-      doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#111111").text(expiryLabel, titleX + 6, 104, { width: 68, align: "right", continued: true });
-      doc.font("Helvetica").fontSize(9.5).fillColor("#111111").text(expiry?.slice(0, 10) ?? "—", { width: titleWidth - 74, align: "right" });
+      const expiryLabel = snapshot.sourceType === "QUOTATION" || snapshot.sourceType === "INVOICE" ? "Expires on: " : "Payment date: ";
+      const expiry = snapshot.sourceType === "QUOTATION" || snapshot.sourceType === "INVOICE" ? snapshot.validUntil : snapshot.documentDate;
+      doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#111111").text(expiryLabel, titleX + 6, isDraftPreview ? 116 : 104, { width: 68, align: "right", continued: true });
+      doc.font("Helvetica").fontSize(9.5).fillColor("#111111").text(expiry?.slice(0, 10) ?? "Not set", { width: titleWidth - 74, align: "right" });
       const separatorY = 164;
       doc.save().strokeColor("#D7D7D7").lineWidth(1).moveTo(left, separatorY).lineTo(right, separatorY).stroke().restore();
 
@@ -299,20 +324,19 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
         const item = object(raw);
         const description = text(item.description, "Item / service");
         const milestone = text(item.milestone, "—");
-        const quantityUnit = "Qty: " + text(item.quantity, "1") + " " + text(item.unitCode, "unit");
         body(8);
         const descH = doc.heightOfString(description, { width: columnWidths[1] - 10 });
-        const qtyH = doc.heightOfString(quantityUnit, { width: columnWidths[1] - 10 });
         const milestoneH = doc.heightOfString(milestone, { width: columnWidths[2] - 8 });
-        const rowHeight = Math.max(34, descH + qtyH + 15, milestoneH + 14);
+        const rowHeight = Math.max(34, descH + (milestone !== "—" ? milestoneH + 11 : 0) + 15, milestoneH + 14);
         if (doc.y + rowHeight > pageBottom()) { doc.addPage(); doc.y = 36; drawLineHeader(); }
         const y = doc.y;
         const values = [String(item.lineNumber ?? index + 1), "", milestone, text(item.unitPrice, "0.0000"), lineAmountBeforeTaxAndDiscount(item)];
         columnWidths.forEach((cellWidth, col) => addCell(columnXs[col], y, cellWidth, rowHeight));
         doc.font("Helvetica").fontSize(8).fillColor("#161616").text(values[0], columnXs[0] + 3, y + 8, { width: columnWidths[0] - 6, align: "center" });
         doc.font(fontName).fontSize(8).fillColor("#161616").text(description, columnXs[1] + 5, y + 7, { width: columnWidths[1] - 10 });
-        doc.font(fontName).fontSize(6.5).fillColor("#656565").text(quantityUnit, columnXs[1] + 5, y + 10 + descH, { width: columnWidths[1] - 10 });
-        doc.font(fontName).fontSize(8).fillColor("#161616").text(milestone, columnXs[2] + 4, y + 8, { width: columnWidths[2] - 8 });
+        if (milestone !== "—") {
+          doc.font(fontName).fontSize(7).fillColor("#656565").text(milestone, columnXs[2] + 4, y + 8, { width: columnWidths[2] - 8 });
+        }
         doc.font(fontName).fontSize(8).fillColor("#161616").text(values[3], columnXs[3] + 4, y + 8, { width: columnWidths[3] - 8, align: "right" });
         doc.font(fontName).fontSize(8).fillColor("#161616").text(values[4], columnXs[4] + 4, y + 8, { width: columnWidths[4] - 8, align: "right" });
         doc.y = y + rowHeight;
@@ -334,10 +358,16 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
           .text(value, totalsValueX + 4, y + 7, { width: amountWidth - 8, align: "right" });
         doc.y = y + 24;
       };
+      const percentLabel = (value: unknown) => text(value, "0").replace(/(?:\\.0+|(?<=\\d)0+)$/, "").replace(/\\.$/, "");
       const totals = [
         ["Sub Total:", amt(snapshot.subtotal)],
         ...(Number(snapshot.discountTotal) !== 0 ? [["Discount:", "− " + amt(snapshot.discountTotal)] as [string, string]] : []),
-        ["Tax:", amt(snapshot.taxTotal)],
+        ...(snapshot.sourceType === "INVOICE" && snapshot.taxMode === "COMPONENTS"
+          ? [
+              ...(snapshot.cgstEnabled ? [["CGST (" + percentLabel(snapshot.cgstRate) + "%):", amt(snapshot.cgstAmount)] as [string,string]] : []),
+              ...(snapshot.sgstEnabled ? [["SGST (" + percentLabel(snapshot.sgstRate) + "%):", amt(snapshot.sgstAmount)] as [string,string]] : []),
+            ]
+          : [["Tax:", amt(snapshot.taxTotal)] as [string,string]]),
         ["Grand Total:", amt(snapshot.grandTotal) + " " + text(snapshot.currency, "INR")],
       ] as Array<[string, string]>;
       totals.forEach(([label, value]) => drawTotal(label, value, label === "Grand Total:"));
@@ -401,7 +431,12 @@ export async function renderDocumentPdf(snapshot: PdfSnapshot, capturedAt: Date 
         const signatureY = Math.max(doc.y + 12, doc.page.height - 86);
         if (signatureY + 24 > pageBottom()) { doc.addPage(); doc.y = doc.page.height - 90; }
         else doc.y = signatureY;
-        doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#111111").text("Signature: ______________________________", left + 7, doc.y, { width: width * 0.72 });
+        doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#111111").text("Authorised signature:", left + 7, doc.y, { width: 115 });
+        if (signatureBuffer) {
+          doc.image(signatureBuffer, left + 126, doc.y - 13, { fit: [124, 38], valign: "center" });
+        } else {
+          doc.moveTo(left + 124, doc.y + 7).lineTo(left + 285, doc.y + 7).strokeColor("#111111").lineWidth(0.7).stroke();
+        }
       }
       if (snapshot.configurationSha256) {
         ensure(14);
