@@ -40,7 +40,7 @@ function getConfig(): StorageConfig {
   const driver = process.env.DOCUMENTS_STORAGE_DRIVER ?? (process.env.NODE_ENV === "production" || process.env.VERCEL === "1" ? "s3" : "filesystem");
   if (driver === "filesystem") {
     if (process.env.NODE_ENV === "production" || process.env.VERCEL === "1") throw failConfig();
-    const root = resolve(process.env.DOCUMENTS_STORAGE_LOCAL_ROOT || join(tmpdir(),"fx-financial-private-documents"));
+    const root = resolve(/* turbopackIgnore: true */ process.env.DOCUMENTS_STORAGE_LOCAL_ROOT || join(/* turbopackIgnore: true */ tmpdir(),"fx-financial-private-documents"));
     return {driver:"filesystem",root};
   }
   if (driver !== "s3") throw failConfig();
@@ -133,7 +133,8 @@ export async function headPrivateObject(key: string): Promise<StoredObjectMetada
   const cfg = getConfig();
   if (cfg.driver === "filesystem") {
     try {
-      const bytes = await readFile(localTarget(cfg.root,key));
+      const target = localTarget(cfg.root,key);
+      const bytes = await readFile(/* turbopackIgnore: true */ target);
       return {byteSize:bytes.length,sha256:sha(bytes)};
     } catch {
       throw new PrivateStorageError("DOCUMENT_STORAGE_UNAVAILABLE","The private document could not be verified.");
@@ -159,7 +160,8 @@ export async function getPrivateObject(key: string): Promise<Buffer> {
   const cfg = getConfig();
   if (cfg.driver === "filesystem") {
     try {
-      const bytes = await readFile(localTarget(cfg.root,key));
+      const target = localTarget(cfg.root,key);
+      const bytes = await readFile(/* turbopackIgnore: true */ target);
       if (bytes.length <= 0 || bytes.length > MAX_DOCUMENT_BYTES) throw new PrivateStorageError("DOCUMENT_INTEGRITY_FAILURE","Stored document size is invalid.");
       return bytes;
     } catch (error) {
@@ -208,7 +210,7 @@ export async function putPrivateAsset(key: string, bytes: Buffer, expectedSha256
     await mkdir(dirname(target), { recursive: true, mode: 0o700 });
     try {
       await writeFile(target, bytes, { flag: "wx", mode: 0o600 });
-      const readBack = await readFile(target);
+      const readBack = await readFile(/* turbopackIgnore: true */ target);
       if (readBack.length !== bytes.length || sha(readBack) !== expectedSha256) {
         throw new PrivateStorageError("DOCUMENT_INTEGRITY_FAILURE", "Stored signature asset failed verification.");
       }
@@ -242,7 +244,8 @@ export async function getPrivateAsset(key: string): Promise<Buffer> {
   const cfg = getConfig();
   if (cfg.driver === "filesystem") {
     try {
-      const bytes = await readFile(localAssetTarget(cfg.root, key));
+      const target = localAssetTarget(cfg.root, key);
+      const bytes = await readFile(/* turbopackIgnore: true */ target);
       if (bytes.length <= 0 || bytes.length > MAX_PRIVATE_ASSET_BYTES) {
         throw new PrivateStorageError("DOCUMENT_INTEGRITY_FAILURE", "Signature asset size is invalid.");
       }
