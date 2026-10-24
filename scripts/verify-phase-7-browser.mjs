@@ -292,6 +292,9 @@ try {
   assert.equal(invoiceCustomerRows.length, 1, "invoice/quotation browser flow uses the active CSV-imported customer");
   const invoiceTestCustomer = invoiceCustomerRows[0];
   const invoiceUiDate = new Date().toISOString().slice(0, 10);
+  const invoiceValidUntilDate = new Date(invoiceUiDate + "T00:00:00.000Z");
+  invoiceValidUntilDate.setUTCDate(invoiceValidUntilDate.getUTCDate() + 30);
+  const invoiceUiValidUntil = invoiceValidUntilDate.toISOString().slice(0, 10);
   const invoiceLineDescription = "Pack 2 browser invoice " + suffix;
   const inlineCustomerName = "Inline Invoice Customer " + suffix;
   const inlineCustomerEmail = "invoice-" + suffix.toLowerCase() + "@example.invalid";
@@ -309,22 +312,27 @@ try {
     "new invoice must not silently preselect the first existing customer");
   assert.equal(await invoiceEditor.getByLabel("Email to send the invoice to").inputValue(), "",
     "new invoice must not silently inherit the first customer's email");
+  const invoiceDateInput = invoiceEditor.getByLabel("Invoice date");
+  assert.equal(await invoiceDateInput.inputValue(), invoiceUiDate,
+    "invoice date is populated automatically with today's date");
+  assert.notEqual(await invoiceDateInput.getAttribute("readonly"), null,
+    "invoice date must remain read-only in the composer");
+  await invoiceEditor.locator("#invoice-valid-until").fill(invoiceUiValidUntil);
   await invoiceEditor.getByLabel("Customer / company name").fill(inlineCustomerName);
   await invoiceEditor.getByLabel("Email to send the invoice to").fill(inlineCustomerEmail);
-  await invoiceEditor.getByLabel("Invoice date").fill(invoiceUiDate);
   await invoiceEditor.getByLabel("Milestone (optional)").fill("Implementation milestone");
   await invoiceEditor.getByLabel("Description").fill(invoiceLineDescription);
-  await invoiceEditor.getByLabel("Quantity").fill("2.0000");
-  await invoiceEditor.getByLabel(/^Rate/).fill("100.0000");
-  await invoiceEditor.locator("details.invoice-line-advanced summary").click();
-  await invoiceEditor.getByLabel("Unit", { exact: true }).fill("hour");
-  await invoiceEditor.getByLabel("Discount type").selectOption("PERCENT");
-  await invoiceEditor.getByLabel("Discount (%)").fill("10.0000");
-  await invoiceEditor.getByLabel("Approved tax code").selectOption(String(invoiceTestEntity.default_tax_code));
+  // The simplified composer intentionally fixes quantity at one and exposes GST as
+  // explicit CGST/SGST components rather than the removed advanced line-tax controls.
+  await invoiceEditor.getByLabel(/^Rate/).fill("180.0000");
+  await invoiceEditor.getByLabel("Apply CGST").check();
+  await invoiceEditor.getByLabel("CGST rate (%)").fill("9");
+  await invoiceEditor.getByLabel("Apply SGST").check();
+  await invoiceEditor.getByLabel("SGST rate (%)").fill("9");
   await invoiceEditor.getByRole("button", { name: "Save draft", exact: true }).click();
   await page.getByText("Draft saved. The server recalculated the totals.", { exact: true }).waitFor();
   await page.getByText("INR 212.4000", { exact: true }).first().waitFor();
-  pass("Brand-first invoice draft accepts inline customer/company details, recipient email and milestone, then calculates exact-decimal totals.");
+  pass("Brand-first invoice draft enforces an automatic date, captures proforma expiry and recipient details, and calculates exact-decimal CGST/SGST totals.");
 
   const [inlineCustomerRows] = await db.execute(
     "SELECT id,name,email FROM customers WHERE name=? AND email=? AND is_active=TRUE LIMIT 1",
