@@ -333,15 +333,27 @@ try {
   assert.equal(inlineCustomerRows.length, 1, "inline invoice composer persists the customer and billing recipient.");
   const invoiceBrowserCustomer = inlineCustomerRows[0];
 
+  // Saving a draft returns to the details/preview state. Reopen it using the visible
+  // Edit draft action, then assert the invoice-specific recipient survived the round trip.
+  await page.getByRole("button", { name: "Edit draft", exact: true }).click();
   const editableInvoice = page.locator(".invoice-editor").last();
+  await editableInvoice.getByRole("heading", { name: "Edit invoice draft", exact: true }).waitFor();
+  assert.equal(await editableInvoice.getByLabel("Email to send the invoice to").inputValue(), inlineCustomerEmail,
+    "reopening a saved draft must restore its previously saved recipient");
   await editableInvoice.getByLabel("Email to send the invoice to").fill(overrideRecipientEmail);
   await editableInvoice.getByLabel(/^Rate/).fill("120.0000");
   await editableInvoice.getByRole("button", { name: "Save draft", exact: true }).click();
   await page.getByText("Draft saved. The server recalculated the totals.", { exact: true }).waitFor();
   await page.getByText("INR 254.8800", { exact: true }).first().waitFor();
-  assert.equal(await page.locator(".invoice-editor").last().getByLabel("Email to send the invoice to").inputValue(), overrideRecipientEmail,
-    "saving and reopening a draft must preserve its invoice-specific recipient");
-  await page.locator(".invoice-editor").last().getByRole("button", { name: "Issue & send invoice", exact: true }).click();
+
+  // Save returns to details again; open the draft editor once more before the explicit
+  // issue-and-send action. This exercises the same user-facing lifecycle used in production.
+  await page.getByRole("button", { name: "Edit draft", exact: true }).click();
+  const invoiceReadyToSend = page.locator(".invoice-editor").last();
+  await invoiceReadyToSend.getByRole("heading", { name: "Edit invoice draft", exact: true }).waitFor();
+  assert.equal(await invoiceReadyToSend.getByLabel("Email to send the invoice to").inputValue(), overrideRecipientEmail,
+    "the explicitly chosen per-invoice recipient persists after the second draft save");
+  await invoiceReadyToSend.getByRole("button", { name: "Issue & send invoice", exact: true }).click();
   await page.getByText("Invoice issued and email queued. Check its delivery status in the invoice details.", { exact: true }).waitFor();
   await page.getByRole("heading", { name: "Email delivery and evidence" }).waitFor();
 

@@ -80,6 +80,13 @@ The existing component and APIs did not guarantee a working user journey:
 
 The failed CI run for [`8d74d63`](https://github.com/Daarxsn/Fx-Financial/commit/8d74d6307ec03a98ceb9bc978acba7c22f0849b2) was isolated to `npm run invoice:access-ui-test`. The product page had already been updated to describe the actual invoice workflow and correctly state that PDF/email require approved issuer setup and a verified sender configuration; the regression test still expected older copy saying those capabilities were not enabled and that accepted quotations convert directly to invoice drafts. The app behavior is intentional; the stale test assertion has been updated to validate the current user-facing contract. Re-run CI on the fix commit before marking validation complete.
 
+## Follow-up from browser acceptance (2026-10-24)
+
+- The first corrected run passed the formerly failing dashboard copy assertion and reached Playwright browser acceptance.
+- Browser acceptance then exposed a stale test sequence: after saving a draft, the application intentionally returns to invoice details; the test attempted to edit the recipient and issue the invoice without activating the visible `Edit draft` action.
+- Updated `scripts/verify-phase-7-browser.mjs` to reopen the draft through that UI action, verify the saved recipient is restored, edit/save it, reopen again, and then perform Issue & send. This matches the application's actual details → edit → save → details lifecycle instead of relying on the old editor remaining mounted.
+- The next CI run must confirm the browser flow and all remaining checks before Stage 1 is considered validated.
+
 ## Current source-level verification (2026-10-24)
 
 - Latest inspected main HEAD at this check: [df145c1](https://github.com/Daarxsn/Fx-Financial/commit/df145c1751831781b341ea6373e2ffad7bbf6f95).
