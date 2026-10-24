@@ -62,3 +62,13 @@ At the end of a meaningful work session, record:
 - Next smallest safe step.
 
 Do not store credentials, session cookies, customer records or full invoice contents in this file.
+
+## Latest Stage 1 findings — 2026-10-24
+
+- Product decision: prioritize **create → preview → issue/send → manage**. Keep existing useful architecture and defer broad secondary workflows until this core journey is verified.
+- Repository baseline: the invoice component `src/components/invoice-workspace.tsx`, draft API `src/app/api/v1/invoices/route.ts`, draft options, issue endpoint and email outbox exist. However, `src/app/(workspace)/invoices/page.tsx` was absent when checked, even though the sidebar and overview linked to `/invoices`. This is a direct reason the implemented create action could not be reached from the UI.
+- The existing `+ New invoice` control was additionally conditional on legal entities, valid brand mapping and customer access, so it could disappear instead of explaining setup blockers.
+- Opening a draft set edit mode immediately. This made the details state—and therefore a dedicated preview entry point—inaccessible after opening some drafts. The intended behavior is detail/read mode first and explicit Edit draft.
+- Stage 1 code changes committed directly to `main`: created `src/app/(workspace)/invoices/page.tsx`; added a home-page create action and corrected stale copy; changed create-action visibility; added a saved-data invoice preview/print UI; changed draft opening to detail mode; expanded `scripts/verify-simple-invoice-workflow.mjs` to assert these conditions; added preview styles. See commits in repository history dated 2026-10-24.
+- **Validation status:** implementation has been written to `main`; no local build/browser session was available through the GitHub-only edit path at the time of this note. Exact-SHA CI and the added workflow test must be inspected before marking the slice verified. Preview is a screen preview of saved data, not the final immutable PDF. Real email delivery remains dependent on approved issuer configuration and provider setup.
+- Next action: inspect exact-SHA CI and test results; fix any failure on `main`; then browser-verify the route, create/save/reopen/preview path and send flow in a non-production environment.
