@@ -52,6 +52,9 @@ assert.ok(brandAssets.includes('code: "MYFXPOS"') && brandAssets.includes('code:
   "first setup must reuse the three established product-brand identities and logo assets");
 assert.ok(options.includes("canAutoMap"), "brand options must only auto-select a safe issuer mapping");
 assert.ok(options.includes("legalEntityId:b.legal_entity_id"), "brand options must return the mapped issuer legal entity");
+assert.ok(options.includes("SELECT id,name,code,logo_reference,default_template_key,theme_json,legal_entity_id,entity_legal_name,entity_name") &&
+  options.includes("e.legal_name AS entity_legal_name"),
+  "brand options must propagate the canonical registered legal name into the response");
 assert.ok(options.includes("issuerIdentityReady") && options.includes("isProductBrandLegalEntityName(b.entity_legal_name)") &&
   options.includes("!isProductBrandLegalEntityName(b.entity_name)"),
   "invoice composer options must refuse product-brand names as legal issuers rather than auto-selecting them");
