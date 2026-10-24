@@ -3252,7 +3252,7 @@ try {
   assert.equal(p6ImmediateMessages.messages[0].to[0], p6Body.recipientEmail, "the confirmed recipient is the provider destination");
   assert.equal(p6ImmediateMessages.messages[0].attachmentCount, 1, "immediate delivery includes the checksum-verified invoice PDF");
   assert.equal(p6ImmediateMessages.messages[0].attachmentPdfSignatureValid, true, "the attached bytes have a PDF signature and application/pdf content type");
-  assert.match(p6ImmediateMessages.messages[0].attachmentFilenames[0], /\\.pdf$/i, "the client attachment has a PDF filename");
+  assert.match(p6ImmediateMessages.messages[0].attachmentFilenames[0], /\.pdf$/i, "the client attachment has a PDF filename");
   const p6Replay = await call("/api/v1/email/outbox", {
     method: "POST", headers: { "Idempotency-Key": p6Key }, body: JSON.stringify(p6Body),
   }, phase6aSession.jar);
