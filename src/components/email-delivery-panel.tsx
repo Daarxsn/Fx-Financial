@@ -112,10 +112,19 @@ export function EmailDeliveryPanel({sourceType,sourceId}:Props) {
       const response=await fetch("/api/v1/email/outbox/"+item.id+"/retry",{
         method:"POST",cache:"no-store",headers:{"Accept":"application/json","Content-Type":"application/json","X-CSRF-Token":csrf},body:"{}",
       });
-      let body:{data?:unknown;error?:{message?:string}}={};
+      let body:{data?:(EmailItem & {immediateDeliveryAttempted?:boolean;immediateDeliveryDeferred?:boolean});error?:{message?:string}}={};
       try { body=await response.json() as typeof body; } catch { /* generic error below */ }
       if(!response.ok) throw new Error(body.error?.message??"The failed email could not be retried.");
-      setMessage("A retry was queued. Delivery status is not reported as sent until the provider accepts it.");
+      const status=body.data?.status??"QUEUED";
+      setMessage(status==="DELIVERED"
+        ?"Retry succeeded and the provider confirms delivery."
+        :status==="SENT"
+          ?"Retry succeeded: the email provider accepted the message. Delivery confirmation is pending."
+          :status==="FAILED"||status==="BOUNCED"||status==="COMPLAINED"||status==="REQUIRES_REVIEW"
+            ?"The retry did not resolve delivery ("+status+"). Review the delivery timeline before retrying again."
+            :body.data?.immediateDeliveryDeferred
+              ?"The retry is saved for the durable worker; the immediate attempt was deferred."
+              :"The retry was processed. Current status: "+status+".");
       await refresh();
     } catch(cause) { setError(cause instanceof Error?cause.message:"The failed email could not be retried."); }
     finally { setBusy(false); }
