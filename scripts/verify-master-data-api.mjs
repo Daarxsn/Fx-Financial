@@ -3242,9 +3242,15 @@ try {
     method: "POST", headers: { "Idempotency-Key": p6Key }, body: JSON.stringify(p6Body),
   }, phase6aSession.jar);
   assert.equal(p6Queue.response.status, 202, "email request is durably queued");
-  assert.equal(p6Queue.body.data.status, "QUEUED");
+  assert.equal(p6Queue.body.data.status, "SENT", "the POST attempts provider delivery before returning while preserving the durable outbox record");
   assert.match(p6Queue.body.data.attachmentSha256, /^[a-f0-9]{64}$/);
   assert.ok(Number(p6Queue.body.data.attachmentByteSize) > 1000);
+  const p6ImmediateMessages = await fetch("http://127.0.0.1:3030/__test/messages", {
+    headers: { "X-Test-Token": "ci-email-test-only" }, cache: "no-store",
+  }).then(response => response.json());
+  assert.equal(p6ImmediateMessages.count, 1, "the selected outbox email is sent to the provider before the request returns");
+  assert.equal(p6ImmediateMessages.messages[0].to[0], p6Body.recipientEmail, "the confirmed recipient is the provider destination");
+  assert.equal(p6ImmediateMessages.messages[0].attachmentCount, 1, "immediate delivery includes the checksum-verified invoice PDF");
   const p6Replay = await call("/api/v1/email/outbox", {
     method: "POST", headers: { "Idempotency-Key": p6Key }, body: JSON.stringify(p6Body),
   }, phase6aSession.jar);
@@ -3325,7 +3331,8 @@ try {
     headers: { "Idempotency-Key": randomUUID() },
     body: JSON.stringify({ sourceType: "QUOTATION", sourceId: snapshotQuoteId, recipientEmail: p6QuotePreview.body.data.defaultRecipientEmail, recipientConfirmed: true }),
   }, phase6aSession.jar);
-  assert.equal(p6QuoteQueue.response.status, 202, "confirmed quotation email is durably queued");
+  assert.equal(p6QuoteQueue.response.status, 202, "confirmed quotation email is accepted with durable outbox history");
+  assert.equal(p6QuoteQueue.body.data.status, "SENT", "quotation email is immediately accepted by the provider");
   assert.match(p6QuoteQueue.body.data.attachmentSha256, /^[a-f0-9]{64}$/);
 
   const p6ReceiptPreview = await call("/api/v1/email/outbox?sourceType=RECEIPT&sourceId=" + p5ReceiptId, {}, phase6aSession.jar);
@@ -3335,7 +3342,8 @@ try {
     headers: { "Idempotency-Key": randomUUID() },
     body: JSON.stringify({ sourceType: "RECEIPT", sourceId: p5ReceiptId, recipientEmail: p6ReceiptPreview.body.data.defaultRecipientEmail, recipientConfirmed: true }),
   }, phase6aSession.jar);
-  assert.equal(p6ReceiptQueue.response.status, 202, "confirmed receipt email is durably queued");
+  assert.equal(p6ReceiptQueue.response.status, 202, "confirmed receipt email is accepted with durable outbox history");
+  assert.equal(p6ReceiptQueue.body.data.status, "SENT", "receipt email is immediately accepted by the provider");
   assert.match(p6ReceiptQueue.body.data.attachmentSha256, /^[a-f0-9]{64}$/);
 
   const p6OtherDocsCron = await fetch(new URL("/api/cron/email-outbox", baseUrl), {
