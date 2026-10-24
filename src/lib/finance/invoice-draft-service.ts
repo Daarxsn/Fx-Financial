@@ -101,7 +101,7 @@ export async function validateDraftContext(
   conn:PoolConnection,
   actor:SessionPrincipal,
   fields:Pick<DraftFields,"legalEntityId"|"brandId"|"customerId"|"currency"|"invoiceDate"|"dueDate"|"validUntil"|"paymentTermsDays">,
-):Promise<{entity:EntityRow;paymentTermsDays:number;invoiceDate:string|null;dueDate:string|null}> {
+):Promise<{entity:EntityRow;paymentTermsDays:number;invoiceDate:string|null;dueDate:string|null;validUntil:string|null}> {
   if(!actor.legalEntityIds.includes(fields.legalEntityId)){
     throw new ConfigurationNotReadyError("The selected legal entity is not in your assigned invoice scope.");
   }

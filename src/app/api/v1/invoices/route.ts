@@ -6,7 +6,7 @@ import { requirePermission } from "@/lib/auth/authorize";
 import { assertCsrf } from "@/lib/auth/csrf";
 import { apiError, jsonNoStore } from "@/lib/http/api-response";
 import { canonicalJson } from "@/lib/configuration/service";
-import { outstandingBalance, subtractMoney } from "@/lib/finance/invoice-calculation";
+import { outstandingBalance, subtractMoney, calculateInvoiceTaxComponents } from "@/lib/finance/invoice-calculation";
 import { customerNameFromSnapshot } from "@/lib/finance/document-snapshot";
 import { invoiceCalendarDateSchema, invoiceDraftCreateSchema } from "@/lib/validation/invoice";
 import { validateDraftContext, resolveDraftLines, persistDraftLines, auditDraftChange, InvoiceDraftValidationError } from "@/lib/finance/invoice-draft-service";
@@ -42,9 +42,9 @@ export async function GET(request:NextRequest){
   const query=(request.nextUrl.searchParams.get("query")??"").trim().slice(0,100);
   if(query){const escaped=query.replace(/[\\%_]/g,"\\$&");clauses.push("(i.invoice_number LIKE ? OR c.name LIKE ?)");params.push(`%${escaped}%`,`%${escaped}%`);}
   const where="WHERE "+clauses.join(" AND ");
-  const [rows]=await pool.query<(RowDataPacket & {id:string;legal_entity_id:string;brand_id:string|null;customer_id:string;document_type:string;related_invoice_id:string|null;invoice_number:string|null;lifecycle_status:string;currency:string;subtotal:string;discount_total:string;tax_total:string;grand_total:string;invoice_date:Date|string|null;due_date:Date|string|null;payment_terms_days:number;record_version:number;customer_name:string;customer_snapshot:unknown;created_at:Date|string;updated_at:Date|string;paid_total:string})[]>(
+  const [rows]=await pool.query<(RowDataPacket & {id:string;legal_entity_id:string;brand_id:string|null;customer_id:string;document_type:string;related_invoice_id:string|null;invoice_number:string|null;lifecycle_status:string;currency:string;subtotal:string;discount_total:string;tax_total:string;grand_total:string;invoice_date:Date|string|null;due_date:Date|string|null;invoice_valid_until:Date|string|null;tax_mode:"LINE"|"COMPONENTS";cgst_enabled:number;cgst_rate:string|null;sgst_enabled:number;sgst_rate:string|null;cgst_amount:string;sgst_amount:string;payment_terms_days:number;record_version:number;customer_name:string;customer_snapshot:unknown;created_at:Date|string;updated_at:Date|string;paid_total:string})[]>(
    `SELECT i.id,i.legal_entity_id,i.brand_id,i.customer_id,i.document_type,i.related_invoice_id,i.invoice_number,i.lifecycle_status,i.currency,
-      i.subtotal,i.discount_total,i.tax_total,i.grand_total,i.invoice_date,i.due_date,i.payment_terms_days,i.record_version,
+      i.subtotal,i.discount_total,i.tax_total,i.grand_total,i.invoice_date,i.due_date,i.invoice_valid_until,i.tax_mode,i.cgst_enabled,i.cgst_rate,i.sgst_enabled,i.sgst_rate,i.cgst_amount,i.sgst_amount,i.payment_terms_days,i.record_version,
       c.name AS customer_name,i.customer_snapshot,i.created_at,i.updated_at,
       COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa JOIN payments p ON p.id=pa.payment_id WHERE pa.invoice_id=i.id AND p.status='RECORDED'),0) AS paid_total
     FROM invoices i JOIN customers c ON c.id=i.customer_id ${where}
@@ -58,7 +58,7 @@ export async function GET(request:NextRequest){
    paymentStatus:paymentState(total,paid),currency:r.currency,subtotal:money(r.subtotal),discountTotal:money(r.discount_total),
    taxableValue:subtractMoney(money(r.subtotal),money(r.discount_total)),taxTotal:money(r.tax_total),grandTotal:total,paidAmount:paid,
    outstandingBalance:outstandingBalance(total,paid),invoiceDate:dateText(r.invoice_date),dueDate:dateText(r.due_date),
-   paymentTermsDays:Number(r.payment_terms_days),recordVersion:Number(r.record_version),createdAt:r.created_at,updatedAt:r.updated_at,
+   paymentTermsDays:Number(r.payment_terms_days),validUntil:dateText(r.invoice_valid_until),taxMode:r.tax_mode,cgstEnabled:Boolean(r.cgst_enabled),cgstRate:r.cgst_rate===null?"9.000000":String(r.cgst_rate),cgstAmount:money(r.cgst_amount),sgstEnabled:Boolean(r.sgst_enabled),sgstRate:r.sgst_rate===null?"9.000000":String(r.sgst_rate),sgstAmount:money(r.sgst_amount),recordVersion:Number(r.record_version),createdAt:r.created_at,updatedAt:r.updated_at,
   };}),pagination:{limit,offset,total:Number(count.total),hasMore:offset+rows.length<Number(count.total)}});
  }catch(error){return apiError(error);}
 }
@@ -89,14 +89,21 @@ export async function POST(request:NextRequest){
    return jsonNoStore({data:{id:existing[0].id,lifecycleStatus:existing[0].lifecycle_status,idempotentReplay:true}},200);
   }
   const ctx=await validateDraftContext(conn,actor,input);
-  const prepared=await resolveDraftLines(conn,ctx.entity,ctx.invoiceDate,input.currency,input.lines);
+  const prepared=await resolveDraftLines(conn,ctx.entity,ctx.invoiceDate,input.currency,input.lines,input.taxMode);
+  const componentTotals=input.taxMode==="COMPONENTS"
+    ? calculateInvoiceTaxComponents(prepared.calculation.taxableValue,input.cgstEnabled,input.cgstRate,input.sgstEnabled,input.sgstRate)
+    : {cgstAmount:"0.0000",sgstAmount:"0.0000",taxTotal:prepared.calculation.taxTotal,grandTotal:prepared.calculation.grandTotal};
+  const calculation={...prepared.calculation,taxTotal:componentTotals.taxTotal,grandTotal:componentTotals.grandTotal};
   const id=randomUUID();
   await conn.execute(
-   `INSERT INTO invoices (id,legal_entity_id,brand_id,customer_id,document_type,lifecycle_status,record_version,payment_terms_days,
-      invoice_date,due_date,currency,subtotal,discount_total,tax_total,grand_total,notes,draft_recipient_email,idempotency_key,idempotency_payload_sha256)
-    VALUES (?,?,?,?,'INVOICE','DRAFT',1,?,?,?,?,?,?,?,?,?,?,?,?)`,
-   [id,input.legalEntityId,input.brandId??null,input.customerId,ctx.paymentTermsDays,ctx.invoiceDate,ctx.dueDate,input.currency,
-    prepared.calculation.subtotal,prepared.calculation.discountTotal,prepared.calculation.taxTotal,prepared.calculation.grandTotal,
+   `INSERT INTO invoices
+      (id,legal_entity_id,brand_id,customer_id,document_type,lifecycle_status,record_version,
+       payment_terms_days,invoice_date,due_date,invoice_valid_until,tax_mode,cgst_enabled,cgst_rate,sgst_enabled,sgst_rate,cgst_amount,sgst_amount,
+       currency,subtotal,discount_total,tax_total,grand_total,notes,draft_recipient_email,idempotency_key,idempotency_payload_sha256)
+    VALUES (?,?,?,?,'INVOICE','DRAFT',1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+   [id,input.legalEntityId,input.brandId??null,input.customerId,ctx.paymentTermsDays,ctx.invoiceDate,ctx.dueDate,ctx.validUntil,input.taxMode,
+    input.cgstEnabled?1:0,input.cgstRate,input.sgstEnabled?1:0,input.sgstRate,componentTotals.cgstAmount,componentTotals.sgstAmount,
+    input.currency,prepared.calculation.subtotal,prepared.calculation.discountTotal,calculation.taxTotal,calculation.grandTotal,
     input.notes??null,input.recipientEmail??"",idempotencyKey,fingerprint]);
   await persistDraftLines(conn,id,actor.userId,prepared.lines);
   await auditDraftChange(conn,actor.userId,id,"invoice.draft.created",null,{recordVersion:1,changedFields:["legalEntityId","brandId","customerId","currency","invoiceDate","dueDate","paymentTermsDays","notes","recipientEmail","lines","subtotal","discountTotal","taxTotal","grandTotal"]});
@@ -105,7 +112,8 @@ export async function POST(request:NextRequest){
    id,legalEntityId:input.legalEntityId,brandId:input.brandId??null,customerId:input.customerId,
    documentType:"INVOICE",lifecycleStatus:"DRAFT",invoiceNumber:null,currency:input.currency,
    invoiceDate:ctx.invoiceDate,dueDate:ctx.dueDate,paymentTermsDays:ctx.paymentTermsDays,draftRecipientEmail:input.recipientEmail??"",
-   recordVersion:1,...prepared.calculation,paidAmount:"0.0000",outstandingBalance:prepared.calculation.grandTotal,
+   validUntil:ctx.validUntil,taxMode:input.taxMode,cgstEnabled:input.cgstEnabled,cgstRate:input.cgstRate,cgstAmount:componentTotals.cgstAmount,sgstEnabled:input.sgstEnabled,sgstRate:input.sgstRate,sgstAmount:componentTotals.sgstAmount,
+   recordVersion:1,...calculation,paidAmount:"0.0000",outstandingBalance:calculation.grandTotal,
    paymentStatus:prepared.calculation.grandTotal==="0.0000"?"UNPAID":"UNPAID",idempotentReplay:false,
   }},201);
  }catch(error){

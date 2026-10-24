@@ -5,7 +5,7 @@ import { requirePermission } from "@/lib/auth/authorize";
 import { assertCsrf } from "@/lib/auth/csrf";
 import { apiError, jsonNoStore } from "@/lib/http/api-response";
 import { ConfigurationConflictError } from "@/lib/configuration/errors";
-import { outstandingBalance, subtractMoney } from "@/lib/finance/invoice-calculation";
+import { outstandingBalance, subtractMoney, calculateInvoiceTaxComponents } from "@/lib/finance/invoice-calculation";
 import { customerNameFromSnapshot } from "@/lib/finance/document-snapshot";
 import { invoiceDraftUpdateSchema } from "@/lib/validation/invoice";
 import { validateDraftContext, resolveDraftLines, persistDraftLines, auditDraftChange, InvoiceDraftValidationError, dateText } from "@/lib/finance/invoice-draft-service";
@@ -27,9 +27,9 @@ export async function GET(_request:NextRequest,context:Context){
  try{
   const actor=await requirePermission("invoices:read");const {invoiceId}=await context.params;
   if(!/^[0-9a-f-]{36}$/i.test(invoiceId))return jsonNoStore({error:{code:"VALIDATION_ERROR",message:"invoiceId must be a UUID."}},400);
-  const [rows]=await pool.execute<(RowDataPacket & {id:string;legal_entity_id:string;brand_id:string|null;customer_id:string;document_type:string;related_invoice_id:string|null;invoice_number:string|null;lifecycle_status:string;currency:string;subtotal:string;discount_total:string;tax_total:string;grand_total:string;invoice_date:Date|string|null;due_date:Date|string|null;payment_terms_days:number;notes:string|null;draft_recipient_email:string;record_version:number;created_at:Date|string;updated_at:Date|string;customer_name:string;customer_snapshot:unknown;paid_total:string})[]>(
+  const [rows]=await pool.execute<(RowDataPacket & {id:string;legal_entity_id:string;brand_id:string|null;customer_id:string;document_type:string;related_invoice_id:string|null;invoice_number:string|null;lifecycle_status:string;currency:string;subtotal:string;discount_total:string;tax_total:string;grand_total:string;invoice_date:Date|string|null;due_date:Date|string|null;invoice_valid_until:Date|string|null;tax_mode:"LINE"|"COMPONENTS";cgst_enabled:number;cgst_rate:string|null;sgst_enabled:number;sgst_rate:string|null;cgst_amount:string;sgst_amount:string;payment_terms_days:number;notes:string|null;draft_recipient_email:string;record_version:number;created_at:Date|string;updated_at:Date|string;customer_name:string;customer_snapshot:unknown;paid_total:string})[]>(
    `SELECT i.id,i.legal_entity_id,i.brand_id,i.customer_id,i.document_type,i.related_invoice_id,i.invoice_number,i.lifecycle_status,i.currency,
-     i.subtotal,i.discount_total,i.tax_total,i.grand_total,i.invoice_date,i.due_date,i.payment_terms_days,i.notes,i.draft_recipient_email,i.customer_snapshot,i.record_version,i.created_at,i.updated_at,
+     i.subtotal,i.discount_total,i.tax_total,i.grand_total,i.invoice_date,i.due_date,i.invoice_valid_until,i.tax_mode,i.cgst_enabled,i.cgst_rate,i.sgst_enabled,i.sgst_rate,i.cgst_amount,i.sgst_amount,i.payment_terms_days,i.notes,i.draft_recipient_email,i.customer_snapshot,i.record_version,i.created_at,i.updated_at,
      c.name AS customer_name,COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa JOIN payments p ON p.id=pa.payment_id WHERE pa.invoice_id=i.id AND p.status='RECORDED'),0) AS paid_total
     FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.id=? LIMIT 1`,[invoiceId]);
   if(!rows.length||!actor.legalEntityIds.includes(rows[0].legal_entity_id))return jsonNoStore({error:{code:"NOT_FOUND",message:"Invoice not found in your assigned scope."}},404);
@@ -43,7 +43,7 @@ export async function GET(_request:NextRequest,context:Context){
    paymentStatus:paymentStatus(total,paid),currency:row.currency,subtotal:money(row.subtotal),discountTotal:money(row.discount_total),
    taxableValue:subtractMoney(money(row.subtotal),money(row.discount_total)),taxTotal:money(row.tax_total),grandTotal:total,paidAmount:paid,
    outstandingBalance:outstandingBalance(total,paid),invoiceDate:dateText(row.invoice_date),dueDate:dateText(row.due_date),
-   paymentTermsDays:Number(row.payment_terms_days),notes:row.notes,draftRecipientEmail:row.draft_recipient_email,recordVersion:Number(row.record_version),createdAt:row.created_at,updatedAt:row.updated_at,
+   paymentTermsDays:Number(row.payment_terms_days),validUntil:dateText(row.invoice_valid_until),taxMode:row.tax_mode,cgstEnabled:Boolean(row.cgst_enabled),cgstRate:row.cgst_rate===null?"9.000000":String(row.cgst_rate),cgstAmount:String(row.cgst_amount),sgstEnabled:Boolean(row.sgst_enabled),sgstRate:row.sgst_rate===null?"9.000000":String(row.sgst_rate),sgstAmount:String(row.sgst_amount),notes:row.notes,draftRecipientEmail:row.draft_recipient_email,recordVersion:Number(row.record_version),createdAt:row.created_at,updatedAt:row.updated_at,
    lines:lineRows.map(serializeLine)}});
  }catch(error){return apiError(error);}
 }
@@ -57,8 +57,8 @@ export async function PATCH(request:NextRequest,context:Context){
   const parsed=invoiceDraftUpdateSchema.parse(raw);
   const {expectedVersion,...patch}=parsed;
   conn=await pool.getConnection();await conn.beginTransaction();
-  const [rows]=await conn.execute<(RowDataPacket & {id:string;legal_entity_id:string;brand_id:string|null;customer_id:string;currency:string;invoice_date:Date|string|null;due_date:Date|string|null;payment_terms_days:number;notes:string|null;draft_recipient_email:string;record_version:number;lifecycle_status:string})[]>(
-   "SELECT id,legal_entity_id,brand_id,customer_id,currency,invoice_date,due_date,payment_terms_days,notes,draft_recipient_email,record_version,lifecycle_status FROM invoices WHERE id=? LIMIT 1 FOR UPDATE",[invoiceId]);
+  const [rows]=await conn.execute<(RowDataPacket & {id:string;legal_entity_id:string;brand_id:string|null;customer_id:string;currency:string;invoice_date:Date|string|null;due_date:Date|string|null;invoice_valid_until:Date|string|null;tax_mode:"LINE"|"COMPONENTS";cgst_enabled:number;cgst_rate:string|null;sgst_enabled:number;sgst_rate:string|null;cgst_amount:string;sgst_amount:string;payment_terms_days:number;notes:string|null;draft_recipient_email:string;record_version:number;lifecycle_status:string})[]>(
+   "SELECT id,legal_entity_id,brand_id,customer_id,currency,invoice_date,due_date,invoice_valid_until,tax_mode,cgst_enabled,cgst_rate,sgst_enabled,sgst_rate,cgst_amount,sgst_amount,payment_terms_days,notes,draft_recipient_email,record_version,lifecycle_status FROM invoices WHERE id=? LIMIT 1 FOR UPDATE",[invoiceId]);
   if(!rows.length||!actor.legalEntityIds.includes(rows[0].legal_entity_id)){await conn.rollback();return jsonNoStore({error:{code:"NOT_FOUND",message:"Invoice not found in your assigned scope."}},404);}
   const current=rows[0];
   if(current.lifecycle_status!=="DRAFT"){await conn.rollback();return jsonNoStore({error:{code:"IMMUTABLE_INVOICE",message:"Only draft invoices can be updated. Issued/cancelled documents are preserved for audit."}},409);}
@@ -73,26 +73,35 @@ export async function PATCH(request:NextRequest,context:Context){
    customerId:patch.customerId??current.customer_id,currency:patch.currency??current.currency,
    invoiceDate:patch.invoiceDate!==undefined?patch.invoiceDate:dateText(current.invoice_date),
    dueDate:patch.dueDate!==undefined?patch.dueDate:dateText(current.due_date),
+   validUntil:patch.validUntil!==undefined?patch.validUntil:dateText(current.invoice_valid_until),
+   taxMode:patch.taxMode??current.tax_mode,
+   cgstEnabled:patch.cgstEnabled??Boolean(current.cgst_enabled),cgstRate:patch.cgstRate??String(current.cgst_rate??"9.000000"),
+   sgstEnabled:patch.sgstEnabled??Boolean(current.sgst_enabled),sgstRate:patch.sgstRate??String(current.sgst_rate??"9.000000"),
    paymentTermsDays:patch.paymentTermsDays??Number(current.payment_terms_days),
    notes:patch.notes!==undefined?patch.notes:current.notes,
    recipientEmail:patch.recipientEmail!==undefined?patch.recipientEmail:current.draft_recipient_email,
    lines:patch.lines??oldLines??[],
   };
   const ctx=await validateDraftContext(conn,actor,input);
-  const prepared=await resolveDraftLines(conn,ctx.entity,ctx.invoiceDate,input.currency,input.lines);
+  const prepared=await resolveDraftLines(conn,ctx.entity,ctx.invoiceDate,input.currency,input.lines,input.taxMode);
+  const componentTotals=input.taxMode==="COMPONENTS"
+    ? calculateInvoiceTaxComponents(prepared.calculation.taxableValue,input.cgstEnabled,input.cgstRate,input.sgstEnabled,input.sgstRate)
+    : {cgstAmount:"0.0000",sgstAmount:"0.0000",taxTotal:prepared.calculation.taxTotal,grandTotal:prepared.calculation.grandTotal};
+  const calculation={...prepared.calculation,taxTotal:componentTotals.taxTotal,grandTotal:componentTotals.grandTotal};
   await persistDraftLines(conn,invoiceId,actor.userId,prepared.lines);
   const [updated]=await conn.execute<ResultSetHeader>(
-   `UPDATE invoices SET legal_entity_id=?,brand_id=?,customer_id=?,currency=?,invoice_date=?,due_date=?,payment_terms_days=?,notes=?,draft_recipient_email=?,
+   `UPDATE invoices SET legal_entity_id=?,brand_id=?,customer_id=?,currency=?,invoice_date=?,due_date=?,invoice_valid_until=?,tax_mode=?,cgst_enabled=?,cgst_rate=?,sgst_enabled=?,sgst_rate=?,cgst_amount=?,sgst_amount=?,payment_terms_days=?,notes=?,draft_recipient_email=?,
       subtotal=?,discount_total=?,tax_total=?,grand_total=?,record_version=record_version+1,updated_at=NOW(3)
     WHERE id=? AND lifecycle_status='DRAFT' AND record_version=?`,
-   [input.legalEntityId,input.brandId??null,input.customerId,input.currency,ctx.invoiceDate,ctx.dueDate,ctx.paymentTermsDays,input.notes??null,input.recipientEmail??"",
-    prepared.calculation.subtotal,prepared.calculation.discountTotal,prepared.calculation.taxTotal,prepared.calculation.grandTotal,invoiceId,expectedVersion]);
+   [input.legalEntityId,input.brandId??null,input.customerId,input.currency,ctx.invoiceDate,ctx.dueDate,ctx.validUntil,input.taxMode,
+    input.cgstEnabled?1:0,input.cgstRate,input.sgstEnabled?1:0,input.sgstRate,componentTotals.cgstAmount,componentTotals.sgstAmount,
+    ctx.paymentTermsDays,input.notes??null,input.recipientEmail??"",prepared.calculation.subtotal,prepared.calculation.discountTotal,calculation.taxTotal,calculation.grandTotal,invoiceId,expectedVersion]);
   if(updated.affectedRows!==1)throw new ConfigurationConflictError("Invoice state changed while saving; reload and retry.");
   await auditDraftChange(conn,actor.userId,invoiceId,"invoice.draft.updated",
    {recordVersion:expectedVersion},{recordVersion:expectedVersion+1,changedFields:Object.keys(patch)});
   await conn.commit();
   return jsonNoStore({data:{id:invoiceId,legalEntityId:input.legalEntityId,brandId:input.brandId??null,customerId:input.customerId,currency:input.currency,
-   lifecycleStatus:"DRAFT",invoiceDate:ctx.invoiceDate,dueDate:ctx.dueDate,paymentTermsDays:ctx.paymentTermsDays,notes:input.notes??null,draftRecipientEmail:input.recipientEmail??"",
-   recordVersion:expectedVersion+1,...prepared.calculation,paidAmount:"0.0000",outstandingBalance:prepared.calculation.grandTotal,paymentStatus:"UNPAID"}});
+   lifecycleStatus:"DRAFT",invoiceDate:ctx.invoiceDate,dueDate:ctx.dueDate,validUntil:ctx.validUntil,taxMode:input.taxMode,cgstEnabled:input.cgstEnabled,cgstRate:input.cgstRate,cgstAmount:componentTotals.cgstAmount,sgstEnabled:input.sgstEnabled,sgstRate:input.sgstRate,sgstAmount:componentTotals.sgstAmount,paymentTermsDays:ctx.paymentTermsDays,notes:input.notes??null,draftRecipientEmail:input.recipientEmail??"",
+   recordVersion:expectedVersion+1,...calculation,paidAmount:"0.0000",outstandingBalance:calculation.grandTotal,paymentStatus:"UNPAID"}});
  }catch(error){if(conn)await conn.rollback().catch(()=>undefined);return responseValidation(error);}finally{conn?.release();}
 }
