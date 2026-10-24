@@ -27,8 +27,8 @@ const invoiceDraftFieldsSchema = z.object({
   currency: z.string().regex(/^[A-Z]{3}$/),invoiceDate: invoiceCalendarDateSchema.nullable().optional(),
   dueDate: invoiceCalendarDateSchema.nullable().optional(),validUntil: invoiceCalendarDateSchema.nullable().optional(),paymentTermsDays: z.number().int().min(0).max(3650).optional(),
   taxMode: z.enum(["LINE","COMPONENTS"]).optional().default("LINE"),
-  cgstEnabled: z.boolean().optional().default(false),cgstRate: taxRateInput.optional().default("9.000000"),
-  sgstEnabled: z.boolean().optional().default(false),sgstRate: taxRateInput.optional().default("9.000000"),
+  cgstEnabled: z.boolean().optional().default(false),cgstRate: taxRateInput.optional().default("0.000000"),
+  sgstEnabled: z.boolean().optional().default(false),sgstRate: taxRateInput.optional().default("0.000000"),
   notes: z.string().max(5000).nullable().optional(),recipientEmail:recipientEmailInput.optional().default(""),lines: z.array(invoiceLineInputSchema).min(1).max(500),
 }).strict().superRefine((value,ctx)=>{
   if(value.validUntil&&value.invoiceDate&&value.validUntil<value.invoiceDate)ctx.addIssue({code:"custom",path:["validUntil"],message:"Expiry date cannot be earlier than the invoice date."});

@@ -116,7 +116,7 @@ export function InvoiceWorkspace(){
     setSuccess("Receipt "+(oldPayment?.receiptReference??"")+" reversed. Its history remains retained and linked balances were recalculated.");
    }catch(e){setError(e instanceof Error?e.message:"Payment reversal failed.");}finally{setSaving(false);}
   };
-  const updateForm=(key:keyof typeof form,value:string|boolean)=>{setForm(old=>({...old,[key]:value}));setDirty(true);setCreateKey(crypto.randomUUID()+crypto.randomUUID());};
+  const updateForm=<K extends keyof typeof form,>(key:K,value:(typeof form)[K])=>{setForm(old=>({...old,[key]:value}));setDirty(true);setCreateKey(crypto.randomUUID()+crypto.randomUUID());};
  const updateLine=(key:string,patch:Partial<LineDraft>)=>{setLines(old=>old.map(line=>line.key===key?{...line,...patch}:line));setDirty(true);setCreateKey(crypto.randomUUID()+crypto.randomUUID());};
  const updateQuickCustomer=(key:keyof QuickCustomer,value:string)=>setQuickCustomer(old=>({...old,[key]:value}));
  const chooseBrand=(brandId:string)=>{const brand=validBrands.find(b=>b.id===brandId);setForm(old=>({...old,brandId,legalEntityId:brand?.legalEntityId??"",currency:brand?.currency??"INR"}));setLines(old=>old.map(line=>({...line,taxCode:brand?.defaultTaxCode??""})));setDirty(true);setCreateKey(crypto.randomUUID()+crypto.randomUUID());};
