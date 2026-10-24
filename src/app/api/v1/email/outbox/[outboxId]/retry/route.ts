@@ -21,7 +21,7 @@ export async function POST(request:NextRequest,context:Context) {
     const actor=await requirePermission("email:send");
     const {outboxId}=await context.params;
     if(!/^[0-9a-f-]{36}$/i.test(outboxId)) throw new EmailWorkflowError("VALIDATION_ERROR",400,"outboxId must be a UUID.");
-    const [rows]=await pool.execute<(RowDataPacket & {id:string;legal_entity_id:string;source_document_type:EmailSourceType})[]>(
+    const [rows]=await pool.execute<(RowDataPacket & {id:string;legal_entity_id:string;source_document_type:EmailSourceType;source_document_id:string})[]>(
       "SELECT id,legal_entity_id,source_document_type,source_document_id FROM email_outbox WHERE id=? LIMIT 1",[outboxId]);
     const row=rows[0];
     if(!row || !actor.legalEntityIds.includes(row.legal_entity_id)) throw new EmailWorkflowError("EMAIL_NOT_FOUND",404,"The email record is not available in your assigned scope.");
