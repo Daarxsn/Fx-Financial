@@ -6,6 +6,7 @@ import { Icon } from "@/components/icon";
 import { Breadcrumbs, Card, PageHeader, StatusBadge } from "@/components/ui";
 import { PaymentSummary } from "@/components/payment-summary";
 import { DashboardReportSummary } from "@/components/dashboard-report-summary";
+import { DashboardHub } from "@/components/dashboard/dashboard-hub";
 
 const modules = [
   { number: "01", title: "Invoices", description: "Prepare invoice drafts, review calculated totals and issue documents when required finance checks are satisfied.", href: "/invoices", icon: "invoice" as const, status: "Document workflow" },
@@ -52,6 +53,8 @@ export default function HomePage() {
           <span className="welcome-art__spark welcome-art__spark--two">✧</span>
         </div>
       </section>
+
+      <DashboardHub />
 
       <div className="section-heading">
         <div><p className="eyebrow">YOUR WORKSPACE</p><h2>Start with the essentials</h2></div>

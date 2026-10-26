@@ -29,3 +29,5 @@ export async function GET(request: NextRequest) {
     return jsonNoStore({error:{code:"EMAIL_WORKER_UNAVAILABLE",message:"The durable email worker could not complete this run."}},503);
   }
 }
+
+export const POST = GET;

@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
-import { Button, InlineAlert, TextField, StatusBadge } from "@/components/ui";
+import { InlineAlert, StatusBadge } from "@/components/ui";
 
 async function fetchCsrfToken(): Promise<string> {
   const response = await fetch("/api/v1/auth/csrf", { cache: "no-store", credentials: "same-origin" });
@@ -23,6 +23,7 @@ export function LoginForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -50,53 +51,152 @@ export function LoginForm() {
   }
 
   return (
-    <section className="auth-card" aria-labelledby="login-title">
+    <div className="auth-card-container">
+      {/* Brand Header directly above card matching luxury mockup */}
       <div className="auth-card__brand">
         <span className="auth-card__logo-wrap">
-          <Image className="auth-card__logo" src="/brand/falchion-xeniaa-logo.webp" alt="Falchion Xeniaa" width={300} height={150} priority />
-        </span>
-        <span className="auth-card__brand-caption">FINANCE WORKSPACE</span>
-      </div>
-      <StatusBadge tone="info" icon="lock">Private workspace</StatusBadge>
-      <h1 id="login-title">Welcome back.</h1>
-      <p className="auth-card__description">Sign in with your invited work account to continue.</p>
-      {error ? <InlineAlert tone="danger" title="Sign-in was not completed">{error}</InlineAlert> : null}
-      <form className="auth-form" onSubmit={submit}>
-        <TextField
-          id="login-email"
-          label="Work email"
-          type="email"
-          autoComplete="username"
-          inputMode="email"
-          value={email}
-          onChange={(event) => setEmail(event.currentTarget.value)}
-          required
-          maxLength={320}
-          placeholder="you@company.com"
-        />
-        <div className="auth-password-field">
-          <TextField
-            id="login-password"
-            label="Password"
-            type={showPassword ? "text" : "password"}
-            autoComplete="current-password"
-            value={password}
-            onChange={(event) => setPassword(event.currentTarget.value)}
-            required
-            maxLength={256}
-            placeholder="Enter your password"
+          <Image
+            className="auth-card__logo"
+            src="/brand/falchion-xeniaa-logo.webp"
+            alt="Falchion Xeniaa"
+            width={280}
+            height={140}
+            unoptimized
+            priority
           />
-          <button className="auth-password-toggle" type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"}>
-            <Icon name={showPassword ? "eye-off" : "eye"} size={17} />
+        </span>
+        <span className="auth-card__brand-caption">INVOICE WORKSPACE</span>
+      </div>
+
+      <section className="auth-card" aria-labelledby="login-title">
+        <h1 id="login-title" className="auth-card__title">
+          Welcome back<span className="sr-only">.</span>
+        </h1>
+        <p className="auth-card__description">Sign in to your invoice workspace</p>
+
+        {error ? <InlineAlert tone="danger" title="Sign-in was not completed">{error}</InlineAlert> : null}
+
+        <form className="auth-form" onSubmit={submit}>
+          <div className="auth-input-group">
+            <label className="form-label" htmlFor="login-email">
+              Email address <span className="sr-only">Work email</span>
+            </label>
+            <div className="auth-input-wrapper">
+              <span className="auth-input-icon" aria-hidden="true">
+                <Icon name="mail" size={17} />
+              </span>
+              <input
+                id="login-email"
+                name="email"
+                className="form-control auth-input"
+                type="email"
+                autoComplete="username"
+                inputMode="email"
+                aria-label="Work email"
+                value={email}
+                onChange={(event) => setEmail(event.currentTarget.value)}
+                required
+                maxLength={320}
+                placeholder="you@company.com"
+              />
+            </div>
+          </div>
+
+          <div className="auth-input-group">
+            <label className="form-label" htmlFor="login-password">
+              Password
+            </label>
+            <div className="auth-input-wrapper">
+              <span className="auth-input-icon" aria-hidden="true">
+                <Icon name="lock" size={17} />
+              </span>
+              <input
+                id="login-password"
+                name="password"
+                className="form-control auth-input"
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => setPassword(event.currentTarget.value)}
+                required
+                maxLength={256}
+                placeholder="Enter your password"
+              />
+              <button
+                type="button"
+                className="auth-password-toggle"
+                onClick={() => setShowPassword((value) => !value)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                <Icon name={showPassword ? "eye-off" : "eye"} size={17} />
+              </button>
+            </div>
+          </div>
+
+          <div className="auth-forgot-row">
+            <button
+              type="button"
+              className="auth-forgot"
+              onClick={() => setError("Password reset is managed by your administrator. Contact your company administrator to reset credentials.")}
+            >
+              Forgot password?
+            </button>
+          </div>
+
+          <div className="auth-remember-row">
+            <label className="auth-remember">
+              <span className="auth-checkbox-wrap">
+                <input
+                  type="checkbox"
+                  id="remember-me"
+                  className="auth-checkbox-native"
+                  checked={rememberMe}
+                  onChange={(event) => setRememberMe(event.target.checked)}
+                />
+                <span className={`auth-checkbox-box ${rememberMe ? "auth-checkbox-box--checked" : ""}`} aria-hidden="true">
+                  {rememberMe ? (
+                    <svg viewBox="0 0 12 10" width="11" height="9" fill="none">
+                      <path d="M1.5 5.2L4.5 8.2L10.5 1.8" stroke="#FFFFFF" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ) : null}
+                </span>
+              </span>
+              <span>Keep me signed in</span>
+            </label>
+          </div>
+
+          <button type="submit" disabled={busy} className="auth-submit-gold">
+            {busy ? (
+              <>
+                <span className="button-spinner" aria-hidden="true" /> Signing in…
+              </>
+            ) : (
+              <>
+                Sign in <span className="auth-submit__arrow" aria-hidden="true">→</span>
+              </>
+            )}
           </button>
+        </form>
+
+        <div className="auth-divider" role="separator">
+          <span>OR</span>
         </div>
-        <Button type="submit" size="lg" disabled={busy} className="auth-submit">
-          {busy ? <><span className="button-spinner" aria-hidden="true" /> Signing in…</> : <>Sign in <Icon name="arrow-up-right" size={17} /></>}
-        </Button>
-      </form>
-      <p className="auth-card__fineprint"><Icon name="shield" size={15} /> Sessions expire after inactivity and can be revoked by an administrator.</p>
-      <p className="auth-card__footnote">Have an invitation? <Link href="/activate">Activate your account</Link></p>
-    </section>
+
+        <p className="auth-card__contact">
+          Don&apos;t have an account?{" "}
+          <a
+            href="mailto:admin@falchionxeniaa.com?subject=Account%20Request%20-%20Falchion%20Xeniaa%20Invoice%20Workspace"
+            className="auth-admin-link"
+          >
+            Contact your administrator.
+          </a>
+        </p>
+
+        <p className="auth-card__invite-link">
+          Have an invitation code? <Link href="/activate">Activate your account</Link>
+        </p>
+      </section>
+    </div>
   );
 }
 
@@ -153,62 +253,80 @@ export function ActivateForm({ token }: { token: string }) {
   }
 
   return (
-    <section className="auth-card" aria-labelledby="activate-title">
+    <div className="auth-card-container">
       <div className="auth-card__brand">
         <span className="auth-card__logo-wrap">
-          <Image className="auth-card__logo" src="/brand/falchion-xeniaa-logo.webp" alt="Falchion Xeniaa brand mark reference" width={300} height={150} priority />
+          <Image className="auth-card__logo" src="/brand/falchion-xeniaa-logo.webp" alt="Falchion Xeniaa brand mark reference" width={280} height={140} unoptimized priority />
         </span>
-        <span className="auth-card__brand-caption">FINANCE WORKSPACE</span>
+        <span className="auth-card__brand-caption">INVOICE WORKSPACE</span>
       </div>
-      <StatusBadge tone="info" icon="shield">Invitation activation</StatusBadge>
-      {activated ? (
-        <div className="auth-success">
-          <span className="auth-success__icon"><Icon name="check" size={25} /></span>
-          <h1 id="activate-title">You’re all set.</h1>
-          <p>Your account is active. Sign in to open your workspace.</p>
-          <Button size="lg" onClick={() => router.replace("/login")} className="auth-submit">Continue to sign in <Icon name="arrow-up-right" size={17} /></Button>
-        </div>
-      ) : (
-        <>
-          <h1 id="activate-title">Set up your account.</h1>
-          <p className="auth-card__description">Choose a strong password to activate your invited account.</p>
-          {error ? <InlineAlert tone="danger" title="Activation was not completed">{error}</InlineAlert> : null}
-          <form className="auth-form" onSubmit={submit}>
-            <div className="auth-password-field">
-              <TextField
-                id="activate-password"
-                label="New password"
-                type={showPassword ? "text" : "password"}
-                autoComplete="new-password"
-                value={password}
-                onChange={(event) => setPassword(event.currentTarget.value)}
-                required
-                minLength={12}
-                maxLength={128}
-                hint="Use at least 12 characters. A phrase is fine."
-              />
-              <button className="auth-password-toggle" type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"}>
-                <Icon name={showPassword ? "close" : "overview"} size={17} />
+
+      <section className="auth-card" aria-labelledby="activate-title">
+        <StatusBadge tone="info" icon="shield">Invitation activation</StatusBadge>
+        {activated ? (
+          <div className="auth-success">
+            <span className="auth-success__icon"><Icon name="check" size={25} /></span>
+            <h1 id="activate-title" className="auth-card__title">You’re all set.</h1>
+            <p className="auth-card__description">Your account is active. Sign in to open your workspace.</p>
+            <button type="button" onClick={() => router.replace("/login")} className="auth-submit-gold">
+              Continue to sign in <span className="auth-submit__arrow" aria-hidden="true">→</span>
+            </button>
+          </div>
+        ) : (
+          <>
+            <h1 id="activate-title" className="auth-card__title">Set up your account.</h1>
+            <p className="auth-card__description">Choose a strong password to activate your invited account.</p>
+            {error ? <InlineAlert tone="danger" title="Activation was not completed">{error}</InlineAlert> : null}
+            <form className="auth-form" onSubmit={submit}>
+              <div className="auth-input-group">
+                <label className="form-label" htmlFor="activate-password">New password</label>
+                <div className="auth-input-wrapper">
+                  <span className="auth-input-icon" aria-hidden="true"><Icon name="lock" size={17} /></span>
+                  <input
+                    id="activate-password"
+                    name="password"
+                    className="form-control auth-input"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    value={password}
+                    onChange={(event) => setPassword(event.currentTarget.value)}
+                    required
+                    minLength={12}
+                    maxLength={128}
+                    placeholder="At least 12 characters"
+                  />
+                  <button className="auth-password-toggle" type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"}>
+                    <Icon name={showPassword ? "eye-off" : "eye"} size={17} />
+                  </button>
+                </div>
+              </div>
+              <div className="auth-input-group">
+                <label className="form-label" htmlFor="activate-confirm-password">Confirm password</label>
+                <div className="auth-input-wrapper">
+                  <span className="auth-input-icon" aria-hidden="true"><Icon name="lock" size={17} /></span>
+                  <input
+                    id="activate-confirm-password"
+                    name="confirmPassword"
+                    className="form-control auth-input"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.currentTarget.value)}
+                    required
+                    minLength={12}
+                    maxLength={128}
+                    placeholder="Re-enter password"
+                  />
+                </div>
+              </div>
+              <button type="submit" disabled={busy || !token} className="auth-submit-gold">
+                {busy ? <><span className="button-spinner" aria-hidden="true" /> Activating…</> : <>Activate account <span className="auth-submit__arrow" aria-hidden="true">→</span></>}
               </button>
-            </div>
-            <TextField
-              id="activate-confirm-password"
-              label="Confirm password"
-              type={showPassword ? "text" : "password"}
-              autoComplete="new-password"
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.currentTarget.value)}
-              required
-              minLength={12}
-              maxLength={128}
-            />
-            <Button type="submit" size="lg" disabled={busy || !token} className="auth-submit">
-              {busy ? <><span className="button-spinner" aria-hidden="true" /> Activating…</> : <>Activate account <Icon name="arrow-up-right" size={17} /></>}
-            </Button>
-          </form>
-        </>
-      )}
-      <p className="auth-card__footnote"><Link href="/login">Return to sign in</Link></p>
-    </section>
+            </form>
+          </>
+        )}
+        <p className="auth-card__footnote"><Link href="/login">Return to sign in</Link></p>
+      </section>
+    </div>
   );
 }

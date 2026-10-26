@@ -24,6 +24,14 @@ const freshLine=(taxCode=""):LineDraft=>({key:crypto.randomUUID(),catalogItemId:
 const today=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");};
 const record=(v:unknown):Record<string,unknown>=>v&&typeof v==="object"&&!Array.isArray(v)?v as Record<string,unknown>:{};
 const str=(v:unknown)=>typeof v==="string"||typeof v==="number"?String(v):"";
+const cleanQuantity=(v:string):string=>{
+ const trimmed=(v||"").trim();
+ const num=Number(trimmed);
+ if(!trimmed||isNaN(num)||num<=0)return "1.0000";
+ const parts=trimmed.split(".");
+ if(parts.length===2&&parts[1]&&parts[1].length>4)return num.toFixed(4);
+ return trimmed;
+};
 const linesFrom=(v:unknown):LineDraft[]=>Array.isArray(v)&&v.length?v.map(x=>{const r=record(x);return {
  key:crypto.randomUUID(),catalogItemId:str(r.catalogItemId),lineKind:r.lineKind==="CHARGE"?"CHARGE":"ITEM",milestone:str(r.milestone),
  description:str(r.description),unitCode:str(r.unitCode)||"unit",quantity:str(r.quantity)||"1.0000",unitPrice:str(r.unitPrice)||"0.0000",
@@ -31,11 +39,13 @@ const linesFrom=(v:unknown):LineDraft[]=>Array.isArray(v)&&v.length?v.map(x=>{co
 };}):[freshLine()];
 function Field({label,children,wide=false,hint}:{label:string;children:ReactNode;wide?:boolean;hint?:string}){const fieldId=useId();const control=isValidElement(children)?cloneElement(children as ReactElement<{id?:string}>,{id:fieldId}):children;return <div className={wide?"invoice-form-field invoice-form-field--wide":"invoice-form-field"}><label className="form-label" htmlFor={fieldId}>{label}</label>{control}{hint?<p className="form-hint">{hint}</p>:null}</div>;}
 
-export function InvoiceWorkspace(){
+ export function InvoiceWorkspace(){
  const [permissions,setPermissions]=useState<string[]>([]);
  const [options,setOptions]=useState<Options>({legalEntities:[],brands:[],customers:[],catalogItems:[],taxRules:[]});
  const [rows,setRows]=useState<Invoice[]>([]);const [total,setTotal]=useState(0);const [offset,setOffset]=useState(0);
  const [status,setStatus]=useState("all");const [query,setQuery]=useState("");
+ const [invoiceDateFrom,setInvoiceDateFrom]=useState("");const [invoiceDateTo,setInvoiceDateTo]=useState("");
+ const [paymentFilter,setPaymentFilter]=useState("all");const [exportingCsv,setExportingCsv]=useState(false);
  const [loading,setLoading]=useState(true);const [optionsLoading,setOptionsLoading]=useState(false);
  const [saving,setSaving]=useState(false);const [issuing,setIssuing]=useState("");
  const [error,setError]=useState("");const [success,setSuccess]=useState("");
@@ -73,11 +83,19 @@ export function InvoiceWorkspace(){
  },[canCreate,canUpdate,getRequest]);
  const refresh=useCallback(async()=>{
   setLoading(true);setError("");
-  try{const r=await getRequest("/api/v1/invoices?status="+encodeURIComponent(status)+"&query="+encodeURIComponent(query)+"&limit="+limit+"&offset="+offset);
+  try{
+   let url="/api/v1/invoices?status="+encodeURIComponent(status)+"&query="+encodeURIComponent(query)+"&limit="+limit+"&offset="+offset;
+   if(invoiceDateFrom)url+="&invoiceDateFrom="+encodeURIComponent(invoiceDateFrom);
+   if(invoiceDateTo)url+="&invoiceDateTo="+encodeURIComponent(invoiceDateTo);
+   const r=await getRequest(url);
    if(!r.response.ok)throw new Error(r.body.error?.message??"Invoices could not be loaded.");
    setRows(Array.isArray(r.body.data)?r.body.data as Invoice[]:[]);setTotal(Number(r.body.meta?.pagination?.total??0));
   }catch(e){setError(e instanceof Error?e.message:"Invoices could not be loaded.");}finally{setLoading(false);}
- },[getRequest,status,query,offset]);
+ },[getRequest,status,query,offset,invoiceDateFrom,invoiceDateTo]);
+ const displayRows=useMemo(()=>{
+  if(paymentFilter==="all")return rows;
+  return rows.filter(r=>r.paymentStatus===paymentFilter);
+ },[rows,paymentFilter]);
  useEffect(()=>{Promise.resolve().then(()=>refreshProfile());},[refreshProfile]);
  useEffect(()=>{Promise.resolve().then(()=>refresh());},[refresh]);
  useEffect(()=>{Promise.resolve().then(()=>refreshOptions());},[refreshOptions]);
@@ -132,7 +150,7 @@ export function InvoiceWorkspace(){
  };
  const openInvoicePreview=async(id:string)=>{if(await openInvoice(id))setShowPreview(true);};
  const makePayload=(customerId:string)=>({legalEntityId:form.legalEntityId,brandId:form.brandId||null,customerId,currency:form.currency,invoiceDate:form.invoiceDate||null,dueDate:form.dueDate||null,validUntil:form.validUntil||null,taxMode:form.taxMode,cgstEnabled:form.cgstEnabled,cgstRate:form.cgstRate,sgstEnabled:form.sgstEnabled,sgstRate:form.sgstRate,paymentTermsDays:Number(form.paymentTermsDays),notes:form.notes||null,recipientEmail:recipientEmail.trim(),
-  lines:lines.map(l=>({lineKind:"ITEM",milestone:l.milestone.trim()||null,description:l.description.trim(),unitCode:"unit",quantity:"1.0000",unitPrice:l.unitPrice,discountType:"AMOUNT",discountValue:"0.0000",taxCode:form.taxMode==="COMPONENTS"?null:(l.taxCode.trim()||null)}))});
+  lines:lines.map(l=>({lineKind:"ITEM",milestone:l.milestone.trim()||null,description:l.description.trim(),unitCode:"unit",quantity:cleanQuantity(l.quantity),unitPrice:l.unitPrice,discountType:"AMOUNT",discountValue:"0.0000",taxCode:form.taxMode==="COMPONENTS"?null:(l.taxCode.trim()||null)}))});
  const resolveCustomerId=async()=>{
   if(customerMode==="existing"){if(!form.customerId)throw new Error("Choose a customer or add the customer details here.");return form.customerId;}
   if(!canAddCustomer)throw new Error("This account cannot create customers. Ask an administrator to grant customer creation access.");
@@ -200,13 +218,44 @@ export function InvoiceWorkspace(){
    setSuccess("Invoice issued successfully. Its number and issue-time configuration snapshot are preserved.");setSelected(null);setEditor(false);await refresh();
   }catch(e){setError(e instanceof Error?e.message:"Invoice could not be issued.");}finally{setIssuing("");}
  };
+ const exportCsv=async()=>{
+  setExportingCsv(true);setError("");setSuccess("");
+  try{
+   const token=await csrf();
+   const params=new URLSearchParams();
+   params.set("from",invoiceDateFrom||"2024-01-01");
+   params.set("to",invoiceDateTo||today());
+   if(status!=="all")params.set("status",status);
+   const res=await fetch("/api/v1/reports/invoices/export?"+params.toString(),{method:"POST",headers:{"X-CSRF-Token":token}});
+   if(!res.ok){
+    const body=await res.json() as Api;
+    throw new Error(body.error?.message??"CSV export failed.");
+   }
+   const blob=await res.blob();
+   const url=window.URL.createObjectURL(blob);
+   const a=document.createElement("a");
+   a.href=url;
+   a.download="falchion-invoices-report-"+params.get("from")+"-to-"+params.get("to")+".csv";
+   document.body.appendChild(a);
+   a.click();
+   a.remove();
+   window.URL.revokeObjectURL(url);
+   setSuccess("Invoice report CSV downloaded successfully.");
+  }catch(e){setError(e instanceof Error?e.message:"CSV export failed.");}finally{setExportingCsv(false);}
+ };
  const fmt=(v:unknown)=>str(v)||"0.0000";
  const currency=(cur:string,v:unknown)=>cur+" "+fmt(v);
  return <div className="invoice-workspace">
   <div className="invoice-workspace-toolbar">
    <div className="invoice-workspace-search"><label className="form-label" htmlFor="invoice-search">Search invoices</label><input id="invoice-search" className="form-control" value={query} placeholder="Invoice number or customer" onChange={e=>{setQuery(e.target.value);setOffset(0);}}/></div>
-   <div><label className="form-label" htmlFor="invoice-status">Status</label><select className="form-control" id="invoice-status" value={status} onChange={e=>{setStatus(e.target.value);setOffset(0);}}><option value="all">All statuses</option><option value="DRAFT">Draft</option><option value="ISSUED">Issued</option><option value="CANCELLED">Cancelled</option></select></div>
-   {canCreate?<Button disabled={optionsLoading} onClick={startNew}>+ New invoice</Button>:null}
+   <div><label className="form-label" htmlFor="invoice-status">Document Status</label><select className="form-control" id="invoice-status" value={status} onChange={e=>{setStatus(e.target.value);setOffset(0);}}><option value="all">All statuses</option><option value="DRAFT">Draft</option><option value="ISSUED">Issued</option><option value="CANCELLED">Cancelled</option></select></div>
+   <div><label className="form-label" htmlFor="invoice-payment-filter">Payment Status</label><select className="form-control" id="invoice-payment-filter" value={paymentFilter} onChange={e=>{setPaymentFilter(e.target.value);}}><option value="all">All payments</option><option value="UNPAID">Unpaid</option><option value="PARTIALLY_PAID">Partially paid</option><option value="PAID">Paid</option></select></div>
+   <div><label className="form-label" htmlFor="invoice-date-from">From Date</label><input id="invoice-date-from" type="date" className="form-control" value={invoiceDateFrom} onChange={e=>{setInvoiceDateFrom(e.target.value);setOffset(0);}}/></div>
+   <div><label className="form-label" htmlFor="invoice-date-to">To Date</label><input id="invoice-date-to" type="date" className="form-control" value={invoiceDateTo} onChange={e=>{setInvoiceDateTo(e.target.value);setOffset(0);}}/></div>
+   <div style={{ display: "flex", gap: "8px", alignItems: "flex-end", flexWrap: "wrap" }}>
+     <Button variant="secondary" disabled={exportingCsv||loading} onClick={()=>void exportCsv()}>{exportingCsv?"Exporting…":"Export CSV"}</Button>
+     {canCreate?<Link href="/invoices/new" className="button button--primary button--md">+ New invoice</Link>:null}
+   </div>
   </div>
   <InlineAlert tone="info" title="Server-authoritative financials">The server calculates exact-decimal amounts using HALF_UP rounding to four places. Approved, effective tax rules determine rates and inclusive/exclusive treatment. Multi-currency conversion is disabled until an approved FX policy exists.</InlineAlert>
   {!canRead?<InlineAlert tone="warning" title="Invoice access is not assigned">
@@ -230,8 +279,8 @@ export function InvoiceWorkspace(){
   {optionsLoading?<LoadingState label="Loading legal entities, customers, catalog and approved tax rules…"/>:null}
   <div className="invoice-workspace-summary"><strong>{loading?"Loading invoices…":total+" "+(total===1?"invoice":"invoices")}</strong><span>Outstanding is based on recorded allocations. Draft, issue and payment status are separate.</span></div>
   <div className="data-table-scroll"><table className="data-table"><thead><tr><th>Invoice</th><th>Customer</th><th>Status</th><th>Date</th><th>Total</th><th>Outstanding</th><th>Actions</th></tr></thead><tbody>
-   {!loading&&!rows.length?<tr><td colSpan={7}><EmptyState title="No invoices found" description="Create a draft from approved customer and entity data. No sample financial totals are fabricated." icon="invoice"/></td></tr>:null}
-   {rows.map(row=><tr key={row.id}><td><strong>{row.invoiceNumber||"Draft · "+row.id.slice(0,8)}</strong><div className="invoice-workspace-muted">{row.currency}</div></td><td>{row.customerName}</td><td><StatusBadge tone={row.lifecycleStatus==="ISSUED"?"success":row.lifecycleStatus==="CANCELLED"?"danger":"warning"}>{row.lifecycleStatus}</StatusBadge><div className="invoice-workspace-muted">{row.paymentStatus}</div></td><td>{row.invoiceDate||"Not dated"}</td><td>{currency(row.currency,row.grandTotal)}</td><td>{currency(row.currency,row.outstandingBalance)}</td><td><div className="master-data-actions"><Button variant="secondary" size="sm" disabled={saving||Boolean(issuing)} onClick={()=>void openInvoicePreview(row.id)}>Preview</Button><Button variant="secondary" size="sm" disabled={saving||Boolean(issuing)} onClick={()=>void openInvoice(row.id)}>Details</Button>{row.lifecycleStatus==="DRAFT"&&canIssue?<Button size="sm" disabled={Boolean(issuing)} onClick={()=>void issue(row)}>{issuing===row.id?"Issuing…":"Issue"}</Button>:null}</div></td></tr>)}
+   {!loading&&!displayRows.length?<tr><td colSpan={7}><EmptyState title="No invoices found" description="Create a draft from approved customer and entity data. No sample financial totals are fabricated." icon="invoice"/></td></tr>:null}
+   {displayRows.map(row=><tr key={row.id}><td><strong>{row.invoiceNumber||"Draft · "+row.id.slice(0,8)}</strong><div className="invoice-workspace-muted">{row.currency}</div></td><td>{row.customerName}</td><td><div style={{ display: "flex", flexDirection: "column", gap: "4px" }}><StatusBadge tone={row.lifecycleStatus==="ISSUED"?"success":row.lifecycleStatus==="CANCELLED"?"danger":"warning"}>{row.lifecycleStatus}</StatusBadge><StatusBadge tone={row.paymentStatus==="PAID"?"success":row.paymentStatus==="PARTIALLY_PAID"?"warning":"danger"}>{row.paymentStatus}</StatusBadge></div></td><td>{row.invoiceDate||"Not dated"}</td><td>{currency(row.currency,row.grandTotal)}</td><td>{currency(row.currency,row.outstandingBalance)}</td><td><div className="master-data-actions"><Link href={"/invoices/"+row.id} className="button button--primary button--sm">Full Details ↗</Link><Button variant="secondary" size="sm" disabled={saving||Boolean(issuing)} onClick={()=>void openInvoicePreview(row.id)}>Preview</Button><Button variant="secondary" size="sm" disabled={saving||Boolean(issuing)} onClick={()=>void openInvoice(row.id)}>Details</Button>{row.lifecycleStatus==="DRAFT"&&canIssue?<Button size="sm" disabled={Boolean(issuing)} onClick={()=>void issue(row)}>{issuing===row.id?"Issuing…":"Issue"}</Button>:null}</div></td></tr>)}
   </tbody></table></div>
   <div className="master-data-pagination"><span>Showing {total===0?0:offset+1}–{Math.min(offset+rows.length,total)} of {total}</span><div><Button variant="secondary" size="sm" disabled={offset===0||loading} onClick={()=>setOffset(Math.max(0,offset-limit))}>Previous</Button><Button variant="secondary" size="sm" disabled={loading||offset+limit>=total} onClick={()=>setOffset(offset+limit)}>Next</Button></div></div>
   {selected&&!editor?<div className="invoice-editor">
@@ -310,6 +359,7 @@ export function InvoiceWorkspace(){
      <div className="invoice-line-grid invoice-line-grid--simple">
       <Field label="Description" wide><input className="form-control" required maxLength={1000} placeholder="What are you billing for?" value={line.description} onChange={e=>updateLine(line.key,{description:e.target.value})}/></Field>
       <Field label="Milestone (optional)"><input className="form-control" maxLength={160} placeholder="e.g. Milestone 1" value={line.milestone} onChange={e=>updateLine(line.key,{milestone:e.target.value})}/></Field>
+      <Field label="Qty"><input className="form-control" type="number" min="0.0001" step="any" required value={line.quantity} onChange={e=>updateLine(line.key,{quantity:e.target.value})}/></Field>
       <Field label={"Rate ("+(form.currency||"currency")+")"}><input className="form-control" required inputMode="decimal" value={line.unitPrice} onChange={e=>updateLine(line.key,{unitPrice:e.target.value})}/></Field>
       <Field label="Amount (calculated)"><output className="form-control" aria-live="polite">{!dirty&&selected?.lines?.[index]?currency(selected.currency,str(record(selected.lines[index]).lineTotal)):"Calculated on save"}</output></Field>
      </div>

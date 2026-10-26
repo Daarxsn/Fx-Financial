@@ -64,7 +64,26 @@ function assertSameOrigin(request: NextRequest): void {
   } catch {
     throw new CsrfError("ORIGIN_MISMATCH");
   }
-  if (sourceOrigin !== expectedOrigin(request)) throw new CsrfError("ORIGIN_MISMATCH");
+  const expected = expectedOrigin(request);
+  if (sourceOrigin !== expected) {
+    if (process.env.NODE_ENV !== "production") {
+      const host = request.headers.get("host");
+      const forwardedProtocol = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+      const protocol = forwardedProtocol || request.nextUrl.protocol.replace(/:$/, "");
+      if (host) {
+        try {
+          const localOrigin = new URL(`${protocol}://${host}`).origin;
+          if (sourceOrigin === localOrigin) {
+            if (request.headers.get("sec-fetch-site") === "cross-site") throw new CsrfError("CROSS_SITE");
+            return;
+          }
+        } catch {
+          // ignore parsing error and proceed to mismatch
+        }
+      }
+    }
+    throw new CsrfError("ORIGIN_MISMATCH");
+  }
   if (request.headers.get("sec-fetch-site") === "cross-site") throw new CsrfError("CROSS_SITE");
 }
 

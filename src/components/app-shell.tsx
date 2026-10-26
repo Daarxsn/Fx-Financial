@@ -210,10 +210,122 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (pathname === "/login" || pathname === "/activate") {
     return (
       <div className="auth-shell">
-        <main id="main-content" className="auth-shell__main">{children}</main>
+        <a className="skip-link" href="#main-content">Skip to main content</a>
+
+        {/* Luxury Background Canvas with Curving Ribbons & Falcon Watermark */}
+        <div className="auth-decorations" aria-hidden="true">
+          <svg className="auth-ribbon-svg" viewBox="0 0 1440 900" fill="none" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="authGoldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#E5C26C" stopOpacity="0.85" />
+                <stop offset="45%" stopColor="#C59B4C" stopOpacity="0.95" />
+                <stop offset="100%" stopColor="#9E7528" stopOpacity="0.75" />
+              </linearGradient>
+              <linearGradient id="authCrimsonGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#A8191B" stopOpacity="0.9" />
+                <stop offset="65%" stopColor="#931314" stopOpacity="0.95" />
+                <stop offset="100%" stopColor="#630B0C" stopOpacity="0.8" />
+              </linearGradient>
+              <linearGradient id="authWaveFill" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#FAF1E0" stopOpacity="0.35" />
+                <stop offset="100%" stopColor="#F3E5CA" stopOpacity="0.6" />
+              </linearGradient>
+            </defs>
+            {/* Shaded Silk Wave Fill flowing in lower area */}
+            <path
+              d="M -60 640 C 320 600, 600 820, 1020 800 C 1240 790, 1380 860, 1500 880 L 1500 900 L -60 900 Z"
+              fill="url(#authWaveFill)"
+            />
+            {/* Shimmering Metallic Gold Ribbon */}
+            <path
+              d="M -60 540 C 260 510, 560 740, 960 720 C 1180 705, 1340 785, 1500 815"
+              stroke="url(#authGoldGrad)"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            />
+            {/* Bold Deep Crimson Silk Ribbon */}
+            <path
+              d="M -60 610 C 300 575, 580 810, 1000 790 C 1220 780, 1360 850, 1500 870"
+              stroke="url(#authCrimsonGrad)"
+              strokeWidth="4"
+              strokeLinecap="round"
+            />
+          </svg>
+
+          {/* Large faint watermark of the Falcon Wings in the upper-right */}
+          <div className="auth-watermark">
+            <Image
+              src="/brand/falchion-xeniaa-watermark.webp"
+              alt=""
+              width={610}
+              height={400}
+              priority
+              unoptimized
+            />
+          </div>
+        </div>
+
+        {/* Top-Left Motto */}
+        <div className="auth-motif-top-left" aria-hidden="true">
+          <span className="auth-motif-top-left__bar" />
+          <div className="auth-motif-top-left__text">
+            <span>THOUGHTFUL</span>
+            <span>SOLUTIONS</span>
+            <span>FOR A BETTER</span>
+            <span>TOMORROW</span>
+          </div>
+        </div>
+
+        {/* Top-Right Theme Toggle Capsule */}
+        <div className="auth-motif-top-right">
+          <button
+            type="button"
+            className="auth-theme-capsule"
+            onClick={toggleTheme}
+            aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+          >
+            <span
+              className={`auth-theme-pill ${theme === "light" ? "auth-theme-pill--active" : ""}`}
+              title="Light mode"
+            >
+              <Icon name="sun" size={15} />
+            </span>
+            <span
+              className={`auth-theme-pill ${theme === "dark" ? "auth-theme-pill--active" : ""}`}
+              title="Dark mode"
+            >
+              <Icon name="moon" size={15} />
+            </span>
+          </button>
+        </div>
+
+        {/* Center Login Container */}
+        <main id="main-content" className="auth-shell__main" tabIndex={-1}>
+          {children}
+        </main>
+
+        {/* Bottom-Left LOB List */}
+        <div className="auth-motif-bottom-left" aria-hidden="true">
+          <span className="auth-motif-bottom-left__bar" />
+          <div className="auth-motif-bottom-left__text">
+            <span>INVOICE • QUOTATION • RECEIPT</span>
+            <span>REPORTS • PAYMENTS • MORE</span>
+          </div>
+        </div>
+
+        {/* Bottom-Center Footer */}
         <footer className="auth-shell__footer">
-          <span>Falchion Xeniaa · Internal finance workspace</span>
-          <span><Icon name="shield" size={14} /> Protected account access</span>
+          <div className="auth-footer__copyright">
+            <p>© 2026 Falchion Xeniaa Pvt. Ltd. All rights reserved.</p>
+            <div className="auth-footer__links">
+              <span>Privacy Policy</span>
+              <span className="auth-footer__sep" aria-hidden="true">|</span>
+              <span>Terms of Service</span>
+              <span className="auth-footer__sep" aria-hidden="true">|</span>
+              <a href="mailto:support@falchionxeniaa.com">Support</a>
+            </div>
+          </div>
+          <span className="sr-only">Falchion Xeniaa · Internal finance workspace · Protected account access</span>
         </footer>
       </div>
     );

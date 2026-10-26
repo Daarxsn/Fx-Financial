@@ -158,10 +158,26 @@ export function calculateInvoice(lines: InvoiceCalculationLineInput[]): InvoiceC
 export function normalizeMoney(value: string | number): string {
   return formatScaled(parseScaled(String(value), 4, MONEY_PATTERN, "Money value"), 4);
 }
-export function outstandingBalance(grandTotal: string | number, allocatedPayments: string | number): string {
+export function calculateOutstandingBalance(
+  grandTotal: string | number,
+  allocatedPayments: string | number,
+): { outstandingBalance: string; creditBalance: string } {
   const total = parseScaled(String(grandTotal), 4, MONEY_PATTERN, "Invoice total");
   const paid = parseScaled(String(allocatedPayments), 4, MONEY_PATTERN, "Allocated payments");
-  return formatScaled(total > paid ? total - paid : 0n, 4);
+  if (paid > total) {
+    return {
+      outstandingBalance: "0.0000",
+      creditBalance: formatScaled(paid - total, 4),
+    };
+  }
+  return {
+    outstandingBalance: formatScaled(total - paid, 4),
+    creditBalance: "0.0000",
+  };
+}
+
+export function outstandingBalance(grandTotal: string | number, allocatedPayments: string | number): string {
+  return calculateOutstandingBalance(grandTotal, allocatedPayments).outstandingBalance;
 }
 export function defaultDueDate(invoiceDate: string, paymentTermsDays: number): string {
   if (!Number.isInteger(paymentTermsDays) || paymentTermsDays < 0 || paymentTermsDays > 3650) throw new Error("Payment terms must be an integer from 0 to 3650 days.");
